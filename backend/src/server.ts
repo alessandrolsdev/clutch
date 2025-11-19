@@ -7,6 +7,7 @@ import { profileRoutes } from './api/routes/profile.routes';
 import { postsRoutes } from './api/routes/posts.routes';
 import { interactionsRoutes } from './api/routes/interactions.routes'; // <--- 1. IMPORTAR
 import { leaderboardRoutes } from './api/routes/leaderboard.routes';
+import {commentsRoutes} from './api/routes/comments.routes';
 
 const app = Fastify({
   logger: true
@@ -24,7 +25,8 @@ app.register(authRoutes);
 app.register(profileRoutes);
 app.register(postsRoutes);
 app.register(interactionsRoutes);
-app.register(leaderboardRoutes); 
+app.register(leaderboardRoutes);
+app.register(commentsRoutes); 
 
 const start = async () => {
   try {

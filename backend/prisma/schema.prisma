@@ -7,8 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// --- MODELOS DE IDENTIDADE ---
-
 model User {
   id            String   @id @default(uuid())
   username      String   @unique
@@ -23,7 +21,8 @@ model User {
   posts        Post[]
   interactions Interaction[]
   xpLogs       XpLog[]
-
+  comments     Comment[] // <--- NOVO RELACIONAMENTO
+  
   @@map("users")
 }
 
@@ -38,7 +37,6 @@ model Profile {
   location    String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@map("profiles")
 }
 
@@ -50,7 +48,6 @@ model UserStats {
   reputationScore Int    @default(0) @map("reputation_score")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@map("user_stats")
 }
 
@@ -63,12 +60,9 @@ model PlatformIntegration {
   lastSyncedAt DateTime?        @map("last_synced_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@unique([userId, provider])
   @@map("platform_integrations")
 }
-
-// --- MODELOS SOCIAIS ---
 
 model Post {
   id          String   @id @default(uuid())
@@ -80,8 +74,23 @@ model Post {
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   interactions Interaction[]
+  comments     Comment[] // <--- NOVO RELACIONAMENTO
 
   @@map("posts")
+}
+
+// --- MODELO NOVO: COMENTÁRIOS ---
+model Comment {
+  id        String   @id @default(uuid())
+  content   String
+  createdAt DateTime @default(now()) @map("created_at")
+  userId    String   @map("user_id")
+  postId    String   @map("post_id")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@map("comments")
 }
 
 model Interaction {
@@ -98,8 +107,6 @@ model Interaction {
   @@map("interactions")
 }
 
-// --- MODELOS DE GAMIFICATION ---
-
 model XpLog {
   id         String   @id @default(uuid())
   userId     String   @map("user_id")
@@ -108,11 +115,8 @@ model XpLog {
   createdAt  DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@map("xp_logs")
 }
-
-// --- ENUMS ---
 
 enum PlatformProvider {
   STEAM
