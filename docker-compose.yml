@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: clutch_db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: clutch_admin
+      POSTGRES_PASSWORD: clutch_password_secure_123
+      POSTGRES_DB: clutch_main_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - clutch_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: clutch_cache
+    ports:
+      - "6379:6379"
+    networks:
+      - clutch_network
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: clutch_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@clutch.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "8080:80"
+    depends_on:
+      - postgres
+    networks:
+      - clutch_network
+
+volumes:
+  pgdata:
+
+networks:
+  clutch_network:
+    driver: bridge

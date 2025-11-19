@@ -1,0 +1,137 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- MODELOS DE IDENTIDADE ---
+
+model User {
+  id            String   @id @default(uuid())
+  username      String   @unique
+  email         String   @unique
+  password_hash String
+  createdAt     DateTime @default(now()) @map("created_at")
+  isActive      Boolean  @default(true) @map("is_active")
+
+  profile      Profile?
+  stats        UserStats?
+  integrations PlatformIntegration[]
+  posts        Post[]
+  interactions Interaction[]
+  xpLogs       XpLog[]
+
+  @@map("users")
+}
+
+model Profile {
+  id          String  @id @default(uuid())
+  userId      String  @unique @map("user_id")
+  displayName String? @map("display_name")
+  bio         String?
+  avatarUrl   String? @map("avatar_url")
+  bannerUrl   String? @map("banner_url")
+  mainTitle   String? @map("main_title")
+  location    String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("profiles")
+}
+
+model UserStats {
+  userId          String @id @map("user_id")
+  level           Int    @default(1)
+  currentXp       Int    @default(0) @map("current_xp")
+  socialEnergy    Int    @default(100) @map("social_energy")
+  reputationScore Int    @default(0) @map("reputation_score")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_stats")
+}
+
+model PlatformIntegration {
+  id           String           @id @default(uuid())
+  userId       String           @map("user_id")
+  provider     PlatformProvider
+  externalId   String           @map("external_id")
+  metadata     Json?
+  lastSyncedAt DateTime?        @map("last_synced_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+  @@map("platform_integrations")
+}
+
+// --- MODELOS SOCIAIS ---
+
+model Post {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  contentText String?  @map("content_text")
+  mediaUrl    String?  @map("media_url")
+  type        PostType @default(TEXT)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  interactions Interaction[]
+
+  @@map("posts")
+}
+
+model Interaction {
+  id        String          @id @default(uuid())
+  userId    String          @map("user_id")
+  postId    String          @map("post_id")
+  type      InteractionType
+  createdAt DateTime        @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId, type])
+  @@map("interactions")
+}
+
+// --- MODELOS DE GAMIFICATION ---
+
+model XpLog {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  actionType String   @map("action_type")
+  xpAmount   Int      @map("xp_amount")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("xp_logs")
+}
+
+// --- ENUMS ---
+
+enum PlatformProvider {
+  STEAM
+  PSN
+  XBOX
+  RIOT
+  NINTENDO
+}
+
+enum PostType {
+  TEXT
+  IMAGE
+  VIDEO
+  ACHIEVEMENT
+}
+
+enum InteractionType {
+  LIKE
+  GG
+  F
+  CLAP
+}
