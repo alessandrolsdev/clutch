@@ -1,4 +1,7 @@
 <script setup lang="ts">
+// =============================================================================
+// 1. IMPORTAÇÕES
+// =============================================================================
 import { ref, onMounted, reactive, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api } from '../api';
@@ -6,7 +9,11 @@ import { api } from '../api';
 const route = useRoute();
 const router = useRouter();
 
-// --- ESTADOS ---
+// =============================================================================
+// 2. ESTADO (VARIÁVEIS REATIVAS)
+// =============================================================================
+
+// --- DADOS GERAIS ---
 const isLoading = ref(true);
 const usernameParam = ref(route.params.username as string);
 const profile = ref<any>(null);
@@ -14,33 +21,45 @@ const currentUser = ref<any>(null);
 const integrations = ref<any[]>([]); 
 const steamStats = ref<any>(null);
 
-// Feed
+// --- FEED & POSTS ---
 const posts = ref<any[]>([]);
 const newPostContent = ref('');
 const isPosting = ref(false);
+// Controle de comentários
 const openComments = reactive<Record<string, boolean>>({});
 const postComments = reactive<Record<string, any[]>>({});
 const commentInputs = reactive<Record<string, string>>({});
 
-// Diário
-const showDiary = ref(false);
+// --- DIÁRIO (QUEST LOG) ---
+const showDiary = ref(false); // Toggle: Feed vs Diário
 const gameLogs = ref<any[]>([]);
-const isLoggingGame = ref(false);
+const isLoggingGame = ref(false); // Modal Diário
 const gameForm = reactive({ gameTitle: '', platform: 'PC', hoursPlayed: 0, rating: 5, emotion: 'EPIC', review: '' });
 
-// Edição
-const isEditing = ref(false);
+// --- EDIÇÃO DE PERFIL ---
+const isEditing = ref(false); // Modal Edição
 const isSaving = ref(false);
 const editTab = ref('IDENTITY'); 
 const editForm = reactive({ displayName: '', bio: '', avatarUrl: '', bannerUrl: '' });
 const integrationForm = reactive({ steamId: '', psnId: '', xboxId: '', epicId: '' }); 
 
-// --- DETALHES DE JOGO (NOVO) ---
-const isViewingGame = ref(false);
+// --- DETALHES DE JOGO (STEAM) ---
+const isViewingGame = ref(false); // Modal Conquistas
 const selectedGameDetails = ref<any>(null);
 const isLoadingDetails = ref(false);
 
-// --- WATCHER ---
+// --- UPLOAD DE CONQUISTA (IA/OCR) ---
+const showAchievementUpload = ref(false); // Modal Upload
+const selectedImage = ref<File | null>(null);
+const previewImageUrl = ref<string | null>(null);
+const uploadGameTitle = ref('');
+const isUploadingAchievement = ref(false);
+
+// =============================================================================
+// 3. CICLO DE VIDA & WATCHERS
+// =============================================================================
+
+// Detecta mudança de rota (Navegação entre perfis)
 watch(() => route.params.username, async (newUsername) => {
   if (newUsername) {
     usernameParam.value = newUsername as string;
@@ -50,10 +69,12 @@ watch(() => route.params.username, async (newUsername) => {
   }
 });
 
+// Inicialização
 onMounted(async () => {
   const stored = localStorage.getItem('clutch_user');
   if (stored) currentUser.value = JSON.parse(stored);
   else router.push('/');
+  
   await initData();
   isLoading.value = false;
 });
@@ -64,21 +85,25 @@ async function initData() {
   await fetchDiary();
 }
 
-// --- BUSCAS ---
+// =============================================================================
+// 4. BUSCA DE DADOS (API GET)
+// =============================================================================
+
 async function fetchProfile() {
   try {
     const response = await api.get(`/profiles/${usernameParam.value}`);
     profile.value = response.data;
     integrations.value = response.data.integrations || [];
 
+    // Extrai Metadata Steam se existir
     const steamLink = integrations.value.find((i: any) => i.provider === 'STEAM');
     if (steamLink && steamLink.metadata) {
         steamStats.value = steamLink.metadata;
     } else {
         steamStats.value = null;
     }
-    
 
+    // Se for o dono do perfil, preenche os forms de edição
     if (currentUser.value?.id === profile.value.id) {
       editForm.displayName = response.data.displayName || '';
       editForm.bio = response.data.bio || '';
@@ -86,7 +111,13 @@ async function fetchProfile() {
       editForm.bannerUrl = response.data.bannerUrl || '';
       
       const steam = integrations.value.find((i: any) => i.provider === 'STEAM');
+      const psn = integrations.value.find((i: any) => i.provider === 'PSN');
+      const xbox = integrations.value.find((i: any) => i.provider === 'XBOX');
+      const epic = integrations.value.find((i: any) => i.provider === 'EPIC');
+      
       integrationForm.steamId = steam ? steam.externalId : '';
+      integrationForm.psnId = psn ? psn.externalId : '';
+      integrationForm.xboxId = xbox ? xbox.externalId : '';
       integrationForm.epicId = epic ? epic.externalId : '';
     }
   } catch (err) { console.error(err); }
@@ -110,32 +141,11 @@ async function fetchDiary() {
   } catch (err) { console.error(err); }
 }
 
-// --- NOVA FUNÇÃO: VER DETALHES DO JOGO ---
-async function openGameDetails(appId: number) {
-    // Precisa do ID da Steam do dono do perfil
-    const steamLink = integrations.value.find((i: any) => i.provider === 'STEAM');
-    if (!steamLink || !steamLink.externalId) return;
+// =============================================================================
+// 5. AÇÕES E INTERAÇÕES
+// =============================================================================
 
-    isViewingGame.value = true;
-    isLoadingDetails.value = true;
-    selectedGameDetails.value = null;
-
-    try {
-        const res = await api.post('/integrations/steam/game-details', {
-            steamId: steamLink.externalId,
-            appId: appId
-        });
-        selectedGameDetails.value = res.data;
-    } catch (e) {
-        alert("Não foi possível carregar os detalhes das conquistas.");
-        isViewingGame.value = false;
-    } finally {
-        isLoadingDetails.value = false;
-    }
-}
-
-// --- AÇÕES ---
-
+// --- FEED ---
 async function handlePublish() {
   if (!newPostContent.value.trim()) return; 
   isPosting.value = true;
@@ -178,26 +188,90 @@ async function sendComment(post: any) {
     } catch (e) { alert("Erro ao comentar."); }
 }
 
+// --- DIÁRIO ---
 async function handleLogGame() {
   try {
     await api.post('/diary', { userId: currentUser.value.id, ...gameForm });
     isLoggingGame.value = false;
     gameForm.gameTitle = ''; gameForm.review = ''; gameForm.hoursPlayed = 0;
     await initData();
-  } catch (e) { alert("Erro ao registrar."); }
+    alert("Jornada registrada! +50 XP");
+  } catch (e) { alert("Erro ao registrar jogo."); }
+}
+
+// --- UPLOAD DE CONQUISTA (OCR) ---
+function handleImageSelect(event: Event) {
+  const input = event.target as HTMLInputElement;
+  if (input.files && input.files[0]) {
+    selectedImage.value = input.files[0];
+    previewImageUrl.value = URL.createObjectURL(input.files[0]);
+  } else {
+    selectedImage.value = null;
+    previewImageUrl.value = null;
+  }
+}
+
+async function uploadAchievementImage() {
+  if (!selectedImage.value || !currentUser.value) {
+    alert("Selecione uma imagem.");
+    return;
+  }
+  isUploadingAchievement.value = true;
+  const formData = new FormData();
+  formData.append('image', selectedImage.value);
+  formData.append('userId', currentUser.value.id);
+  if (uploadGameTitle.value) formData.append('gameTitle', uploadGameTitle.value);
+
+  try {
+    const response = await api.post('/posts/upload-achievement-image', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    alert(`Imagem processada! Jogo detectado: ${response.data.recognizedGame}`);
+    selectedImage.value = null;
+    previewImageUrl.value = null;
+    uploadGameTitle.value = '';
+    showAchievementUpload.value = false;
+    await fetchPosts(); // Atualiza feed
+  } catch (error) {
+    console.error(error);
+    alert("Erro ao processar a imagem.");
+  } finally {
+    isUploadingAchievement.value = false;
+  }
+}
+
+// --- STEAM & INTEGRAÇÕES ---
+async function openGameDetails(appId: number) {
+    const steamLink = integrations.value.find((i: any) => i.provider === 'STEAM');
+    if (!steamLink || !steamLink.externalId) return;
+    isViewingGame.value = true;
+    isLoadingDetails.value = true;
+    selectedGameDetails.value = null;
+    try {
+        const res = await api.post('/integrations/steam/game-details', {
+            steamId: steamLink.externalId, appId: appId
+        });
+        selectedGameDetails.value = res.data;
+    } catch (e) {
+        isViewingGame.value = false;
+        alert("Erro ao carregar conquistas (Perfil Privado?).");
+    } finally { isLoadingDetails.value = false; }
 }
 
 async function handleSave() {
   isSaving.value = true;
   try {
     await api.patch(`/profiles/${usernameParam.value}`, { ...editForm });
+    // Salva todos os IDs
     if (integrationForm.steamId) await api.post('/integrations', { userId: currentUser.value.id, provider: 'STEAM', externalId: integrationForm.steamId });
+    if (integrationForm.psnId) await api.post('/integrations', { userId: currentUser.value.id, provider: 'PSN', externalId: integrationForm.psnId });
+    if (integrationForm.xboxId) await api.post('/integrations', { userId: currentUser.value.id, provider: 'XBOX', externalId: integrationForm.xboxId });
     if (integrationForm.epicId) await api.post('/integrations', { userId: currentUser.value.id, provider: 'EPIC', externalId: integrationForm.epicId });
+    
     isEditing.value = false;
     await fetchProfile(); 
   } catch (err) { alert('Erro ao salvar.'); } 
   finally { isSaving.value = false; }
-  
 }
 
 async function syncSteam() {
@@ -205,11 +279,12 @@ async function syncSteam() {
   try {
     await api.post('/integrations', { userId: currentUser.value.id, provider: 'STEAM', externalId: integrationForm.steamId });
     const res = await api.post('/integrations/steam/sync', { userId: currentUser.value.id, steamId: integrationForm.steamId });
-    alert(`Sync Completo! ${res.data.stats.gameCount} jogos processados.`);
+    alert(`Sync Completo! ${res.data.stats.gameCount} jogos.`);
     await fetchProfile();
-  } catch (e) { alert("Erro ao sincronizar."); }
+  } catch (e) { alert("Erro no Sync. Verifique API Key e Privacidade."); }
 }
 
+// --- UTILITÁRIOS ---
 function handleLogout() {
   if(confirm('Sair do sistema?')) { localStorage.removeItem('clutch_user'); router.push('/'); }
 }
@@ -220,16 +295,16 @@ function formatDate(dateString: string) {
 }
 function getProviderIcon(provider: string) {
     if (provider === 'STEAM') return 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/83/Steam_icon_logo.svg/512px-Steam_icon_logo.svg.png';
-    if (provider === 'EPIC') return 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/31/Epic_Games_logo.svg/512px-Epic_Games_logo.svg.png'; 
+    if (provider === 'EPIC') return 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/31/Epic_Games_logo.svg/512px-Epic_Games_logo.svg.png';
     if (provider === 'PSN') return 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/00/PlayStation_logo.svg/2560px-PlayStation_logo.svg.png';
     if (provider === 'XBOX') return 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/f9/Xbox_one_logo.svg/1024px-Xbox_one_logo.svg.png';
-    if (provider === 'NINTENDO') return 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0d/Nintendo.svg/1024px-Nintendo.svg.png'; 
+    if (provider === 'NINTENDO') return 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0d/Nintendo.svg/1024px-Nintendo.svg.png';
     return '';
 }
 function getSteamStatusColor(status: number) {
-    if (status === 0) return 'bg-gray-500';
-    if (status === 1) return 'bg-blue-500';
-    return 'bg-[#00FF94]';
+    if (status === 0) return 'bg-gray-500'; // Offline
+    if (status === 1) return 'bg-blue-500'; // Online
+    return 'bg-[#00FF94]'; // In-Game
 }
 </script>
 
@@ -242,6 +317,7 @@ function getSteamStatusColor(status: number) {
          <div class="absolute inset-0 opacity-20" style="background-image: radial-gradient(#ffffff 1px, transparent 1px); background-size: 20px 20px;"></div>
       </div>
       <div class="absolute inset-0 bg-gradient-to-t from-[#050505] to-transparent"></div>
+      
       <div class="absolute top-6 right-6 flex gap-3 z-20">
         <button @click="router.push('/arena')" class="bg-black/50 hover:bg-yellow-500 hover:text-black text-yellow-400 px-4 py-2 rounded-full text-sm font-bold border border-yellow-500/20 backdrop-blur transition-all flex items-center gap-2"><span>🏆</span> ARENA</button>
         <button v-if="currentUser?.id === profile?.id" @click="isEditing = true" class="bg-black/50 hover:bg-[#00FF94] hover:text-black text-white px-4 py-2 rounded-full text-sm font-bold border border-white/20 backdrop-blur transition-all">✎ EDITAR</button>
@@ -260,7 +336,9 @@ function getSteamStatusColor(status: number) {
             <h1 class="text-4xl font-bold italic tracking-tighter text-white">{{ profile?.displayName || usernameParam }}</h1>
             <div v-if="steamStats?.country" class="text-2xl" :title="steamStats.country">🌍</div>
             <div class="flex gap-2 mt-1">
-                <div v-for="link in integrations" :key="link.id" class="w-6 h-6 bg-white/10 rounded p-1 cursor-help" :title="link.externalId"><img :src="getProviderIcon(link.provider)" class="w-full h-full object-contain brightness-200 grayscale hover:grayscale-0 transition-all"></div>
+                <div v-for="link in integrations" :key="link.id" class="w-6 h-6 bg-white/10 rounded p-1 cursor-help" :title="link.externalId">
+                    <img :src="getProviderIcon(link.provider)" class="w-full h-full object-contain brightness-200 grayscale hover:grayscale-0 transition-all">
+                </div>
             </div>
         </div>
         <p v-if="steamStats?.gameExtraInfo" class="text-[#00FF94] font-bold text-sm mt-1 animate-pulse">🎮 Jogando agora: {{ steamStats.gameExtraInfo }}</p>
@@ -274,6 +352,7 @@ function getSteamStatusColor(status: number) {
     </div>
 
     <div class="max-w-7xl mx-auto px-6 mt-12 grid grid-cols-1 lg:grid-cols-12 gap-8">
+      
       <div class="lg:col-span-4 space-y-6">
         <div class="bg-[#0A0A0A] border border-gray-800 rounded-xl p-6">
           <h3 class="text-gray-500 uppercase text-xs font-bold tracking-widest mb-4">Main Character</h3>
@@ -308,12 +387,19 @@ function getSteamStatusColor(status: number) {
            <button @click="showDiary = false" class="pb-2 px-2 font-bold text-sm uppercase tracking-widest transition-colors" :class="!showDiary ? 'text-[#00FF94] border-b-2 border-[#00FF94]' : 'text-gray-500 hover:text-white'">Feed Global</button>
            <button @click="showDiary = true" class="pb-2 px-2 font-bold text-sm uppercase tracking-widest transition-colors" :class="showDiary ? 'text-[#00FF94] border-b-2 border-[#00FF94]' : 'text-gray-500 hover:text-white'">Diário de Gamer</button>
          </div>
+
          <div v-if="!showDiary" class="space-y-6">
-             <div v-if="currentUser?.id === profile?.id" class="bg-[#0A0A0A] border border-gray-800 rounded-xl p-4 flex gap-4 items-center shadow-lg">
-                <div class="w-10 h-10 rounded-full overflow-hidden bg-gray-800 flex-shrink-0"><img :src="profile?.avatarUrl || `https://api.dicebear.com/9.x/avataaars/svg?seed=${usernameParam}`" class="w-full h-full object-cover"/></div>
-                <input v-model="newPostContent" @keyup.enter="handlePublish" type="text" placeholder="O que você jogou hoje?" class="bg-transparent flex-1 outline-none text-white placeholder-gray-600 h-full" :disabled="isPosting"/>
-                <button @click="handlePublish" class="text-[#00FF94] hover:text-white transition-colors px-2">➤</button>
+             <div v-if="currentUser?.id === profile?.id" class="bg-[#0A0A0A] border border-gray-800 rounded-xl p-4 flex flex-col gap-3 shadow-lg">
+                <div class="flex gap-4 items-center">
+                    <div class="w-10 h-10 rounded-full overflow-hidden bg-gray-800 flex-shrink-0"><img :src="profile?.avatarUrl || `https://api.dicebear.com/9.x/avataaars/svg?seed=${usernameParam}`" class="w-full h-full object-cover"/></div>
+                    <input v-model="newPostContent" @keyup.enter="handlePublish" type="text" placeholder="O que você jogou hoje?" class="bg-transparent flex-1 outline-none text-white placeholder-gray-600 h-full" :disabled="isPosting"/>
+                    <button @click="handlePublish" class="text-[#00FF94] hover:text-white transition-colors px-2">➤</button>
+                </div>
+                <button @click="showAchievementUpload = true" class="w-full text-center text-gray-500 hover:text-[#00FF94] text-xs font-bold uppercase tracking-wider py-2 rounded-lg border border-dashed border-gray-700 hover:border-[#00FF94] transition-all flex items-center justify-center gap-2">
+                    <span class="text-xl">📸</span> UPLOAD DE PRINT DE CONQUISTA
+                </button>
              </div>
+
              <div v-for="post in posts" :key="post.id" class="bg-[#0A0A0A] border border-gray-800 rounded-xl p-6 hover:border-gray-700 transition-all">
                 <div class="flex items-center gap-3 mb-4">
                    <div @click="goToProfile(post.user.username)" class="w-10 h-10 rounded-full overflow-hidden bg-gray-800 border border-gray-700 cursor-pointer hover:scale-110 transition-transform"><img :src="post.user.profile?.avatarUrl || `https://api.dicebear.com/9.x/avataaars/svg?seed=${post.user.username}`" class="w-full h-full object-cover"/></div>
@@ -322,7 +408,13 @@ function getSteamStatusColor(status: number) {
                       <p class="text-xs text-gray-600">{{ formatDate(post.createdAt) }}</p>
                    </div>
                 </div>
+                
+                <div v-if="post.type === 'IMAGE'" class="mb-4 bg-black rounded-lg overflow-hidden border border-gray-800">
+                    <div class="p-10 text-center text-gray-500 text-xs">IMAGEM PROCESSADA (Mock)</div>
+                </div>
+                
                 <p class="text-gray-300 leading-relaxed text-sm whitespace-pre-wrap">{{ post.contentText }}</p>
+                
                 <div class="mt-4 pt-4 border-t border-gray-900 flex gap-6 text-gray-500 text-xs font-bold uppercase tracking-wider">
                    <button @click="handleRespect(post)" class="flex items-center gap-2 transition-all active:scale-95" :class="post.hasLiked ? 'text-[#00FF94]' : 'hover:text-gray-300'"><span class="text-lg">⚡</span> <span>Respect {{ post.likesCount > 0 ? `(${post.likesCount})` : '' }}</span></button>
                    <button @click="toggleComments(post)" class="hover:text-white transition-colors flex items-center gap-2" :class="openComments[post.id] ? 'text-white' : ''"><span class="text-lg">💬</span> Comentar</button>
@@ -339,6 +431,7 @@ function getSteamStatusColor(status: number) {
                 </div>
              </div>
          </div>
+
          <div v-else class="space-y-6">
             <button v-if="currentUser?.id === profile?.id" @click="isLoggingGame = true" class="w-full bg-[#0A0A0A] border border-dashed border-gray-700 hover:border-[#00FF94] text-gray-400 hover:text-[#00FF94] py-6 rounded-xl transition-all font-bold uppercase tracking-widest flex flex-col items-center gap-2"><span class="text-2xl">📜</span> Registrar Zeramento (+50 XP)</button>
             <div v-if="gameLogs.length === 0" class="text-center py-10 text-gray-600 italic">Nenhum jogo registrado nesta jornada...</div>
@@ -361,7 +454,7 @@ function getSteamStatusColor(status: number) {
     </div>
 
     <div v-if="isEditing" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-       <div class="bg-[#0A0A0A] border border-gray-800 w-full max-w-lg rounded-2xl p-6 shadow-2xl relative">
+      <div class="bg-[#0A0A0A] border border-gray-800 w-full max-w-lg rounded-2xl p-6 shadow-2xl relative">
         <h2 class="text-2xl font-bold mb-6 italic">EDITAR <span class="text-[#00FF94]">IDENTIDADE</span></h2>
         <div class="flex gap-4 mb-6 border-b border-gray-800 pb-2">
             <button @click="editTab = 'IDENTITY'" :class="editTab === 'IDENTITY' ? 'text-white border-b border-[#00FF94]' : 'text-gray-500'">PERFIL</button>
@@ -381,12 +474,8 @@ function getSteamStatusColor(status: number) {
                  <div class="flex gap-2"><input v-model="integrationForm.steamId" type="text" class="flex-1 bg-[#151515] border border-gray-700 rounded p-3 text-white focus:border-[#00FF94] outline-none" placeholder="Ex: 765..."/><button type="button" @click="syncSteam" class="bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-600/50 px-4 rounded font-bold text-xs transition-all">↻ SYNC</button></div>
              </div>
              <div><label class="block text-xs text-gray-500 uppercase font-bold mb-1 flex items-center gap-2"><img :src="getProviderIcon('PSN')" class="w-4 h-4"> PSN ID</label><input v-model="integrationForm.psnId" type="text" class="w-full bg-[#151515] border border-gray-700 rounded p-3 text-white focus:border-[#00FF94] outline-none" placeholder="Ex: KratosGod"/></div>
-             <div>
-                 <label class="block text-xs text-gray-500 uppercase font-bold mb-1 flex items-center gap-2">
-                    <img :src="getProviderIcon('EPIC')" class="w-4 h-4"> EPIC GAMES ID
-                 </label>
-                 <input v-model="integrationForm.epicId" type="text" class="w-full bg-[#151515] border border-gray-700 rounded p-3 text-white focus:border-[#00FF94] outline-none" placeholder="Ex: FortniteGod"/>
-             </div>
+             <div><label class="block text-xs text-gray-500 uppercase font-bold mb-1 flex items-center gap-2"><img :src="getProviderIcon('XBOX')" class="w-4 h-4"> XBOX ID</label><input v-model="integrationForm.xboxId" type="text" class="w-full bg-[#151515] border border-gray-700 rounded p-3 text-white focus:border-[#00FF94] outline-none" placeholder="Ex: MasterChief"/></div>
+             <div><label class="block text-xs text-gray-500 uppercase font-bold mb-1 flex items-center gap-2"><img :src="getProviderIcon('EPIC')" class="w-4 h-4"> EPIC ID</label><input v-model="integrationForm.epicId" type="text" class="w-full bg-[#151515] border border-gray-700 rounded p-3 text-white focus:border-[#00FF94] outline-none" placeholder="Ex: Ninja"/></div>
           </div>
           <div class="flex gap-3 mt-6 pt-4 border-t border-gray-800">
             <button type="button" @click="isEditing = false" class="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded">CANCELAR</button>
@@ -397,7 +486,7 @@ function getSteamStatusColor(status: number) {
     </div>
 
     <div v-if="isLoggingGame" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm">
-       <div class="bg-[#0A0A0A] border border-gray-800 w-full max-w-lg rounded-2xl p-6 shadow-2xl relative">
+        <div class="bg-[#0A0A0A] border border-gray-800 w-full max-w-lg rounded-2xl p-6 shadow-2xl relative">
         <h2 class="text-2xl font-bold mb-6 italic">DIÁRIO DE <span class="text-[#00FF94]">CONQUISTAS</span></h2>
         <form @submit.prevent="handleLogGame" class="space-y-4">
           <div><label class="block text-xs text-gray-500 uppercase font-bold mb-1">Jogo</label><input v-model="gameForm.gameTitle" type="text" class="w-full bg-[#151515] border border-gray-700 rounded p-3 text-white focus:border-[#00FF94] outline-none" required/></div>
@@ -420,46 +509,40 @@ function getSteamStatusColor(status: number) {
 
     <div v-if="isViewingGame" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm" @click.self="isViewingGame = false">
         <div class="bg-[#0A0A0A] border border-gray-800 w-full max-w-2xl max-h-[90vh] rounded-2xl p-6 shadow-2xl relative flex flex-col overflow-hidden">
-            
             <div class="flex justify-between items-center mb-4 border-b border-gray-800 pb-4">
-                <h2 class="text-xl font-bold text-white flex items-center gap-2">
-                    <img :src="getProviderIcon('STEAM')" class="w-5 h-5">
-                    {{ selectedGameDetails?.gameName || 'Carregando...' }}
-                </h2>
+                <h2 class="text-xl font-bold text-white flex items-center gap-2"><img :src="getProviderIcon('STEAM')" class="w-5 h-5"> {{ selectedGameDetails?.gameName || 'Carregando...' }}</h2>
                 <button @click="isViewingGame = false" class="text-gray-500 hover:text-white font-bold">✕</button>
             </div>
-
-            <div v-if="isLoadingDetails" class="flex-1 flex items-center justify-center text-[#00FF94] animate-pulse py-20">
-                BUSCANDO DADOS NA STEAM...
-            </div>
-
+            <div v-if="isLoadingDetails" class="flex-1 flex items-center justify-center text-[#00FF94] animate-pulse py-20">BUSCANDO DADOS NA STEAM...</div>
             <div v-else-if="selectedGameDetails?.achievements" class="overflow-y-auto custom-scrollbar flex-1 pr-2">
                 <div class="grid grid-cols-1 gap-3">
-                    <div v-for="ach in selectedGameDetails.achievements" :key="ach.name" 
-                         class="flex items-center gap-4 p-3 rounded-lg border border-gray-800/50 transition-colors"
-                         :class="ach.achieved ? 'bg-[#00FF94]/5 border-[#00FF94]/20' : 'bg-[#151515] opacity-60'">
-                        
+                    <div v-for="ach in selectedGameDetails.achievements" :key="ach.name" class="flex items-center gap-4 p-3 rounded-lg border border-gray-800/50 transition-colors" :class="ach.achieved ? 'bg-[#00FF94]/5 border-[#00FF94]/20' : 'bg-[#151515] opacity-60'">
                         <img :src="ach.achieved ? ach.icon : ach.iconGray" class="w-16 h-16 rounded object-cover shadow-lg">
-                        
                         <div class="flex-1">
                             <h4 class="font-bold text-sm" :class="ach.achieved ? 'text-white' : 'text-gray-400'">{{ ach.name }}</h4>
                             <p class="text-xs text-gray-500 mt-1">{{ ach.description || 'Conquista secreta ou sem descrição.' }}</p>
                         </div>
-
-                        <div v-if="ach.achieved" class="text-[#00FF94] text-xs font-bold uppercase tracking-widest">
-                            Desbloqueado
-                        </div>
-                        <div v-else class="text-gray-600 text-xs font-bold uppercase tracking-widest">
-                            Bloqueado
-                        </div>
+                        <div v-if="ach.achieved" class="text-[#00FF94] text-xs font-bold uppercase tracking-widest">Desbloqueado</div>
+                        <div v-else class="text-gray-600 text-xs font-bold uppercase tracking-widest">Bloqueado</div>
                     </div>
                 </div>
             </div>
+            <div v-else class="text-center text-gray-500 py-10">Nenhum detalhe encontrado.</div>
+        </div>
+    </div>
 
-            <div v-else class="text-center text-gray-500 py-10">
-                Nenhum detalhe encontrado.
-            </div>
-
+    <div v-if="showAchievementUpload" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm" @click.self="showAchievementUpload = false">
+        <div class="bg-[#0A0A0A] border border-gray-800 w-full max-w-lg rounded-2xl p-6 shadow-2xl relative">
+            <h2 class="text-2xl font-bold mb-6 italic">UPLOAD DE <span class="text-[#00FF94]">CONQUISTA</span></h2>
+            <form @submit.prevent="uploadAchievementImage" class="space-y-4">
+                <div><label class="block text-xs text-gray-500 uppercase font-bold mb-1">Título do Jogo (Opcional)</label><input v-model="uploadGameTitle" type="text" class="w-full bg-[#151515] border border-gray-700 rounded p-3 text-white focus:border-[#00FF94] outline-none" placeholder="Ex: Elden Ring" /></div>
+                <div><label class="block text-xs text-gray-500 uppercase font-bold mb-1">Selecione o Print</label><input type="file" @change="handleImageSelect" accept="image/*" class="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-gray-800 file:text-[#00FF94] hover:file:bg-gray-700 hover:file:cursor-pointer"/></div>
+                <div v-if="previewImageUrl" class="mt-4 flex justify-center"><img :src="previewImageUrl" alt="Preview da Imagem" class="max-w-full max-h-60 object-contain border border-gray-700 rounded-lg"/></div>
+                <div class="flex gap-3 mt-6 pt-4 border-t border-gray-800">
+                    <button type="button" @click="showAchievementUpload = false" class="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded">CANCELAR</button>
+                    <button type="submit" :disabled="isUploadingAchievement || !selectedImage" class="flex-1 bg-[#00FF94] hover:bg-[#00cc7a] text-black font-bold py-3 rounded">{{ isUploadingAchievement ? 'PROCESSANDO...' : 'PROCESSAR IMAGEM' }}</button>
+                </div>
+            </form>
         </div>
     </div>
 
