@@ -21,8 +21,8 @@ model User {
   posts        Post[]
   interactions Interaction[]
   xpLogs       XpLog[]
-  comments     Comment[] // <--- NOVO RELACIONAMENTO
-  
+  comments     Comment[]
+  gameLogs     GameLog[]
   @@map("users")
 }
 
@@ -116,6 +116,22 @@ model XpLog {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@map("xp_logs")
+}
+
+model GameLog {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  gameTitle   String   @map("game_title") // Ex: Elden Ring
+  platform    String   // PC, PS5, Xbox
+  hoursPlayed Int      @map("hours_played")
+  rating      Int      // 1 a 5 estrelas
+  emotion     String   // "EPIC", "SAD", "HARD", "CHILL"
+  review      String?  @db.Text // "A Malenia me destruiu..."
+  finishedAt  DateTime @default(now()) @map("finished_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("game_logs")
 }
 
 enum PlatformProvider {

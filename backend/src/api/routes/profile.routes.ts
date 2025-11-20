@@ -18,6 +18,7 @@ export async function profileRoutes(app: FastifyInstance) {
         username: true,
         profile: true, 
         stats: true,
+        integrations: true
       }
     });
 
@@ -34,6 +35,7 @@ export async function profileRoutes(app: FastifyInstance) {
       level: user.stats?.level || 1,
       energy: user.stats?.socialEnergy || 100,
       xp: user.stats?.currentXp || 0,
+      integrations: user.integrations
     };
   });
 
