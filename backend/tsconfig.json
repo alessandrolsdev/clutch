@@ -1,10 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "CommonJS",
-    "lib": ["ES2022"],
+    "module": "ES2022",
+    "moduleResolution": "bundler",
     "outDir": "./dist",
-    "rootDirs": ["./src", "./tests"], 
+    "rootDirs": ["./src", "./tests"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitAny": true,
