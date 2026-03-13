@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { authRoutes } from '@/api/routes/auth.routes';
 
 // ─────────────────────────────────────────────────────────────
 // CLUTCH ⚡ — Entry point
@@ -6,12 +7,17 @@ import Fastify from 'fastify';
 
 const app = Fastify({ logger: true });
 
+// ── Health check ─────────────────────────────────────────────
 app.get('/health', async () => ({
-  status: 'ok',
-  service: 'clutch-backend',
+  status:    'ok',
+  service:   'clutch-backend',
   timestamp: new Date().toISOString(),
 }));
 
+// ── Routes ───────────────────────────────────────────────────
+await app.register(authRoutes, { prefix: '/auth' });
+
+// ── Start ────────────────────────────────────────────────────
 const start = async (): Promise<void> => {
   try {
     await app.listen({ port: 3333, host: '0.0.0.0' });
