@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop]
+
+jobs:
+  ci:
+    name: 🧪 Type check, Lint and Test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB:       clutch_main_db
+          POSTGRES_USER:     clutch_admin
+          POSTGRES_PASSWORD: clutch_test_pass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🔷 Type check
+        run: npx tsc --noEmit
+
+      - name: 🔍 Lint
+        run: npx eslint src --ext .ts
+
+      - name: 🗄️ Run migrations
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://clutch_admin:clutch_test_pass@localhost:5432/clutch_main_db
+
+      - name: 🧪 Run tests with coverage
+        run: npm run test:coverage
+        env:
+          NODE_ENV:     test
+          DATABASE_URL: postgresql://clutch_admin:clutch_test_pass@localhost:5432/clutch_main_db
+          REDIS_URL:    redis://localhost:6379
