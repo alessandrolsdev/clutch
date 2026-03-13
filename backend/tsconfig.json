@@ -4,7 +4,7 @@
     "module": "CommonJS",
     "lib": ["ES2022"],
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDirs": ["./src", "./tests"], 
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitAny": true,
