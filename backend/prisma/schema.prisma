@@ -1,0 +1,306 @@
+// ============================================================
+// CLUTCH ⚡ — Prisma Schema
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Enums ────────────────────────────────────────────────────
+
+enum PresenceStatus {
+  ONLINE
+  OFFLINE
+  IN_GAME
+  AFK
+}
+
+enum Platform {
+  STEAM
+  EPIC
+  DISCORD
+  XBOX
+  PSN
+  RIOT
+  ANILIST
+  MYANIMELIST
+}
+
+enum PostType {
+  TEXT
+  IMAGE
+  VIDEO
+  ACHIEVEMENT
+  GAME_SESSION
+}
+
+enum InteractionType {
+  LIKE
+  GG
+  F
+  CLAP
+  HYPE
+}
+
+enum NotificationType {
+  FRIEND_REQUEST
+  FRIEND_ACCEPTED
+  POST_LIKE
+  POST_COMMENT
+  GAME_INVITE
+  FRIEND_NOW_PLAYING
+  SYSTEM
+}
+
+enum FriendRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+// ── User ─────────────────────────────────────────────────────
+
+model User {
+  id            String   @id @default(uuid())
+  username      String   @unique
+  email         String   @unique
+  password_hash String
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  profile              Profile?
+  stats                UserStats?
+  presence             UserPresence?
+  platformIntegrations PlatformIntegration[]
+  gameLibrary          UserGameLibrary[]
+  posts                Post[]
+  comments             Comment[]
+  interactions         Interaction[]
+  notifications        Notification[]        @relation("NotificationRecipient")
+  actorNotifications   Notification[]        @relation("NotificationActor")
+  sentFriendRequests   FriendRequest[]       @relation("FriendRequestSender")
+  receivedFriendRequests FriendRequest[]     @relation("FriendRequestReceiver")
+  friendships          Friendship[]          @relation("FriendshipUser")
+  friendOf             Friendship[]          @relation("FriendshipFriend")
+  sentGameInvites      GameInvite[]          @relation("GameInviteSender")
+  receivedGameInvites  GameInvite[]          @relation("GameInviteReceiver")
+
+  @@map("users")
+}
+
+// ── Profile ──────────────────────────────────────────────────
+
+model Profile {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  displayName String?
+  bio         String?
+  avatarUrl   String?
+  bannerUrl   String?
+  accentColor String?
+  badges      String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("profiles")
+}
+
+// ── UserStats ────────────────────────────────────────────────
+
+model UserStats {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  level       Int      @default(1)
+  xp          Int      @default(0)
+  reputation  Int      @default(0)
+  friendCount Int      @default(0)
+  postCount   Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_stats")
+}
+
+// ── UserPresence ─────────────────────────────────────────────
+
+model UserPresence {
+  id          String         @id @default(uuid())
+  userId      String         @unique
+  status      PresenceStatus @default(OFFLINE)
+  currentGame String?
+  gameDetails Json?
+  platform    String?
+  updatedAt   DateTime       @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_presence")
+}
+
+// ── PlatformIntegration ──────────────────────────────────────
+
+model PlatformIntegration {
+  id           String   @id @default(uuid())
+  userId       String
+  platform     Platform
+  externalId   String
+  accessToken  String?
+  refreshToken String?
+  metadata     Json?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, platform])
+  @@map("platform_integrations")
+}
+
+// ── UserGameLibrary ──────────────────────────────────────────
+
+model UserGameLibrary {
+  id           String   @id @default(uuid())
+  userId       String
+  gameId       String
+  gameName     String
+  coverUrl     String?
+  platform     Platform
+  hoursPlayed  Float?
+  lastPlayedAt DateTime?
+  addedAt      DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, gameId, platform])
+  @@map("user_game_library")
+}
+
+// ── Post ─────────────────────────────────────────────────────
+
+model Post {
+  id          String    @id @default(uuid())
+  userId      String
+  contentText String?
+  mediaUrl    String?
+  type        PostType  @default(TEXT)
+  gameContext Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comments     Comment[]
+  interactions Interaction[]
+
+  @@map("posts")
+}
+
+// ── Comment ──────────────────────────────────────────────────
+
+model Comment {
+  id        String   @id @default(uuid())
+  postId    String
+  userId    String
+  parentId  String?
+  content   String
+  createdAt DateTime @default(now())
+
+  post     Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies  Comment[] @relation("CommentReplies")
+
+  @@map("comments")
+}
+
+// ── Interaction ──────────────────────────────────────────────
+
+model Interaction {
+  id        String          @id @default(uuid())
+  postId    String
+  userId    String
+  type      InteractionType
+  createdAt DateTime        @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId, type])
+  @@map("interactions")
+}
+
+// ── Notification ─────────────────────────────────────────────
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  actorId   String?
+  type      NotificationType
+  payload   Json             @default("{}")
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user  User  @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  actor User? @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@map("notifications")
+}
+
+// ── FriendRequest ────────────────────────────────────────────
+
+model FriendRequest {
+  id         String              @id @default(uuid())
+  senderId   String
+  receiverId String
+  status     FriendRequestStatus @default(PENDING)
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  sender   User @relation("FriendRequestSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("FriendRequestReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, receiverId])
+  @@map("friend_requests")
+}
+
+// ── Friendship ───────────────────────────────────────────────
+
+model Friendship {
+  id        String   @id @default(uuid())
+  userId    String
+  friendId  String
+  createdAt DateTime @default(now())
+
+  user   User @relation("FriendshipUser", fields: [userId], references: [id], onDelete: Cascade)
+  friend User @relation("FriendshipFriend", fields: [friendId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, friendId])
+  @@map("friendships")
+}
+
+// ── GameInvite ───────────────────────────────────────────────
+
+model GameInvite {
+  id         String   @id @default(uuid())
+  senderId   String
+  receiverId String
+  gameName   String
+  gameId     String?
+  platform   Platform
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  sender   User @relation("GameInviteSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("GameInviteReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@map("game_invites")
+}
