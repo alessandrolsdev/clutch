@@ -156,17 +156,15 @@ export async function friendRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(404).send({ message: 'Usuário não encontrado.' });
       }
 
-      const friendships = await friendRepository.findFriendsByUserId(request.params.userId);
+      const friends = await friendRepository.findFriendsByUserId(request.params.userId);
 
-      const friends = friendships
-        .map((f) => f.friend)
-        .sort((a, b) => {
-          const statusA = PRESENCE_ORDER[a.presence?.status ?? 'OFFLINE'] ?? 3;
-          const statusB = PRESENCE_ORDER[b.presence?.status ?? 'OFFLINE'] ?? 3;
-          return statusA - statusB;
-        });
+      const sorted = friends.sort((a, b) => {
+        const statusA = PRESENCE_ORDER[a.presence?.status ?? 'OFFLINE'] ?? 3;
+        const statusB = PRESENCE_ORDER[b.presence?.status ?? 'OFFLINE'] ?? 3;
+        return statusA - statusB;
+      });
 
-      return reply.status(200).send(friends);
+      return reply.status(200).send(sorted);
     },
   );
 
