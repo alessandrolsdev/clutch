@@ -5,8 +5,33 @@ import { prisma } from '@/infra/database/client';
 // Friend Repository
 // ─────────────────────────────────────────────────────────────
 
-type FriendWithPresence       = Awaited<ReturnType<typeof prisma.friendship.findMany>>;
-type PendingRequestWithSender = Awaited<ReturnType<typeof prisma.friendRequest.findMany>>;
+export interface FriendPresence {
+  id:       string;
+  username: string;
+  profile: {
+    displayName: string | null;
+    avatarUrl:   string | null;
+    accentColor: string | null;
+  } | null;
+  presence: {
+    status:      string;
+    currentGame: string | null;
+    platform:    string | null;
+  } | null;
+}
+
+export interface PendingRequest {
+  id:        string;
+  createdAt: Date;
+  sender: {
+    id:       string;
+    username: string;
+    profile: {
+      displayName: string | null;
+      avatarUrl:   string | null;
+    } | null;
+  };
+}
 
 export const friendRepository = {
 
@@ -82,8 +107,8 @@ export const friendRepository = {
     ]);
   },
 
-  async findFriendsByUserId(userId: string): Promise<FriendWithPresence> {
-    return prisma.friendship.findMany({
+  async findFriendsByUserId(userId: string): Promise<FriendPresence[]> {
+    const friendships = await prisma.friendship.findMany({
       where: { userId },
       select: {
         friend: {
@@ -108,9 +133,11 @@ export const friendRepository = {
         },
       },
     });
+
+    return friendships.map((f) => f.friend);
   },
 
-  async findPendingRequests(receiverId: string): Promise<PendingRequestWithSender> {
+  async findPendingRequests(receiverId: string): Promise<PendingRequest[]> {
     return prisma.friendRequest.findMany({
       where:   { receiverId, status: 'PENDING' },
       orderBy: { createdAt: 'desc' },
@@ -130,7 +157,7 @@ export const friendRepository = {
           },
         },
       },
-    });
+    }) as Promise<PendingRequest[]>;
   },
 
 };
