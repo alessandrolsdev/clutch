@@ -1,7 +1,8 @@
 import Fastify from 'fastify';
-import { authRoutes }    from '@/api/routes/auth.routes';
-import { profileRoutes } from '@/api/routes/profile.routes';
-import { friendRoutes }  from '@/api/routes/friends.routes';
+import { authRoutes }     from '@/api/routes/auth.routes';
+import { profileRoutes }  from '@/api/routes/profile.routes';
+import { friendRoutes }   from '@/api/routes/friends.routes';
+import { presenceRoutes } from '@/api/routes/presence.routes';
 
 // ─────────────────────────────────────────────────────────────
 // CLUTCH ⚡ — Entry point
@@ -17,9 +18,10 @@ app.get('/health', async () => ({
 }));
 
 // ── Routes ───────────────────────────────────────────────────
-await app.register(authRoutes,    { prefix: '/auth' });
-await app.register(profileRoutes, { prefix: '/profiles' });
-await app.register(friendRoutes,  { prefix: '/friends' });
+await app.register(authRoutes,     { prefix: '/auth' });
+await app.register(profileRoutes,  { prefix: '/profiles' });
+await app.register(friendRoutes,   { prefix: '/friends' });
+await app.register(presenceRoutes, { prefix: '/presence' });
 
 // ── Start ────────────────────────────────────────────────────
 const start = async (): Promise<void> => {
