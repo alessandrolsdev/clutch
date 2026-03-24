@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars, no-unused-vars */
 import '@fastify/jwt';
 import { FastifyRequest, FastifyReply } from 'fastify';
 
