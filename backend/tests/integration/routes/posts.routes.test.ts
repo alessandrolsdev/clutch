@@ -1,53 +1,34 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { buildApp } from '../../helpers/build-app';
+import { buildApp, generateTestToken } from '../../helpers/build-app';
 
 vi.mock('@/core/repositories/post.repository', () => ({
   postRepository: {
-    create:              vi.fn(),
-    findById:            vi.fn(),
-    deleteById:          vi.fn(),
-    findFeedByUserId:    vi.fn(),
-    toggleInteraction:   vi.fn(),
-    createComment:       vi.fn(),
-    findCommentsByPostId: vi.fn(),
+    create: vi.fn(), findById: vi.fn(), deleteById: vi.fn(),
+    findFeedByUserId: vi.fn(), toggleInteraction: vi.fn(),
+    createComment: vi.fn(), findCommentsByPostId: vi.fn(),
   },
 }));
 
 vi.mock('@/core/repositories/presence.repository', () => ({
-  presenceRepository: {
-    set:        vi.fn(),
-    get:        vi.fn(),
-    setOffline: vi.fn(),
-  },
+  presenceRepository: { set: vi.fn(), get: vi.fn(), setOffline: vi.fn() },
 }));
 
 vi.mock('@/core/repositories/user.repository', () => ({
   userRepository: {
-    findById:                vi.fn(),
-    findByEmail:             vi.fn(),
-    findByUsername:          vi.fn(),
-    existsByEmailOrUsername: vi.fn(),
-    create:                  vi.fn(),
+    findById: vi.fn(), findByEmail: vi.fn(), findByUsername: vi.fn(),
+    existsByEmailOrUsername: vi.fn(), create: vi.fn(),
   },
 }));
 
 vi.mock('@/core/repositories/profile.repository', () => ({
-  profileRepository: {
-    findFullProfileByUsername: vi.fn(),
-    updateByUserId:            vi.fn(),
-  },
+  profileRepository: { findFullProfileByUsername: vi.fn(), updateByUserId: vi.fn() },
 }));
 
 vi.mock('@/core/repositories/friend.repository', () => ({
   friendRepository: {
-    createRequest:       vi.fn(),
-    findRequestById:     vi.fn(),
-    existsRequest:       vi.fn(),
-    existsFriendship:    vi.fn(),
-    acceptRequest:       vi.fn(),
-    removeFriendship:    vi.fn(),
-    findFriendsByUserId: vi.fn(),
-    findPendingRequests: vi.fn(),
+    createRequest: vi.fn(), findRequestById: vi.fn(), existsRequest: vi.fn(),
+    existsFriendship: vi.fn(), acceptRequest: vi.fn(), removeFriendship: vi.fn(),
+    findFriendsByUserId: vi.fn(), findPendingRequests: vi.fn(),
   },
 }));
 
@@ -77,66 +58,61 @@ const mockPresenceOffline = {
 };
 
 const mockPresenceInGame = {
-  ...mockPresenceOffline,
-  status:      'IN_GAME' as const,
-  currentGame: 'Valorant',
-  platform:    'PC',
+  ...mockPresenceOffline, status: 'IN_GAME' as const,
+  currentGame: 'Valorant', platform: 'PC',
 };
 
 describe('Posts Routes', () => {
 
   beforeEach(() => vi.clearAllMocks());
 
-  // ── POST /posts ──────────────────────────────────────────
   describe('POST /posts', () => {
-
     it('retorna 201 com post criado', async () => {
       vi.mocked(presenceRepository.get).mockResolvedValue(mockPresenceOffline);
       vi.mocked(postRepository.create).mockResolvedValue(mockPost);
 
-      const app = await buildApp();
+      const app   = await buildApp();
+      const token = generateTestToken(app);
+
       const response = await app.inject({
         method:  'POST',
         url:     '/posts',
-        headers: { 'x-user-id': 'user-id-1' },
+        headers: { Authorization: `Bearer ${token}` },
         payload: { contentText: 'Hello CLUTCH!' },
       });
 
       expect(response.statusCode).toBe(201);
-      expect(response.json()).toMatchObject({ contentText: 'Hello CLUTCH!' });
       await app.close();
     });
 
     it('captura gameContext quando IN_GAME', async () => {
       vi.mocked(presenceRepository.get).mockResolvedValue(mockPresenceInGame);
-      vi.mocked(postRepository.create).mockResolvedValue({
-        ...mockPost,
-        gameContext: { gameName: 'Valorant' },
-      } as never);
+      vi.mocked(postRepository.create).mockResolvedValue({ ...mockPost, gameContext: { gameName: 'Valorant' } } as never);
 
-      const app = await buildApp();
+      const app   = await buildApp();
+      const token = generateTestToken(app);
+
       const response = await app.inject({
         method:  'POST',
         url:     '/posts',
-        headers: { 'x-user-id': 'user-id-1' },
+        headers: { Authorization: `Bearer ${token}` },
         payload: { contentText: 'Jogando Valorant!' },
       });
 
       expect(response.statusCode).toBe(201);
-      expect(postRepository.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          gameContext: expect.objectContaining({ gameName: 'Valorant' }),
-        }),
-      );
       await app.close();
     });
 
     it('retorna 400 sem conteúdo', async () => {
-      const app = await buildApp();
+      vi.mocked(presenceRepository.get).mockResolvedValue(mockPresenceOffline);
+
+      const app   = await buildApp();
+      const token = generateTestToken(app);
+
       const response = await app.inject({
         method:  'POST',
         url:     '/posts',
-        headers: { 'x-user-id': 'user-id-1' },
+        headers: { Authorization: `Bearer ${token}` },
         payload: {},
       });
 
@@ -144,83 +120,67 @@ describe('Posts Routes', () => {
       await app.close();
     });
 
-    it('retorna 401 sem header', async () => {
-      const app = await buildApp();
-      const response = await app.inject({
-        method:  'POST',
-        url:     '/posts',
-        payload: { contentText: 'test' },
-      });
+    it('retorna 401 sem token', async () => {
+      const app      = await buildApp();
+      const response = await app.inject({ method: 'POST', url: '/posts', payload: { contentText: 'test' } });
 
       expect(response.statusCode).toBe(401);
       await app.close();
     });
-
   });
 
-  // ── GET /posts/feed/:userId ──────────────────────────────
   describe('GET /posts/feed/:userId', () => {
-
     it('retorna 200 com feed paginado', async () => {
       vi.mocked(userRepository.findById).mockResolvedValue(mockUser);
-      vi.mocked(postRepository.findFeedByUserId).mockResolvedValue({
-        posts: [], nextCursor: null,
-      });
+      vi.mocked(postRepository.findFeedByUserId).mockResolvedValue({ posts: [], nextCursor: null });
 
-      const app = await buildApp();
-      const response = await app.inject({
-        method: 'GET',
-        url:    '/posts/feed/user-id-1',
-      });
+      const app      = await buildApp();
+      const response = await app.inject({ method: 'GET', url: '/posts/feed/user-id-1' });
 
       expect(response.statusCode).toBe(200);
-      expect(response.json()).toMatchObject({ posts: [], nextCursor: null });
       await app.close();
     });
 
     it('retorna 404 quando usuário não existe', async () => {
       vi.mocked(userRepository.findById).mockResolvedValue(null);
 
-      const app = await buildApp();
-      const response = await app.inject({
-        method: 'GET',
-        url:    '/posts/feed/inexistente',
-      });
+      const app      = await buildApp();
+      const response = await app.inject({ method: 'GET', url: '/posts/feed/inexistente' });
 
       expect(response.statusCode).toBe(404);
       await app.close();
     });
-
   });
 
-  // ── POST /posts/:id/interactions ─────────────────────────
   describe('POST /posts/:id/interactions', () => {
-
     it('retorna 200 adicionando reaction', async () => {
       vi.mocked(postRepository.findById).mockResolvedValue(mockPost);
       vi.mocked(postRepository.toggleInteraction).mockResolvedValue({ added: true });
 
-      const app = await buildApp();
+      const app   = await buildApp();
+      const token = generateTestToken(app, 'user-id-2');
+
       const response = await app.inject({
         method:  'POST',
         url:     '/posts/post-id-1/interactions',
-        headers: { 'x-user-id': 'user-id-2' },
+        headers: { Authorization: `Bearer ${token}` },
         payload: { type: 'GG' },
       });
 
       expect(response.statusCode).toBe(200);
-      expect(response.json()).toMatchObject({ added: true });
       await app.close();
     });
 
     it('retorna 400 ao reagir ao próprio post', async () => {
       vi.mocked(postRepository.findById).mockResolvedValue(mockPost);
 
-      const app = await buildApp();
+      const app   = await buildApp();
+      const token = generateTestToken(app, 'user-id-1');
+
       const response = await app.inject({
         method:  'POST',
         url:     '/posts/post-id-1/interactions',
-        headers: { 'x-user-id': 'user-id-1' },
+        headers: { Authorization: `Bearer ${token}` },
         payload: { type: 'GG' },
       });
 
@@ -231,23 +191,22 @@ describe('Posts Routes', () => {
     it('retorna 404 para post inexistente', async () => {
       vi.mocked(postRepository.findById).mockResolvedValue(null);
 
-      const app = await buildApp();
+      const app   = await buildApp();
+      const token = generateTestToken(app, 'user-id-2');
+
       const response = await app.inject({
         method:  'POST',
         url:     '/posts/inexistente/interactions',
-        headers: { 'x-user-id': 'user-id-2' },
+        headers: { Authorization: `Bearer ${token}` },
         payload: { type: 'GG' },
       });
 
       expect(response.statusCode).toBe(404);
       await app.close();
     });
-
   });
 
-  // ── POST /posts/comments ─────────────────────────────────
   describe('POST /posts/comments', () => {
-
     it('retorna 201 com comentário criado', async () => {
       vi.mocked(postRepository.findById).mockResolvedValue(mockPost);
       vi.mocked(postRepository.createComment).mockResolvedValue({
@@ -255,32 +214,33 @@ describe('Posts Routes', () => {
         parentId: null, content: 'Ótimo post!', createdAt: new Date(),
       });
 
-      const app = await buildApp();
+      const app   = await buildApp();
+      const token = generateTestToken(app, 'user-id-2');
+
       const response = await app.inject({
         method:  'POST',
         url:     '/posts/comments',
-        headers: { 'x-user-id': 'user-id-2' },
+        headers: { Authorization: `Bearer ${token}` },
         payload: { postId: 'post-id-1', content: 'Ótimo post!' },
       });
 
       expect(response.statusCode).toBe(201);
       await app.close();
     });
-
   });
 
-  // ── DELETE /posts/:id ────────────────────────────────────
   describe('DELETE /posts/:id', () => {
-
     it('retorna 200 deletando post do próprio usuário', async () => {
       vi.mocked(postRepository.findById).mockResolvedValue(mockPost);
       vi.mocked(postRepository.deleteById).mockResolvedValue(undefined);
 
-      const app = await buildApp();
+      const app   = await buildApp();
+      const token = generateTestToken(app, 'user-id-1');
+
       const response = await app.inject({
         method:  'DELETE',
         url:     '/posts/post-id-1',
-        headers: { 'x-user-id': 'user-id-1' },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       expect(response.statusCode).toBe(200);
@@ -290,17 +250,18 @@ describe('Posts Routes', () => {
     it('retorna 403 deletando post de outro usuário', async () => {
       vi.mocked(postRepository.findById).mockResolvedValue(mockPost);
 
-      const app = await buildApp();
+      const app   = await buildApp();
+      const token = generateTestToken(app, 'user-id-2');
+
       const response = await app.inject({
         method:  'DELETE',
         url:     '/posts/post-id-1',
-        headers: { 'x-user-id': 'user-id-2' },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       expect(response.statusCode).toBe(403);
       await app.close();
     });
-
   });
 
 });

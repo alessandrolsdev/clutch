@@ -4,16 +4,6 @@ import { postRepository }     from '@/core/repositories/post.repository';
 import { presenceRepository } from '@/core/repositories/presence.repository';
 import { userRepository }     from '@/core/repositories/user.repository';
 
-// ─────────────────────────────────────────────────────────────
-// Posts Routes
-// POST   /posts
-// GET    /posts/feed/:userId
-// POST   /posts/:id/interactions
-// POST   /comments
-// GET    /comments/:postId
-// DELETE /posts/:id
-// ─────────────────────────────────────────────────────────────
-
 const createPostSchema = z.object({
   contentText: z.string().max(500).optional(),
   mediaUrl:    z.string().url().optional(),
@@ -35,37 +25,26 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
   // ── POST /posts ──────────────────────────────────────────
   app.post(
     '/',
+    { preHandler: [app.authenticate] },
     async (request, reply) => {
-      const userId = request.headers['x-user-id'] as string | undefined;
-      if (!userId) return reply.status(401).send({ message: 'Não autorizado.' });
-
       const result = createPostSchema.safeParse(request.body);
       if (!result.success) {
         return reply.status(400).send({ message: result.error.errors[0]?.message });
       }
 
       const { contentText, mediaUrl, type } = result.data;
-
       if (!contentText && !mediaUrl) {
         return reply.status(400).send({ message: 'Post precisa ter texto ou mídia.' });
       }
 
-      // Captura o jogo sendo jogado no momento
-      const presence    = await presenceRepository.get(userId);
+      const presence    = await presenceRepository.get(request.userId);
       const gameContext = presence.status === 'IN_GAME'
-        ? {
-            gameName:    presence.currentGame,
-            platform:    presence.platform,
-            capturedAt:  new Date().toISOString(),
-          }
+        ? { gameName: presence.currentGame, platform: presence.platform, capturedAt: new Date().toISOString() }
         : null;
 
       const post = await postRepository.create({
-        userId,
-        contentText: contentText ?? null,
-        mediaUrl:    mediaUrl    ?? null,
-        type,
-        gameContext,
+        userId: request.userId, contentText: contentText ?? null,
+        mediaUrl: mediaUrl ?? null, type, gameContext,
       });
 
       return reply.status(201).send(post);
@@ -73,22 +52,15 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
   );
 
   // ── GET /posts/feed/:userId ──────────────────────────────
-  app.get<{
-    Params:      { userId: string };
-    Querystring: { cursor?: string; limit?: string };
-  }>(
+  app.get<{ Params: { userId: string }; Querystring: { cursor?: string; limit?: string } }>(
     '/feed/:userId',
     async (request, reply) => {
-      const { userId }        = request.params;
-      const { cursor, limit } = request.query;
-
-      const user = await userRepository.findById(userId);
+      const user = await userRepository.findById(request.params.userId);
       if (!user) return reply.status(404).send({ message: 'Usuário não encontrado.' });
 
+      const { cursor, limit } = request.query;
       const feed = await postRepository.findFeedByUserId(
-        userId,
-        cursor,
-        limit ? Math.min(parseInt(limit), 50) : 20,
+        request.params.userId, cursor, limit ? Math.min(parseInt(limit), 50) : 20,
       );
 
       return reply.status(200).send(feed);
@@ -98,10 +70,8 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
   // ── POST /posts/:id/interactions ─────────────────────────
   app.post<{ Params: { id: string } }>(
     '/:id/interactions',
+    { preHandler: [app.authenticate] },
     async (request, reply) => {
-      const userId = request.headers['x-user-id'] as string | undefined;
-      if (!userId) return reply.status(401).send({ message: 'Não autorizado.' });
-
       const result = interactionSchema.safeParse(request.body);
       if (!result.success) {
         return reply.status(400).send({ message: result.error.errors[0]?.message });
@@ -110,44 +80,31 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
       const post = await postRepository.findById(request.params.id);
       if (!post) return reply.status(404).send({ message: 'Post não encontrado.' });
 
-      if (post.userId === userId) {
+      if (post.userId === request.userId) {
         return reply.status(400).send({ message: 'Você não pode reagir ao próprio post.' });
       }
 
-      const { added } = await postRepository.toggleInteraction(
-        request.params.id,
-        userId,
-        result.data.type,
-      );
-
+      const { added } = await postRepository.toggleInteraction(request.params.id, request.userId, result.data.type);
       return reply.status(200).send({ added });
     },
   );
 
-  // ── POST /comments ───────────────────────────────────────
+  // ── POST /posts/comments ─────────────────────────────────
   app.post(
     '/comments',
+    { preHandler: [app.authenticate] },
     async (request, reply) => {
-      const userId = request.headers['x-user-id'] as string | undefined;
-      if (!userId) return reply.status(401).send({ message: 'Não autorizado.' });
-
       const result = createCommentSchema.safeParse(request.body);
       if (!result.success) {
         return reply.status(400).send({ message: result.error.errors[0]?.message });
       }
 
-      const { postId, content, parentId } = result.data;
-
-      const post = await postRepository.findById(postId);
+      const post = await postRepository.findById(result.data.postId);
       if (!post) return reply.status(404).send({ message: 'Post não encontrado.' });
 
       const comment = await postRepository.createComment(
-        postId,
-        userId,
-        content,
-        parentId,
+        result.data.postId, request.userId, result.data.content, result.data.parentId,
       );
-
       return reply.status(201).send(comment);
     },
   );
@@ -160,7 +117,6 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
       if (!post) return reply.status(404).send({ message: 'Post não encontrado.' });
 
       const comments = await postRepository.findCommentsByPostId(request.params.postId);
-
       return reply.status(200).send(comments);
     },
   );
@@ -168,19 +124,16 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
   // ── DELETE /posts/:id ────────────────────────────────────
   app.delete<{ Params: { id: string } }>(
     '/:id',
+    { preHandler: [app.authenticate] },
     async (request, reply) => {
-      const userId = request.headers['x-user-id'] as string | undefined;
-      if (!userId) return reply.status(401).send({ message: 'Não autorizado.' });
-
       const post = await postRepository.findById(request.params.id);
       if (!post) return reply.status(404).send({ message: 'Post não encontrado.' });
 
-      if (post.userId !== userId) {
+      if (post.userId !== request.userId) {
         return reply.status(403).send({ message: 'Você não pode deletar este post.' });
       }
 
       await postRepository.deleteById(request.params.id);
-
       return reply.status(200).send({ message: 'Post removido.' });
     },
   );
