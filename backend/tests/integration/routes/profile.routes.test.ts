@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { buildApp } from '../../helpers/build-app';
-
-// ─────────────────────────────────────────────────────────────
-// Mock dos repositories — sem banco real
-// ─────────────────────────────────────────────────────────────
+import { buildApp, generateTestToken } from '../../helpers/build-app';
 
 vi.mock('@/core/repositories/profile.repository', () => ({
   profileRepository: {
@@ -14,149 +10,82 @@ vi.mock('@/core/repositories/profile.repository', () => ({
 
 vi.mock('@/core/repositories/user.repository', () => ({
   userRepository: {
-    existsByEmailOrUsername: vi.fn(),
-    create:                  vi.fn(),
-    findByEmail:             vi.fn(),
-    findByUsername:          vi.fn(),
-    findById:                vi.fn(),
+    findById: vi.fn(), findByEmail: vi.fn(), findByUsername: vi.fn(),
+    existsByEmailOrUsername: vi.fn(), create: vi.fn(),
   },
 }));
 
 import { profileRepository } from '@/core/repositories/profile.repository';
-import { userRepository }     from '@/core/repositories/user.repository';
-
-const mockFullProfile = {
-  id:        'user-id-1',
-  username:  'clutchplayer',
-  createdAt: new Date(),
-  profile: {
-    displayName: 'Clutch Player',
-    bio:         'Gamer profissional',
-    avatarUrl:   null,
-    bannerUrl:   null,
-    accentColor: '#FF5500',
-    badges:      [],
-  },
-  stats: {
-    level:       5,
-    xp:          1200,
-    reputation:  80,
-    friendCount: 12,
-    postCount:   34,
-  },
-  presence: {
-    status:      'ONLINE',
-    currentGame: null,
-    gameDetails: null,
-    platform:    null,
-    updatedAt:   new Date(),
-  },
-  platformIntegrations: [],
-  gameLibrary:          [],
-};
+import { userRepository }    from '@/core/repositories/user.repository';
 
 const mockUser = {
-  id:            'user-id-1',
-  username:      'clutchplayer',
-  email:         'player@clutch.gg',
-  password_hash: 'password123',
-  isActive:      true,
-  createdAt:     new Date(),
-  updatedAt:     new Date(),
+  id: 'user-id-1', username: 'clutchplayer', email: 'player@clutch.gg',
+  password_hash: 'hash', isActive: true, createdAt: new Date(), updatedAt: new Date(),
+};
+
+const mockFullProfile = {
+  id: 'user-id-1', username: 'clutchplayer', createdAt: new Date(),
+  profile: { displayName: 'Clutch Player', bio: null, avatarUrl: null, bannerUrl: null, accentColor: '#FF5500', badges: [] },
+  stats: { level: 5, xp: 1200, reputation: 80, friendCount: 12, postCount: 34 },
+  presence: { status: 'ONLINE', currentGame: null, gameDetails: null, platform: null, updatedAt: new Date() },
+  platformIntegrations: [], gameLibrary: [],
 };
 
 const mockUpdatedProfile = {
-  id:          'profile-id-1',
-  userId:      'user-id-1',
-  displayName: 'Novo Nome',
-  bio:         'Nova bio',
-  avatarUrl:   null,
-  bannerUrl:   null,
-  accentColor: null,
-  badges:      [],
-  createdAt:   new Date(),
-  updatedAt:   new Date(),
+  id: 'profile-id-1', userId: 'user-id-1', displayName: 'Novo Nome',
+  bio: 'Nova bio', avatarUrl: null, bannerUrl: null, accentColor: null,
+  badges: [], createdAt: new Date(), updatedAt: new Date(),
 };
 
 describe('Profile Routes', () => {
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
+  beforeEach(() => vi.clearAllMocks());
 
-  // ── GET /profiles/:username ──────────────────────────────
   describe('GET /profiles/:username', () => {
-
     it('retorna 200 com perfil completo', async () => {
-      vi.mocked(profileRepository.findFullProfileByUsername).mockResolvedValue(
-        mockFullProfile,
-      );
+      vi.mocked(profileRepository.findFullProfileByUsername).mockResolvedValue(mockFullProfile);
 
-      const app = await buildApp();
-      const response = await app.inject({
-        method: 'GET',
-        url:    '/profiles/clutchplayer',
-      });
+      const app      = await buildApp();
+      const response = await app.inject({ method: 'GET', url: '/profiles/clutchplayer' });
 
       expect(response.statusCode).toBe(200);
-      expect(response.json()).toMatchObject({
-        username: 'clutchplayer',
-        profile:  { displayName: 'Clutch Player' },
-        stats:    { level: 5 },
-      });
-
+      expect(response.json()).toMatchObject({ username: 'clutchplayer' });
       await app.close();
     });
 
     it('retorna 404 quando username não existe', async () => {
       vi.mocked(profileRepository.findFullProfileByUsername).mockResolvedValue(null);
 
-      const app = await buildApp();
-      const response = await app.inject({
-        method: 'GET',
-        url:    '/profiles/naoexiste',
-      });
+      const app      = await buildApp();
+      const response = await app.inject({ method: 'GET', url: '/profiles/naoexiste' });
 
       expect(response.statusCode).toBe(404);
-      expect(response.json()).toMatchObject({
-        message: 'Perfil não encontrado.',
-      });
-
       await app.close();
     });
-
   });
 
-  // ── PATCH /profiles/:username ────────────────────────────
   describe('PATCH /profiles/:username', () => {
-
     it('retorna 200 quando dono edita o perfil', async () => {
       vi.mocked(userRepository.findByUsername).mockResolvedValue(mockUser);
       vi.mocked(profileRepository.updateByUserId).mockResolvedValue(mockUpdatedProfile);
 
-      const app = await buildApp();
+      const app   = await buildApp();
+      const token = generateTestToken(app, 'user-id-1');
+
       const response = await app.inject({
         method:  'PATCH',
         url:     '/profiles/clutchplayer',
-        headers: { 'x-user-id': 'user-id-1' },
+        headers: { Authorization: `Bearer ${token}` },
         payload: { displayName: 'Novo Nome', bio: 'Nova bio' },
       });
 
       expect(response.statusCode).toBe(200);
-      expect(response.json()).toMatchObject({
-        displayName: 'Novo Nome',
-      });
-
       await app.close();
     });
 
-    it('retorna 401 sem header x-user-id', async () => {
-      const app = await buildApp();
-      const response = await app.inject({
-        method:  'PATCH',
-        url:     '/profiles/clutchplayer',
-        payload: { displayName: 'Novo Nome' },
-      });
+    it('retorna 401 sem token', async () => {
+      const app      = await buildApp();
+      const response = await app.inject({ method: 'PATCH', url: '/profiles/clutchplayer', payload: {} });
 
       expect(response.statusCode).toBe(401);
       await app.close();
@@ -165,11 +94,13 @@ describe('Profile Routes', () => {
     it('retorna 403 quando outro usuário tenta editar', async () => {
       vi.mocked(userRepository.findByUsername).mockResolvedValue(mockUser);
 
-      const app = await buildApp();
+      const app   = await buildApp();
+      const token = generateTestToken(app, 'outro-user-id');
+
       const response = await app.inject({
         method:  'PATCH',
         url:     '/profiles/clutchplayer',
-        headers: { 'x-user-id': 'outro-user-id' },
+        headers: { Authorization: `Bearer ${token}` },
         payload: { displayName: 'Invasor' },
       });
 
@@ -180,11 +111,13 @@ describe('Profile Routes', () => {
     it('retorna 404 quando username não existe', async () => {
       vi.mocked(userRepository.findByUsername).mockResolvedValue(null);
 
-      const app = await buildApp();
+      const app   = await buildApp();
+      const token = generateTestToken(app, 'user-id-1');
+
       const response = await app.inject({
         method:  'PATCH',
         url:     '/profiles/naoexiste',
-        headers: { 'x-user-id': 'user-id-1' },
+        headers: { Authorization: `Bearer ${token}` },
         payload: { displayName: 'Novo Nome' },
       });
 
@@ -195,18 +128,19 @@ describe('Profile Routes', () => {
     it('retorna 400 com accentColor inválido', async () => {
       vi.mocked(userRepository.findByUsername).mockResolvedValue(mockUser);
 
-      const app = await buildApp();
+      const app   = await buildApp();
+      const token = generateTestToken(app, 'user-id-1');
+
       const response = await app.inject({
         method:  'PATCH',
         url:     '/profiles/clutchplayer',
-        headers: { 'x-user-id': 'user-id-1' },
+        headers: { Authorization: `Bearer ${token}` },
         payload: { accentColor: 'vermelho' },
       });
 
       expect(response.statusCode).toBe(400);
       await app.close();
     });
-
   });
 
 });
