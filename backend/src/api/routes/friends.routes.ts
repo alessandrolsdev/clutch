@@ -3,19 +3,11 @@ import { friendRepository } from '@/core/repositories/friend.repository';
 import { userRepository }   from '@/core/repositories/user.repository';
 
 // ─────────────────────────────────────────────────────────────
-// Friends Routes
-// POST   /friends/request/:targetId
-// POST   /friends/accept/:requestId
-// DELETE /friends/:friendId
-// GET    /friends/:userId
-// GET    /friends/requests/:userId
+// Friends Routes — todas as rotas protegidas por JWT
 // ─────────────────────────────────────────────────────────────
 
 const PRESENCE_ORDER: Record<string, number> = {
-  IN_GAME: 0,
-  ONLINE:  1,
-  AFK:     2,
-  OFFLINE: 3,
+  IN_GAME: 0, ONLINE: 1, AFK: 2, OFFLINE: 3,
 };
 
 export async function friendRoutes(app: FastifyInstance): Promise<void> {
@@ -23,76 +15,49 @@ export async function friendRoutes(app: FastifyInstance): Promise<void> {
   // ── POST /friends/request/:targetId ─────────────────────
   app.post<{ Params: { targetId: string } }>(
     '/request/:targetId',
+    { preHandler: [app.authenticate] },
     async (request, reply) => {
-      const requesterId = request.headers['x-user-id'] as string | undefined;
-      if (!requesterId) {
-        return reply.status(401).send({ message: 'Não autorizado.' });
-      }
-
       const { targetId } = request.params;
 
-      if (requesterId === targetId) {
-        return reply.status(400).send({
-          message: 'Você não pode enviar um pedido de amizade para si mesmo.',
-        });
+      if (request.userId === targetId) {
+        return reply.status(400).send({ message: 'Você não pode enviar um pedido para si mesmo.' });
       }
 
       const target = await userRepository.findById(targetId);
-      if (!target) {
-        return reply.status(404).send({ message: 'Usuário não encontrado.' });
-      }
+      if (!target) return reply.status(404).send({ message: 'Usuário não encontrado.' });
 
       const [alreadyFriends, alreadyRequested] = await Promise.all([
-        friendRepository.existsFriendship(requesterId, targetId),
-        friendRepository.existsRequest(requesterId, targetId),
+        friendRepository.existsFriendship(request.userId, targetId),
+        friendRepository.existsRequest(request.userId, targetId),
       ]);
 
       if (alreadyFriends || alreadyRequested) {
-        return reply.status(409).send({
-          message: 'Pedido já existe ou vocês já são amigos.',
-        });
+        return reply.status(409).send({ message: 'Pedido já existe ou vocês já são amigos.' });
       }
 
-      const friendRequest = await friendRepository.createRequest(requesterId, targetId);
-
-      return reply.status(201).send({
-        id:     friendRequest.id,
-        status: friendRequest.status,
-      });
+      const friendRequest = await friendRepository.createRequest(request.userId, targetId);
+      return reply.status(201).send({ id: friendRequest.id, status: friendRequest.status });
     },
   );
 
   // ── POST /friends/accept/:requestId ─────────────────────
   app.post<{ Params: { requestId: string } }>(
     '/accept/:requestId',
+    { preHandler: [app.authenticate] },
     async (request, reply) => {
-      const requesterId = request.headers['x-user-id'] as string | undefined;
-      if (!requesterId) {
-        return reply.status(401).send({ message: 'Não autorizado.' });
-      }
+      const friendRequest = await friendRepository.findRequestById(request.params.requestId);
+      if (!friendRequest) return reply.status(404).send({ message: 'Pedido não encontrado.' });
 
-      const { requestId } = request.params;
-
-      const friendRequest = await friendRepository.findRequestById(requestId);
-
-      if (!friendRequest) {
-        return reply.status(404).send({ message: 'Pedido não encontrado.' });
-      }
-
-      if (friendRequest.receiverId !== requesterId) {
-        return reply.status(403).send({
-          message: 'Você não tem permissão para aceitar este pedido.',
-        });
+      if (friendRequest.receiverId !== request.userId) {
+        return reply.status(403).send({ message: 'Você não tem permissão para aceitar este pedido.' });
       }
 
       if (friendRequest.status !== 'PENDING') {
-        return reply.status(409).send({
-          message: 'Este pedido não está mais pendente.',
-        });
+        return reply.status(409).send({ message: 'Este pedido não está mais pendente.' });
       }
 
       await friendRepository.acceptRequest(
-        requestId,
+        request.params.requestId,
         friendRequest.senderId,
         friendRequest.receiverId,
       );
@@ -104,45 +69,26 @@ export async function friendRoutes(app: FastifyInstance): Promise<void> {
   // ── DELETE /friends/:friendId ────────────────────────────
   app.delete<{ Params: { friendId: string } }>(
     '/:friendId',
+    { preHandler: [app.authenticate] },
     async (request, reply) => {
-      const requesterId = request.headers['x-user-id'] as string | undefined;
-      if (!requesterId) {
-        return reply.status(401).send({ message: 'Não autorizado.' });
-      }
+      const exists = await friendRepository.existsFriendship(request.userId, request.params.friendId);
+      if (!exists) return reply.status(404).send({ message: 'Amizade não encontrada.' });
 
-      const { friendId } = request.params;
-
-      const exists = await friendRepository.existsFriendship(requesterId, friendId);
-      if (!exists) {
-        return reply.status(404).send({ message: 'Amizade não encontrada.' });
-      }
-
-      await friendRepository.removeFriendship(requesterId, friendId);
-
+      await friendRepository.removeFriendship(request.userId, request.params.friendId);
       return reply.status(200).send({ message: 'Amizade removida.' });
     },
   );
 
   // ── GET /friends/requests/:userId ────────────────────────
-  // Deve vir ANTES de /:userId para não ser capturado como parâmetro
   app.get<{ Params: { userId: string } }>(
     '/requests/:userId',
+    { preHandler: [app.authenticate] },
     async (request, reply) => {
-      const requesterId = request.headers['x-user-id'] as string | undefined;
-      if (!requesterId) {
-        return reply.status(401).send({ message: 'Não autorizado.' });
+      if (request.userId !== request.params.userId) {
+        return reply.status(403).send({ message: 'Você não pode ver pedidos de outro usuário.' });
       }
 
-      const { userId } = request.params;
-
-      if (requesterId !== userId) {
-        return reply.status(403).send({
-          message: 'Você não pode ver pedidos de outro usuário.',
-        });
-      }
-
-      const requests = await friendRepository.findPendingRequests(userId);
-
+      const requests = await friendRepository.findPendingRequests(request.params.userId);
       return reply.status(200).send(requests);
     },
   );
@@ -152,16 +98,13 @@ export async function friendRoutes(app: FastifyInstance): Promise<void> {
     '/:userId',
     async (request, reply) => {
       const user = await userRepository.findById(request.params.userId);
-      if (!user) {
-        return reply.status(404).send({ message: 'Usuário não encontrado.' });
-      }
+      if (!user) return reply.status(404).send({ message: 'Usuário não encontrado.' });
 
       const friends = await friendRepository.findFriendsByUserId(request.params.userId);
-
-      const sorted = friends.sort((a, b) => {
-        const statusA = PRESENCE_ORDER[a.presence?.status ?? 'OFFLINE'] ?? 3;
-        const statusB = PRESENCE_ORDER[b.presence?.status ?? 'OFFLINE'] ?? 3;
-        return statusA - statusB;
+      const sorted  = friends.sort((a, b) => {
+        const sA = PRESENCE_ORDER[a.presence?.status ?? 'OFFLINE'] ?? 3;
+        const sB = PRESENCE_ORDER[b.presence?.status ?? 'OFFLINE'] ?? 3;
+        return sA - sB;
       });
 
       return reply.status(200).send(sorted);

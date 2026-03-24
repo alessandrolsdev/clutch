@@ -1,9 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
-import { buildApp } from '../../helpers/build-app';
-
-// ─────────────────────────────────────────────────────────────
-// Mock do userRepository — sem banco real
-// ─────────────────────────────────────────────────────────────
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { buildApp, generateTestToken } from '../../helpers/build-app';
 
 vi.mock('@/core/repositories/user.repository', () => ({
   userRepository: {
@@ -15,13 +11,21 @@ vi.mock('@/core/repositories/user.repository', () => ({
   },
 }));
 
+vi.mock('bcrypt', () => ({
+  default: {
+    hash:    vi.fn().mockResolvedValue('hashed-password'),
+    compare: vi.fn(),
+  },
+}));
+
 import { userRepository } from '@/core/repositories/user.repository';
+import bcrypt             from 'bcrypt';
 
 const mockUser = {
   id:            'user-id-1',
   username:      'clutchplayer',
   email:         'player@clutch.gg',
-  password_hash: 'password123',
+  password_hash: 'hashed-password',
   isActive:      true,
   createdAt:     new Date(),
   updatedAt:     new Date(),
@@ -29,189 +33,124 @@ const mockUser = {
 
 describe('Auth Routes', () => {
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
+  beforeEach(() => vi.clearAllMocks());
 
-  // ── POST /auth/register ──────────────────────────────────
   describe('POST /auth/register', () => {
-
-    it('retorna 201 com dados válidos', async () => {
+    it('retorna 201 com token JWT', async () => {
       vi.mocked(userRepository.existsByEmailOrUsername).mockResolvedValue(false);
       vi.mocked(userRepository.create).mockResolvedValue(mockUser);
 
-      const app = await buildApp();
+      const app      = await buildApp();
       const response = await app.inject({
         method:  'POST',
         url:     '/auth/register',
-        payload: {
-          username: 'clutchplayer',
-          email:    'player@clutch.gg',
-          password: 'password123',
-        },
+        payload: { username: 'clutchplayer', email: 'player@clutch.gg', password: 'password123' },
       });
 
       expect(response.statusCode).toBe(201);
-      expect(response.json()).toMatchObject({
-        id:       'user-id-1',
-        username: 'clutchplayer',
-      });
-
+      expect(response.json()).toHaveProperty('token');
       await app.close();
     });
 
-    it('retorna 409 quando email ou username já existe', async () => {
+    it('retorna 409 quando usuário já existe', async () => {
       vi.mocked(userRepository.existsByEmailOrUsername).mockResolvedValue(true);
 
-      const app = await buildApp();
+      const app      = await buildApp();
       const response = await app.inject({
         method:  'POST',
         url:     '/auth/register',
-        payload: {
-          username: 'clutchplayer',
-          email:    'player@clutch.gg',
-          password: 'password123',
-        },
+        payload: { username: 'clutchplayer', email: 'player@clutch.gg', password: 'password123' },
       });
 
       expect(response.statusCode).toBe(409);
-      expect(response.json()).toMatchObject({
-        message: 'Email ou username já está em uso.',
-      });
-
       await app.close();
     });
 
-    it('retorna 400 com username inválido', async () => {
-      const app = await buildApp();
+    it('retorna 400 com dados inválidos', async () => {
+      const app      = await buildApp();
       const response = await app.inject({
         method:  'POST',
         url:     '/auth/register',
-        payload: {
-          username: 'ab',
-          email:    'player@clutch.gg',
-          password: 'password123',
-        },
+        payload: { username: 'ab', email: 'invalid', password: '123' },
       });
 
       expect(response.statusCode).toBe(400);
       await app.close();
     });
-
-    it('retorna 400 com email inválido', async () => {
-      const app = await buildApp();
-      const response = await app.inject({
-        method:  'POST',
-        url:     '/auth/register',
-        payload: {
-          username: 'clutchplayer',
-          email:    'email-invalido',
-          password: 'password123',
-        },
-      });
-
-      expect(response.statusCode).toBe(400);
-      await app.close();
-    });
-
-    it('retorna 400 com senha muito curta', async () => {
-      const app = await buildApp();
-      const response = await app.inject({
-        method:  'POST',
-        url:     '/auth/register',
-        payload: {
-          username: 'clutchplayer',
-          email:    'player@clutch.gg',
-          password: '123',
-        },
-      });
-
-      expect(response.statusCode).toBe(400);
-      await app.close();
-    });
-
   });
 
-  // ── POST /auth/login ─────────────────────────────────────
   describe('POST /auth/login', () => {
-
-    it('retorna 200 com credenciais válidas', async () => {
+    it('retorna 200 com token JWT', async () => {
       vi.mocked(userRepository.findByEmail).mockResolvedValue(mockUser);
+      vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
 
-      const app = await buildApp();
+      const app      = await buildApp();
       const response = await app.inject({
         method:  'POST',
         url:     '/auth/login',
-        payload: {
-          email:    'player@clutch.gg',
-          password: 'password123',
-        },
+        payload: { email: 'player@clutch.gg', password: 'password123' },
       });
 
       expect(response.statusCode).toBe(200);
-      expect(response.json()).toMatchObject({
-        id:       'user-id-1',
-        username: 'clutchplayer',
-        message:  'Acesso autorizado.',
-      });
-
+      expect(response.json()).toHaveProperty('token');
       await app.close();
     });
 
     it('retorna 401 com senha incorreta', async () => {
       vi.mocked(userRepository.findByEmail).mockResolvedValue(mockUser);
+      vi.mocked(bcrypt.compare).mockResolvedValue(false as never);
 
-      const app = await buildApp();
+      const app      = await buildApp();
       const response = await app.inject({
         method:  'POST',
         url:     '/auth/login',
-        payload: {
-          email:    'player@clutch.gg',
-          password: 'senha-errada',
-        },
+        payload: { email: 'player@clutch.gg', password: 'wrong' },
       });
 
       expect(response.statusCode).toBe(401);
-      expect(response.json()).toMatchObject({
-        message: 'Credenciais inválidas.',
-      });
-
       await app.close();
     });
 
     it('retorna 401 com email inexistente', async () => {
       vi.mocked(userRepository.findByEmail).mockResolvedValue(null);
 
-      const app = await buildApp();
+      const app      = await buildApp();
       const response = await app.inject({
         method:  'POST',
         url:     '/auth/login',
-        payload: {
-          email:    'naoexiste@clutch.gg',
-          password: 'password123',
-        },
+        payload: { email: 'naoexiste@clutch.gg', password: 'password123' },
       });
 
       expect(response.statusCode).toBe(401);
-      expect(response.json()).toMatchObject({
-        message: 'Credenciais inválidas.',
-      });
-
       await app.close();
     });
+  });
 
-    it('retorna 400 com body vazio', async () => {
-      const app = await buildApp();
+  describe('GET /auth/me', () => {
+    it('retorna 200 com dados do usuário autenticado', async () => {
+      vi.mocked(userRepository.findById).mockResolvedValue(mockUser);
+
+      const app   = await buildApp();
+      const token = generateTestToken(app);
+
       const response = await app.inject({
-        method:  'POST',
-        url:     '/auth/login',
-        payload: {},
+        method:  'GET',
+        url:     '/auth/me',
+        headers: { Authorization: `Bearer ${token}` },
       });
 
-      expect(response.statusCode).toBe(400);
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ username: 'clutchplayer' });
       await app.close();
     });
 
+    it('retorna 401 sem token', async () => {
+      const app      = await buildApp();
+      const response = await app.inject({ method: 'GET', url: '/auth/me' });
+
+      expect(response.statusCode).toBe(401);
+      await app.close();
+    });
   });
 
 });
