@@ -24,4 +24,15 @@ export {
   markNotificationAsRead,
   NotificationsRequestError,
 } from './notifications';
-export { fetchProfileByUsername, ProfileRequestError } from './profile';
+export {
+  connectEpic,
+  connectSteam,
+  IntegrationsRequestError,
+  searchIgdbGame,
+  syncSteamLibrary,
+} from './integrations';
+export {
+  fetchProfileByUsername,
+  ProfileRequestError,
+  updateProfileByUsername,
+} from './profile';
