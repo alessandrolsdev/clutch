@@ -1,0 +1,16 @@
+:root {
+  --background-primary: #0a0a0f;
+  --background-secondary: #13131a;
+  --background-tertiary: #1a1a27;
+  --border-default: #1e1e2e;
+  --border-muted: #2a2a3e;
+  --accent-purple: #7c3aed;
+  --accent-cyan: #06b6d4;
+  --status-online: #10b981;
+  --status-ingame: #8b5cf6;
+  --status-afk: #f59e0b;
+  --status-offline: #6b7280;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #475569;
+}

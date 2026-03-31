@@ -93,6 +93,40 @@ curl http://localhost:3333/health
 
 ---
 
+## Frontend foundation
+
+Com a issue `#83`, o frontend agora vive de fato em [frontend/](/C:/Github/clutch/frontend).
+
+### 1. Configurar variaveis do frontend
+```bash
+cd frontend
+cp .env.example .env.local
+```
+
+### 2. Instalar dependencias
+```bash
+npm install
+```
+
+### 3. Subir o app
+```bash
+npm run dev
+```
+
+O frontend ficara disponivel em `http://localhost:3000`.
+
+### 4. Validar a foundation
+```bash
+npm run typecheck
+npm run lint
+npm run test
+npm run build
+```
+
+Esta etapa entrega apenas a base do app: Next.js 15, TypeScript strict, Tailwind v3, aliases, shell inicial e setup de testes.
+
+---
+
 ## 🧪 Testes
 
 ```bash
