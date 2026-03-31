@@ -1,5 +1,12 @@
 import { apiRequest } from '@/lib/api';
-import { feedResponseSchema, type FeedResponse } from '@/schemas/feed';
+import {
+  createPostRequestSchema,
+  createPostResponseSchema,
+  feedResponseSchema,
+  type CreatePostRequest,
+  type CreatePostResponse,
+  type FeedResponse,
+} from '@/schemas/feed';
 
 type ErrorResponse = {
   message?: string;
@@ -73,4 +80,30 @@ export async function fetchFeed(input: FeedRequestInput): Promise<FeedResponse> 
   }
 
   return feedResponseSchema.parse(payload);
+}
+
+export async function createPost(
+  input: CreatePostRequest,
+): Promise<CreatePostResponse> {
+  const payload = createPostRequestSchema.parse(input);
+  const normalizedPayload = {
+    contentText: payload.contentText.trim() || undefined,
+    mediaUrl: payload.mediaUrl.trim() || undefined,
+    type: payload.type,
+  };
+
+  const response = await apiRequest('/posts', {
+    method: 'POST',
+    body: normalizedPayload,
+  });
+  const responsePayload = await readJson(response);
+
+  if (!response.ok) {
+    throw new FeedRequestError(
+      response.status,
+      resolveErrorMessage(responsePayload, 'Nao foi possivel publicar agora.'),
+    );
+  }
+
+  return createPostResponseSchema.parse(responsePayload);
 }

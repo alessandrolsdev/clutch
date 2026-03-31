@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiRequest } from '@/lib/api';
-import { fetchFeed } from '@/services/feed';
+import { createPost, fetchFeed } from '@/services/feed';
 
 vi.mock('@/lib/api', () => ({
   apiRequest: vi.fn(),
@@ -93,6 +93,67 @@ describe('feed service', () => {
       name: 'FeedRequestError',
       status: 500,
       message: 'Falha ao carregar feed.',
+    });
+  });
+
+  it('creates a post with the real backend payload', async () => {
+    mockedApiRequest.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: 'post-10',
+          userId: 'user-1',
+          contentText: 'Novo post',
+          mediaUrl: null,
+          type: 'TEXT',
+          gameContext: null,
+          createdAt: '2026-03-31T12:00:00.000Z',
+        }),
+        {
+          status: 201,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      ),
+    );
+
+    const response = await createPost({
+      contentText: 'Novo post',
+      mediaUrl: '',
+      type: 'TEXT',
+    });
+
+    expect(response.id).toBe('post-10');
+    expect(mockedApiRequest).toHaveBeenCalledWith('/posts', {
+      method: 'POST',
+      body: {
+        contentText: 'Novo post',
+        mediaUrl: undefined,
+        type: 'TEXT',
+      },
+    });
+  });
+
+  it('throws when post creation fails', async () => {
+    mockedApiRequest.mockResolvedValue(
+      new Response(JSON.stringify({ message: 'Post precisa ter texto ou midia.' }), {
+        status: 400,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }),
+    );
+
+    await expect(
+      createPost({
+        contentText: 'Post invalido',
+        mediaUrl: '',
+        type: 'TEXT',
+      }),
+    ).rejects.toMatchObject({
+      name: 'FeedRequestError',
+      status: 400,
+      message: 'Post precisa ter texto ou midia.',
     });
   });
 });
