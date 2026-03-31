@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { notificationRepository } from '@/core/repositories/notification.repository';
+import { notificationRepository } from '../../core/repositories/notification.repository';
 
 export async function notificationRoutes(app: FastifyInstance): Promise<void> {
 

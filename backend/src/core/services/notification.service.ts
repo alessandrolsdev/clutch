@@ -1,5 +1,5 @@
-import { notificationRepository } from '@/core/repositories/notification.repository';
-import { redis, REDIS_KEYS } from '@/infra/cache/redis';
+import { notificationRepository } from '../repositories/notification.repository';
+import { redis, REDIS_KEYS } from '../../infra/cache/redis';
 
 // ─────────────────────────────────────────────────────────────
 // Notification Service

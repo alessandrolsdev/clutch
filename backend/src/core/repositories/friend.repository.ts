@@ -1,5 +1,5 @@
 import { FriendRequest } from '@prisma/client';
-import { prisma } from '@/infra/database/client';
+import { prisma } from '../../infra/database/client';
 
 // ─────────────────────────────────────────────────────────────
 // Friend Repository

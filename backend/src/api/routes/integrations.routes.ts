@@ -1,9 +1,9 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { steamService }  from '@/infra/integrations/steam/steam.service';
-import { igdbService }   from '@/infra/integrations/igdb/igdb.service';
-import { epicService }   from '@/infra/integrations/epic/epic.service';
-import { prisma }        from '@/infra/database/client';
+import { steamService } from '../../infra/integrations/steam/steam.service';
+import { igdbService } from '../../infra/integrations/igdb/igdb.service';
+import { epicService } from '../../infra/integrations/epic/epic.service';
+import { prisma } from '../../infra/database/client';
 
 const steamConnectSchema = z.object({
   steamId: z.string().min(1, 'SteamID é obrigatório'),

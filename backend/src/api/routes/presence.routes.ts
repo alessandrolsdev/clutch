@@ -1,8 +1,8 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { friendRepository } from '@/core/repositories/friend.repository';
-import { presenceRepository } from '@/core/repositories/presence.repository';
-import { userRepository }     from '@/core/repositories/user.repository';
+import { friendRepository } from '../../core/repositories/friend.repository';
+import { presenceRepository } from '../../core/repositories/presence.repository';
+import { userRepository } from '../../core/repositories/user.repository';
 
 const setPresenceSchema = z.object({
   status:      z.enum(['ONLINE', 'IN_GAME', 'AFK', 'OFFLINE']),
