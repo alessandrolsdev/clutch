@@ -3,9 +3,14 @@ import { buildApp, generateTestToken } from '../../helpers/build-app';
 
 vi.mock('@/core/repositories/post.repository', () => ({
   postRepository: {
-    create: vi.fn(), findById: vi.fn(), deleteById: vi.fn(),
-    findFeedByUserId: vi.fn(), toggleInteraction: vi.fn(),
-    createComment: vi.fn(), findCommentsByPostId: vi.fn(),
+    create: vi.fn(),
+    findById: vi.fn(),
+    deleteById: vi.fn(),
+    findFeedByUserId: vi.fn(),
+    toggleInteraction: vi.fn(),
+    createComment: vi.fn(),
+    findCommentsByPostId: vi.fn(),
+    findCommentById: vi.fn(),
   },
 }));
 
@@ -103,7 +108,7 @@ describe('Posts Routes', () => {
       await app.close();
     });
 
-    it('retorna 400 sem conteúdo', async () => {
+    it('retorna 400 sem conteudo', async () => {
       vi.mocked(presenceRepository.get).mockResolvedValue(mockPresenceOffline);
 
       const app   = await buildApp();
@@ -141,7 +146,7 @@ describe('Posts Routes', () => {
       await app.close();
     });
 
-    it('retorna 404 quando usuário não existe', async () => {
+    it('retorna 404 quando usuario nao existe', async () => {
       vi.mocked(userRepository.findById).mockResolvedValue(null);
 
       const app      = await buildApp();
@@ -171,7 +176,7 @@ describe('Posts Routes', () => {
       await app.close();
     });
 
-    it('retorna 400 ao reagir ao próprio post', async () => {
+    it('retorna 400 ao reagir ao proprio post', async () => {
       vi.mocked(postRepository.findById).mockResolvedValue(mockPost);
 
       const app   = await buildApp();
@@ -207,11 +212,11 @@ describe('Posts Routes', () => {
   });
 
   describe('POST /posts/comments', () => {
-    it('retorna 201 com comentário criado', async () => {
+    it('retorna 201 com comentario criado', async () => {
       vi.mocked(postRepository.findById).mockResolvedValue(mockPost);
       vi.mocked(postRepository.createComment).mockResolvedValue({
         id: 'c1', postId: 'post-id-1', userId: 'user-id-2',
-        parentId: null, content: 'Ótimo post!', createdAt: new Date(),
+        parentId: null, content: 'Otimo post!', createdAt: new Date(),
       });
 
       const app   = await buildApp();
@@ -221,16 +226,68 @@ describe('Posts Routes', () => {
         method:  'POST',
         url:     '/posts/comments',
         headers: { Authorization: `Bearer ${token}` },
-        payload: { postId: 'post-id-1', content: 'Ótimo post!' },
+        payload: { postId: 'post-id-1', content: 'Otimo post!' },
       });
 
       expect(response.statusCode).toBe(201);
       await app.close();
     });
+
+    it('retorna 400 quando parentId pertence a outro post', async () => {
+      vi.mocked(postRepository.findById).mockResolvedValue(mockPost);
+      vi.mocked(postRepository.findCommentById).mockResolvedValue({
+        id: 'parent-1',
+        postId: 'other-post-id',
+        userId: 'user-id-3',
+        parentId: null,
+        content: 'Comentario pai',
+        createdAt: new Date(),
+      } as never);
+
+      const app   = await buildApp();
+      const token = generateTestToken(app, 'user-id-2');
+
+      const response = await app.inject({
+        method:  'POST',
+        url:     '/posts/comments',
+        headers: { Authorization: `Bearer ${token}` },
+        payload: { postId: 'post-id-1', content: 'Resposta invalida', parentId: 'parent-1' },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(postRepository.createComment).not.toHaveBeenCalled();
+      await app.close();
+    });
+
+    it('retorna 400 quando parentId ja e reply aninhado', async () => {
+      vi.mocked(postRepository.findById).mockResolvedValue(mockPost);
+      vi.mocked(postRepository.findCommentById).mockResolvedValue({
+        id: 'reply-1',
+        postId: 'post-id-1',
+        userId: 'user-id-3',
+        parentId: 'parent-1',
+        content: 'Reply existente',
+        createdAt: new Date(),
+      } as never);
+
+      const app   = await buildApp();
+      const token = generateTestToken(app, 'user-id-2');
+
+      const response = await app.inject({
+        method:  'POST',
+        url:     '/posts/comments',
+        headers: { Authorization: `Bearer ${token}` },
+        payload: { postId: 'post-id-1', content: 'Resposta invalida', parentId: 'reply-1' },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(postRepository.createComment).not.toHaveBeenCalled();
+      await app.close();
+    });
   });
 
   describe('DELETE /posts/:id', () => {
-    it('retorna 200 deletando post do próprio usuário', async () => {
+    it('retorna 200 deletando post do proprio usuario', async () => {
       vi.mocked(postRepository.findById).mockResolvedValue(mockPost);
       vi.mocked(postRepository.deleteById).mockResolvedValue(undefined);
 
@@ -247,7 +304,7 @@ describe('Posts Routes', () => {
       await app.close();
     });
 
-    it('retorna 403 deletando post de outro usuário', async () => {
+    it('retorna 403 deletando post de outro usuario', async () => {
       vi.mocked(postRepository.findById).mockResolvedValue(mockPost);
 
       const app   = await buildApp();

@@ -83,10 +83,13 @@ export const postRepository = {
   },
 
   async deleteById(id: string): Promise<void> {
-    await prisma.post.delete({ where: { id } });
+    const deletedPost = await prisma.post.delete({
+      where:  { id },
+      select: { userId: true },
+    });
 
     await prisma.userStats.updateMany({
-      where: { userId: (await prisma.post.findUnique({ where: { id } }))?.userId ?? '' },
+      where: { userId: deletedPost.userId },
       data:  { postCount: { decrement: 1 } },
     });
   },
@@ -200,6 +203,10 @@ export const postRepository = {
     return prisma.comment.create({
       data: { postId, userId, content, parentId: parentId ?? null },
     });
+  },
+
+  async findCommentById(id: string): Promise<Comment | null> {
+    return prisma.comment.findUnique({ where: { id } });
   },
 
   async findCommentsByPostId(postId: string): Promise<CommentWithAuthor[]> {
