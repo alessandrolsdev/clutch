@@ -1,7 +1,14 @@
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AppShell } from '@/components/layout/app-shell';
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    replace: vi.fn(),
+    refresh: vi.fn(),
+  }),
+}));
 
 describe('AppShell', () => {
   it('renders the authenticated shell and toggles the mobile sidebar', () => {
@@ -24,6 +31,6 @@ describe('AppShell', () => {
       'data-open',
       'true',
     );
-    expect(screen.getByText('CLUTCH Player')).toBeInTheDocument();
+    expect(screen.getByText('clutchplayer@clutch.gg')).toBeInTheDocument();
   });
 });

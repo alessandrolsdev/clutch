@@ -11,3 +11,14 @@ export function getAuthSessionCookieOptions() {
     maxAge: AUTH_SESSION_MAX_AGE_SECONDS,
   };
 }
+
+export function getClearedAuthSessionCookieOptions() {
+  return {
+    httpOnly: true,
+    sameSite: 'lax' as const,
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    expires: new Date(0),
+    maxAge: 0,
+  };
+}

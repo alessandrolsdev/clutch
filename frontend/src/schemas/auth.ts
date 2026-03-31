@@ -20,5 +20,12 @@ export const loginSessionSchema = loginBackendResponseSchema.pick({
   message: true,
 });
 
+export const authSessionSchema = z.object({
+  id: z.string().min(1),
+  username: z.string().min(1),
+  email: z.string().email('Email inválido.'),
+});
+
 export type LoginRequestValues = z.infer<typeof loginRequestSchema>;
 export type LoginSession = z.infer<typeof loginSessionSchema>;
+export type AuthSession = z.infer<typeof authSessionSchema>;
