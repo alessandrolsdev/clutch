@@ -24,6 +24,8 @@ if (process.env.NODE_ENV !== 'production') {
 // Chaves Redis
 export const REDIS_KEYS = {
   presence:       (userId: string) => `presence:${userId}`,
+  presenceFeed:   (userId: string) => `realtime:presence:${userId}`,
+  notifications:  (userId: string) => `notifications:${userId}`,
   friendsList:    (userId: string) => `friends:${userId}`,
   presenceUpdate: 'presence:updates',
 } as const;

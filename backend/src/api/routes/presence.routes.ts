@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { friendRepository } from '@/core/repositories/friend.repository';
 import { presenceRepository } from '@/core/repositories/presence.repository';
 import { userRepository }     from '@/core/repositories/user.repository';
 
@@ -22,12 +23,15 @@ export async function presenceRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(400).send({ message: result.error.errors[0]?.message ?? 'Dados inválidos.' });
       }
 
-      await presenceRepository.set(request.userId, {
+      const presence = await presenceRepository.set(request.userId, {
         status:      result.data.status,
         currentGame: result.data.currentGame,
         gameDetails: result.data.gameDetails as Record<string, unknown> | null | undefined,
         platform:    result.data.platform,
       });
+
+      const friendIds = await friendRepository.findFriendIdsByUserId(request.userId);
+      await presenceRepository.publishScopedUpdate(presence, friendIds);
 
       return reply.status(200).send({ message: 'Presença atualizada.' });
     },

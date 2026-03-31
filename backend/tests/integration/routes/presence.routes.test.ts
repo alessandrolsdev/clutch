@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { buildApp, generateTestToken } from '../../helpers/build-app';
 
 vi.mock('@/core/repositories/presence.repository', () => ({
-  presenceRepository: { set: vi.fn(), get: vi.fn(), setOffline: vi.fn() },
+  presenceRepository: { set: vi.fn(), get: vi.fn(), setOffline: vi.fn(), publishScopedUpdate: vi.fn() },
 }));
 
 vi.mock('@/core/repositories/user.repository', () => ({
@@ -20,7 +20,7 @@ vi.mock('@/core/repositories/friend.repository', () => ({
   friendRepository: {
     createRequest: vi.fn(), findRequestById: vi.fn(), existsRequest: vi.fn(),
     existsFriendship: vi.fn(), acceptRequest: vi.fn(), removeFriendship: vi.fn(),
-    findFriendsByUserId: vi.fn(), findPendingRequests: vi.fn(),
+    findFriendsByUserId: vi.fn(), findPendingRequests: vi.fn(), findFriendIdsByUserId: vi.fn(),
   },
 }));
 
@@ -29,6 +29,7 @@ vi.mock('@/infra/integrations/igdb/igdb.service',    () => ({ igdbService:   {} 
 vi.mock('@/infra/integrations/epic/epic.service',    () => ({ epicService:   {} }));
 
 import { presenceRepository } from '@/core/repositories/presence.repository';
+import { friendRepository }   from '@/core/repositories/friend.repository';
 import { userRepository }     from '@/core/repositories/user.repository';
 
 const mockUser = {
@@ -48,7 +49,9 @@ describe('Presence Routes', () => {
 
   describe('POST /presence', () => {
     it('retorna 200 atualizando para ONLINE', async () => {
-      vi.mocked(presenceRepository.set).mockResolvedValue(undefined);
+      vi.mocked(presenceRepository.set).mockResolvedValue(mockPresence);
+      vi.mocked(friendRepository.findFriendIdsByUserId).mockResolvedValue(['friend-id-1']);
+      vi.mocked(presenceRepository.publishScopedUpdate).mockResolvedValue(undefined);
 
       const app   = await buildApp();
       const token = generateTestToken(app);
@@ -61,11 +64,15 @@ describe('Presence Routes', () => {
       });
 
       expect(response.statusCode).toBe(200);
+      expect(friendRepository.findFriendIdsByUserId).toHaveBeenCalledWith('user-id-1');
+      expect(presenceRepository.publishScopedUpdate).toHaveBeenCalledWith(mockPresence, ['friend-id-1']);
       await app.close();
     });
 
     it('retorna 200 atualizando para IN_GAME', async () => {
-      vi.mocked(presenceRepository.set).mockResolvedValue(undefined);
+      vi.mocked(presenceRepository.set).mockResolvedValue(mockPresence);
+      vi.mocked(friendRepository.findFriendIdsByUserId).mockResolvedValue([]);
+      vi.mocked(presenceRepository.publishScopedUpdate).mockResolvedValue(undefined);
 
       const app   = await buildApp();
       const token = generateTestToken(app);

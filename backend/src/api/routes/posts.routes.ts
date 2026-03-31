@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { notificationService } from '@/core/services/notification.service';
 import { postRepository }     from '@/core/repositories/post.repository';
 import { presenceRepository } from '@/core/repositories/presence.repository';
 import { userRepository }     from '@/core/repositories/user.repository';
@@ -85,6 +86,18 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const { added } = await postRepository.toggleInteraction(request.params.id, request.userId, result.data.type);
+      if (added) {
+        await notificationService.create({
+          userId:  post.userId,
+          actorId: request.userId,
+          type:    'POST_LIKE',
+          payload: {
+            postId:          post.id,
+            interactionType: result.data.type,
+          },
+        });
+      }
+
       return reply.status(200).send({ added });
     },
   );
@@ -105,6 +118,20 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
       const comment = await postRepository.createComment(
         result.data.postId, request.userId, result.data.content, result.data.parentId,
       );
+
+      if (post.userId !== request.userId) {
+        await notificationService.create({
+          userId:  post.userId,
+          actorId: request.userId,
+          type:    'POST_COMMENT',
+          payload: {
+            postId:    post.id,
+            commentId: comment.id,
+            parentId:  comment.parentId ?? null,
+          },
+        });
+      }
+
       return reply.status(201).send(comment);
     },
   );
