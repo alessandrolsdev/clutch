@@ -16,6 +16,7 @@ vi.mock('@/infra/database/client', () => ({
     },
     comment: {
       create:   vi.fn(),
+      findUnique: vi.fn(),
       findMany: vi.fn(),
     },
     friendship: {
@@ -118,6 +119,24 @@ describe('postRepository', () => {
     });
   });
 
+  describe('deleteById', () => {
+    it('deleta post e decrementa postCount do autor correto', async () => {
+      vi.mocked(prisma.post.delete).mockResolvedValue({ userId: 'user-id-1' } as never);
+      vi.mocked(prisma.userStats.updateMany).mockResolvedValue({ count: 1 });
+
+      await postRepository.deleteById('post-id-1');
+
+      expect(prisma.post.delete).toHaveBeenCalledWith({
+        where:  { id: 'post-id-1' },
+        select: { userId: true },
+      });
+      expect(prisma.userStats.updateMany).toHaveBeenCalledWith({
+        where: { userId: 'user-id-1' },
+        data:  { postCount: { decrement: 1 } },
+      });
+    });
+  });
+
   // ── findFeedByUserId ───────────────────────────────────────
   describe('findFeedByUserId', () => {
     it('retorna feed com posts do usuário e amigos', async () => {
@@ -203,6 +222,19 @@ describe('postRepository', () => {
           content:  'Comentário de teste',
           parentId: null,
         },
+      });
+    });
+  });
+
+  describe('findCommentById', () => {
+    it('retorna comentario quando existe', async () => {
+      vi.mocked(prisma.comment.findUnique).mockResolvedValue(mockComment);
+
+      const result = await postRepository.findCommentById('comment-id-1');
+
+      expect(result).toEqual(mockComment);
+      expect(prisma.comment.findUnique).toHaveBeenCalledWith({
+        where: { id: 'comment-id-1' },
       });
     });
   });
