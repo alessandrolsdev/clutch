@@ -2,7 +2,10 @@
 
 import { motion } from 'framer-motion';
 import type { ReactNode } from 'react';
-import { Panel } from '@/components/ui/panel';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { SectionHeading } from '@/components/ui/section-heading';
 import { useUiShellStore } from '@/store/ui-shell-store';
 import type { FoundationCard } from '@/types/foundation';
 
@@ -33,43 +36,44 @@ export function AppShell({ cards, children }: AppShellProps) {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45 }}
-          className="flex flex-col gap-5 rounded-[32px] border border-border bg-[rgba(19,19,26,0.75)] p-8 backdrop-blur"
+          className="flex flex-col gap-section rounded-surface border border-border bg-surface-primary p-card backdrop-blur"
         >
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.4em] text-secondary">
-                CLUTCH
-              </p>
-              <h1 className="mt-3 font-display text-3xl font-semibold tracking-tight text-primary sm:text-4xl">
-                CLUTCH frontend foundation
-              </h1>
-            </div>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <SectionHeading
+              eyebrow="CLUTCH"
+              title="CLUTCH frontend foundation"
+              description="Tokens, primitives and shell patterns are aligned before product features start landing."
+              level="h1"
+            />
 
-            <button
-              type="button"
-              onClick={toggleRoadmap}
-              className="rounded-full border border-border bg-background-tertiary px-4 py-2 text-sm font-medium text-primary transition hover:border-[var(--accent-cyan)] hover:text-[var(--accent-cyan)]"
-            >
+            <Button variant="secondary" size="sm" onClick={toggleRoadmap}>
               {isRoadmapOpen ? 'Hide roadmap' : 'Show roadmap'}
-            </button>
+            </Button>
           </div>
 
           <div className="grid gap-4 md:grid-cols-3">
             {cards.map((card) => (
-              <Panel key={card.title} tone={card.tone}>
-                <h2 className="font-display text-xl font-medium text-primary">
-                  {card.title}
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-secondary">
-                  {card.description}
-                </p>
-              </Panel>
+              <Card key={card.title} tone={card.tone}>
+                <div className="flex flex-col gap-4">
+                  <Badge tone={card.tone === 'accent' ? 'accent' : card.tone === 'success' ? 'success' : 'neutral'}>
+                    Foundation
+                  </Badge>
+                  <div>
+                    <h2 className="font-display text-xl font-medium text-primary">
+                      {card.title}
+                    </h2>
+                    <p className="mt-2 text-sm leading-6 text-secondary">
+                      {card.description}
+                    </p>
+                  </div>
+                </div>
+              </Card>
             ))}
           </div>
         </motion.header>
 
         {isRoadmapOpen ? (
-          <Panel className="border-dashed bg-[rgba(26,26,39,0.8)]">
+          <Card className="border-dashed bg-surface-elevated">
             <p className="text-xs uppercase tracking-[0.35em] text-secondary">
               Foundation roadmap
             </p>
@@ -77,13 +81,13 @@ export function AppShell({ cards, children }: AppShellProps) {
               {roadmapItems.map((item) => (
                 <li
                   key={item}
-                  className="rounded-2xl border border-border bg-[rgba(10,10,15,0.55)] px-4 py-3"
+                  className="rounded-control border border-border bg-[rgba(10,10,15,0.6)] px-control-x py-control-y"
                 >
                   {item}
                 </li>
               ))}
             </ul>
-          </Panel>
+          </Card>
         ) : null}
 
         {children}

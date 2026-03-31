@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
-import { Manrope, Space_Grotesk } from 'next/font/google';
+import { Inter, Space_Grotesk } from 'next/font/google';
 import type { ReactNode } from 'react';
 import './globals.css';
 import { Providers } from './providers';
 
-const bodyFont = Manrope({
+const bodyFont = Inter({
   subsets: ['latin'],
   variable: '--font-body',
 });
