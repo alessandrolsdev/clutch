@@ -102,6 +102,17 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
       const post = await postRepository.findById(result.data.postId);
       if (!post) return reply.status(404).send({ message: 'Post não encontrado.' });
 
+      if (result.data.parentId) {
+        const parentComment = await postRepository.findCommentById(result.data.parentId);
+        if (!parentComment || parentComment.postId !== post.id) {
+          return reply.status(400).send({ message: 'Comentário pai inválido para este post.' });
+        }
+
+        if (parentComment.parentId) {
+          return reply.status(400).send({ message: 'Apenas um nível de resposta é permitido.' });
+        }
+      }
+
       const comment = await postRepository.createComment(
         result.data.postId, request.userId, result.data.content, result.data.parentId,
       );
