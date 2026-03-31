@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
-import { friendRepository } from '@/core/repositories/friend.repository';
-import { notificationService } from '@/core/services/notification.service';
-import { userRepository }   from '@/core/repositories/user.repository';
+import { friendRepository } from '../../core/repositories/friend.repository';
+import { notificationService } from '../../core/services/notification.service';
+import { userRepository } from '../../core/repositories/user.repository';
 
 // ─────────────────────────────────────────────────────────────
 // Friends Routes — todas as rotas protegidas por JWT

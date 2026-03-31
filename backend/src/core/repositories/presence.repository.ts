@@ -1,6 +1,6 @@
 import { PresenceStatus } from '@prisma/client';
-import { prisma } from '@/infra/database/client';
-import { redis, REDIS_KEYS, REDIS_TTL } from '@/infra/cache/redis';
+import { prisma } from '../../infra/database/client';
+import { redis, REDIS_KEYS, REDIS_TTL } from '../../infra/cache/redis';
 
 // ─────────────────────────────────────────────────────────────
 // Presence Repository — Dual-layer Redis + Postgres
