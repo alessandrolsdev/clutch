@@ -1,4 +1,4 @@
-import { buildApiUrl } from '@/services/http/client';
+import { useAuthStore } from '@/store/auth-store';
 
 type JsonBody = Record<string, unknown>;
 
@@ -15,6 +15,7 @@ export async function apiRequest(
   init: ApiRequestInit = {},
 ): Promise<Response> {
   const { body, headers, ...rest } = init;
+  const normalizedPath = pathname.startsWith('/') ? pathname : `/${pathname}`;
 
   const requestHeaders = new Headers(headers);
   let requestBody: BodyInit | undefined;
@@ -26,9 +27,16 @@ export async function apiRequest(
     requestBody = body;
   }
 
-  return fetch(buildApiUrl(pathname), {
+  const response = await fetch(`/api${normalizedPath}`, {
     ...rest,
+    credentials: 'include',
     headers: requestHeaders,
     body: requestBody,
   });
+
+  if (response.status === 401) {
+    useAuthStore.getState().clearSession();
+  }
+
+  return response;
 }

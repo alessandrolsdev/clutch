@@ -1,0 +1,60 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fetchAuthSession, logoutAuthSession } from '@/services/session';
+import { resetAuthStore, useAuthStore } from '@/store/auth-store';
+
+const { apiRequestMock } = vi.hoisted(() => ({
+  apiRequestMock: vi.fn(),
+}));
+
+vi.mock('@/lib/api', () => ({
+  apiRequest: apiRequestMock,
+}));
+
+describe('session service', () => {
+  beforeEach(() => {
+    resetAuthStore();
+    apiRequestMock.mockReset();
+  });
+
+  it('hydrates the session from the auth me contract', async () => {
+    apiRequestMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: 'user-1',
+          username: 'clutchplayer',
+          email: 'clutchplayer@clutch.gg',
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      ),
+    );
+
+    await expect(fetchAuthSession()).resolves.toEqual({
+      id: 'user-1',
+      username: 'clutchplayer',
+      email: 'clutchplayer@clutch.gg',
+    });
+  });
+
+  it('clears the local session on logout', async () => {
+    useAuthStore.getState().setSession({
+      id: 'user-1',
+      username: 'clutchplayer',
+      email: 'clutchplayer@clutch.gg',
+    });
+
+    apiRequestMock.mockResolvedValue(new Response(null, { status: 200 }));
+
+    await logoutAuthSession();
+
+    expect(apiRequestMock).toHaveBeenCalledWith('/auth/logout', {
+      method: 'POST',
+    });
+    expect(useAuthStore.getState().status).toBe('unauthenticated');
+    expect(useAuthStore.getState().user).toBeNull();
+  });
+});

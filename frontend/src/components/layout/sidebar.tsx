@@ -1,9 +1,11 @@
 'use client';
+
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils/cn';
+import { useAuth } from '@/hooks/use-auth';
 
 type SidebarProps = {
   isOpen: boolean;
@@ -45,15 +47,6 @@ const sidebarItems: SidebarItem[] = [
   },
 ];
 
-const mockUser = {
-  username: 'clutchplayer',
-  displayName: 'CLUTCH Player',
-  status: 'ONLINE',
-  statusTone: 'success',
-  currentGame: 'Valorant',
-  platform: 'PC',
-} as const;
-
 function SidebarNavItem({ item }: { item: SidebarItem }) {
   return (
     <button
@@ -75,6 +68,23 @@ function SidebarNavItem({ item }: { item: SidebarItem }) {
 }
 
 export function Sidebar({ isOpen, onClose, className }: SidebarProps) {
+  const { user, status, logout } = useAuth();
+
+  const displayUser = user ?? {
+    id: 'demo-user',
+    username: 'clutchplayer',
+    email: 'clutchplayer@clutch.gg',
+  };
+
+  const sessionLabel =
+    status === 'authenticated'
+      ? 'Sessão ativa'
+      : status === 'loading'
+        ? 'Restaurando sessão'
+        : 'Sessão offline';
+
+  const logoutLabel = status === 'authenticated' ? 'Sair' : 'Aguardando sessão';
+
   return (
     <>
       <button
@@ -120,27 +130,47 @@ export function Sidebar({ isOpen, onClose, className }: SidebarProps) {
 
           <Card className="mt-auto" tone="neutral">
             <div className="flex items-start gap-4">
-              <Avatar alt="CLUTCH Player" fallback="CP" size="lg" />
+              <Avatar
+                alt={displayUser.username}
+                fallback={displayUser.username.slice(0, 2).toUpperCase()}
+                size="lg"
+              />
               <div className="min-w-0 flex-1">
                 <p className="text-xs uppercase tracking-[0.35em] text-secondary">
                   Connected user
                 </p>
                 <h3 className="mt-2 truncate font-display text-xl font-semibold text-primary">
-                  {mockUser.displayName}
+                  {displayUser.username}
                 </h3>
-                <p className="truncate text-sm text-secondary">@{mockUser.username}</p>
+                <p className="truncate text-sm text-secondary">{displayUser.email}</p>
               </div>
             </div>
 
             <div className="mt-5 flex flex-wrap items-center gap-2">
-              <Badge tone={mockUser.statusTone}>{mockUser.status}</Badge>
-              <Badge tone="neutral">{mockUser.platform}</Badge>
+              <Badge tone={status === 'authenticated' ? 'success' : 'neutral'}>
+                {sessionLabel}
+              </Badge>
+              <Badge tone="neutral">httpOnly cookie</Badge>
             </div>
 
             <p className="mt-4 text-sm leading-6 text-secondary">
-              Playing {mockUser.currentGame}. Status is mocked locally until the realtime
-              presence flow is wired in a later issue.
+              A sessão é hidratada do cookie do backend sem expor JWT no browser.
             </p>
+
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <span className="text-xs uppercase tracking-[0.35em] text-secondary">
+                {logoutLabel}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => void logout()}
+                disabled={status !== 'authenticated'}
+              >
+                Sair
+              </Button>
+            </div>
           </Card>
         </div>
       </aside>
