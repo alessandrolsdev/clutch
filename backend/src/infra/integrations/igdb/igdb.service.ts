@@ -1,5 +1,5 @@
-    import axios from 'axios';
-import { redis } from '@/infra/cache/redis';
+import axios from 'axios';
+import { redis } from '../../cache/redis';
 
 // ─────────────────────────────────────────────────────────────
 // IGDB Service — Twitch OAuth + game metadata

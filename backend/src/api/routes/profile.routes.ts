@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { profileRepository } from '@/core/repositories/profile.repository';
-import { userRepository }    from '@/core/repositories/user.repository';
+import { profileRepository } from '../../core/repositories/profile.repository';
+import { userRepository } from '../../core/repositories/user.repository';
 
 // ─────────────────────────────────────────────────────────────
 // Profile Routes
