@@ -3,6 +3,10 @@ import {
   loginSessionSchema,
   type LoginRequestValues,
   type LoginSession,
+  registerRequestSchema,
+  registerSessionSchema,
+  type RegisterRequestValues,
+  type RegisterSession,
 } from '@/schemas/auth';
 import { apiRequest } from '@/lib/api';
 
@@ -69,4 +73,31 @@ export async function login(input: LoginRequestValues): Promise<LoginSession> {
   }
 
   return loginSessionSchema.parse(payload);
+}
+
+export async function register(
+  input: RegisterRequestValues,
+): Promise<RegisterSession> {
+  const registration = registerRequestSchema.parse(input);
+
+  const response = await apiRequest('/auth/register', {
+    method: 'POST',
+    body: registration,
+  });
+
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    const fallbackMessage =
+      response.status === 409
+        ? 'Email ou username ja esta em uso.'
+        : 'Nao foi possivel criar a conta agora.';
+
+    throw new AuthRequestError(
+      response.status,
+      resolveErrorMessage(payload, fallbackMessage),
+    );
+  }
+
+  return registerSessionSchema.parse(payload);
 }
