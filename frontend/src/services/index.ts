@@ -18,4 +18,10 @@ export {
   FeedRequestError,
   togglePostInteraction,
 } from './feed';
+export {
+  fetchNotifications,
+  markAllNotificationsAsRead,
+  markNotificationAsRead,
+  NotificationsRequestError,
+} from './notifications';
 export { fetchProfileByUsername, ProfileRequestError } from './profile';

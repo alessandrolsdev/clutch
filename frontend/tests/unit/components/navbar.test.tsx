@@ -20,6 +20,10 @@ vi.mock('@/components/friends/friend-request-card', () => ({
   ),
 }));
 
+vi.mock('@/components/notifications/notifications-bell', () => ({
+  NotificationsBell: () => <div data-testid="notifications-bell">notifications-bell</div>,
+}));
+
 const mockedUseAuth = vi.mocked(useAuth);
 const mockedFetchPendingFriendRequests = vi.mocked(fetchPendingFriendRequests);
 
@@ -71,6 +75,7 @@ describe('Navbar', () => {
 
     renderNavbar();
 
+    expect(screen.getByTestId('notifications-bell')).toBeInTheDocument();
     expect(await screen.findByText('1')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /open friend requests preview/i }));

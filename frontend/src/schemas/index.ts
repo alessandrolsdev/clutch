@@ -30,4 +30,14 @@ export {
   pendingFriendRequestSchema,
   pendingFriendRequestsResponseSchema,
 } from './friends';
+export {
+  friendAcceptedNotificationPayloadSchema,
+  friendRequestNotificationPayloadSchema,
+  markAllNotificationsReadResponseSchema,
+  notificationRecordSchema,
+  notificationsResponseSchema,
+  notificationTypeSchema,
+  postCommentNotificationPayloadSchema,
+  postLikeNotificationPayloadSchema,
+} from './notifications';
 export { profileResponseSchema } from './profile';
