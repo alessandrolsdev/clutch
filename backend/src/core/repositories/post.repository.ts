@@ -1,5 +1,5 @@
 import { Post, Interaction, Comment } from '@prisma/client';
-import { prisma } from '@/infra/database/client';
+import { prisma } from '../../infra/database/client';
 
 // ─────────────────────────────────────────────────────────────
 // Post Repository

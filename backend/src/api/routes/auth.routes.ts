@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import bcrypt from 'bcrypt';
-import { userRepository } from '@/core/repositories/user.repository';
+import { userRepository } from '../../core/repositories/user.repository';
 
 // ─────────────────────────────────────────────────────────────
 // Auth Routes

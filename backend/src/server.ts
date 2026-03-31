@@ -1,13 +1,13 @@
 import Fastify from 'fastify';
 import fastifyJwt from '@fastify/jwt';
-import { authRoutes }          from '@/api/routes/auth.routes';
-import { profileRoutes }       from '@/api/routes/profile.routes';
-import { friendRoutes }        from '@/api/routes/friends.routes';
-import { presenceRoutes }      from '@/api/routes/presence.routes';
-import { integrationRoutes }   from '@/api/routes/integrations.routes';
-import { postRoutes }          from '@/api/routes/posts.routes';
-import { notificationRoutes }  from '@/api/routes/notifications.routes';
-import { authenticate }        from '@/api/middlewares/authenticate';
+import { authRoutes } from './api/routes/auth.routes';
+import { profileRoutes } from './api/routes/profile.routes';
+import { friendRoutes } from './api/routes/friends.routes';
+import { presenceRoutes } from './api/routes/presence.routes';
+import { integrationRoutes } from './api/routes/integrations.routes';
+import { postRoutes } from './api/routes/posts.routes';
+import { notificationRoutes } from './api/routes/notifications.routes';
+import { authenticate } from './api/middlewares/authenticate';
 
 // ─────────────────────────────────────────────────────────────
 // CLUTCH ⚡ — Entry point

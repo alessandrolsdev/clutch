@@ -1,9 +1,9 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { notificationService } from '@/core/services/notification.service';
-import { postRepository }     from '@/core/repositories/post.repository';
-import { presenceRepository } from '@/core/repositories/presence.repository';
-import { userRepository }     from '@/core/repositories/user.repository';
+import { notificationService } from '../../core/services/notification.service';
+import { postRepository } from '../../core/repositories/post.repository';
+import { presenceRepository } from '../../core/repositories/presence.repository';
+import { userRepository } from '../../core/repositories/user.repository';
 
 const createPostSchema = z.object({
   contentText: z.string().max(500).optional(),
