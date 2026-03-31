@@ -1,5 +1,13 @@
 export { buildApiUrl } from './http/client';
 export { login, register, AuthRequestError } from './auth';
 export { fetchAuthSession, logoutAuthSession } from './session';
-export { fetchFeed, FeedRequestError } from './feed';
+export {
+  createPost,
+  createPostComment,
+  deletePost,
+  fetchFeed,
+  fetchPostComments,
+  FeedRequestError,
+  togglePostInteraction,
+} from './feed';
 export { fetchProfileByUsername, ProfileRequestError } from './profile';
