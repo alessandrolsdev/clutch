@@ -22,6 +22,18 @@ vi.mock('@/services/profile', () => ({
   },
 }));
 
+vi.mock('@/components/friends/friend-button', () => ({
+  FriendButton: ({ targetUserId }: { targetUserId: string }) => (
+    <div data-testid="friend-button">friend-button:{targetUserId}</div>
+  ),
+}));
+
+vi.mock('@/components/friends/friends-list', () => ({
+  FriendsList: ({ userId }: { userId: string }) => (
+    <div data-testid="friends-list">friends-list:{userId}</div>
+  ),
+}));
+
 const mockedFetchProfile = vi.mocked(fetchProfileByUsername);
 
 const profileFixture: ProfileResponse = {
@@ -112,6 +124,8 @@ describe('ProfilePageContent', () => {
       screen.getByRole('heading', { name: /clutch player/i }),
     ).toBeInTheDocument();
     expect(screen.getByText(/jogando valorant/i)).toBeInTheDocument();
+    expect(screen.getByTestId('friend-button')).toHaveTextContent('friend-button:user-1');
+    expect(screen.getByTestId('friends-list')).toHaveTextContent('friends-list:user-1');
   });
 
   it('renders not found state', async () => {
