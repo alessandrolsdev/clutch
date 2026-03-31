@@ -1,16 +1,62 @@
 :root {
-  --background-primary: #0a0a0f;
-  --background-secondary: #13131a;
-  --background-tertiary: #1a1a27;
-  --border-default: #1e1e2e;
-  --border-muted: #2a2a3e;
-  --accent-purple: #7c3aed;
-  --accent-cyan: #06b6d4;
-  --status-online: #10b981;
-  --status-ingame: #8b5cf6;
-  --status-afk: #f59e0b;
-  --status-offline: #6b7280;
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #475569;
+  /* Primitive colors */
+  --clutch-neutral-950: #0a0a0f;
+  --clutch-neutral-900: #13131a;
+  --clutch-neutral-800: #1a1a27;
+  --clutch-border-700: #1e1e2e;
+  --clutch-border-600: #2a2a3e;
+  --clutch-accent-purple-500: #7c3aed;
+  --clutch-accent-cyan-500: #06b6d4;
+  --clutch-status-online-500: #10b981;
+  --clutch-status-ingame-500: #8b5cf6;
+  --clutch-status-afk-500: #f59e0b;
+  --clutch-status-offline-500: #6b7280;
+  --clutch-text-50: #f8fafc;
+  --clutch-text-400: #94a3b8;
+  --clutch-text-500: #475569;
+
+  /* Semantic colors */
+  --color-background-primary: var(--clutch-neutral-950);
+  --color-background-secondary: var(--clutch-neutral-900);
+  --color-background-tertiary: var(--clutch-neutral-800);
+  --color-surface-primary: rgba(19, 19, 26, 0.9);
+  --color-surface-elevated: rgba(26, 26, 39, 0.96);
+  --color-surface-overlay: rgba(10, 10, 15, 0.88);
+  --color-border-default: var(--clutch-border-700);
+  --color-border-muted: var(--clutch-border-600);
+  --color-accent-purple: var(--clutch-accent-purple-500);
+  --color-accent-cyan: var(--clutch-accent-cyan-500);
+  --color-status-online: var(--clutch-status-online-500);
+  --color-status-ingame: var(--clutch-status-ingame-500);
+  --color-status-afk: var(--clutch-status-afk-500);
+  --color-status-offline: var(--clutch-status-offline-500);
+  --color-text-primary: var(--clutch-text-50);
+  --color-text-secondary: var(--clutch-text-400);
+  --color-text-muted: var(--clutch-text-500);
+
+  /* Layout scales */
+  --radius-surface: 1.5rem;
+  --radius-control: 0.875rem;
+  --radius-pill: 9999px;
+  --space-page-x: 1.5rem;
+  --space-page-y: 2.5rem;
+  --space-section: 1.5rem;
+  --space-card: 1.5rem;
+  --space-control-x: 1rem;
+  --space-control-y: 0.75rem;
+
+  /* Component tokens */
+  --button-background: var(--color-background-tertiary);
+  --button-background-hover: #212134;
+  --button-border: var(--color-border-default);
+  --button-text: var(--color-text-primary);
+  --input-background: var(--color-background-secondary);
+  --input-placeholder: var(--color-text-muted);
+  --badge-background: rgba(26, 26, 39, 0.96);
+  --badge-background-accent: rgba(124, 58, 237, 0.15);
+  --badge-background-success: rgba(16, 185, 129, 0.14);
+  --badge-background-warning: rgba(245, 158, 11, 0.14);
+  --card-background: var(--color-surface-primary);
+  --card-background-accent: linear-gradient(160deg, rgba(124, 58, 237, 0.18), rgba(10, 10, 15, 0.92));
+  --card-background-success: linear-gradient(160deg, rgba(16, 185, 129, 0.16), rgba(19, 19, 26, 0.92));
 }
