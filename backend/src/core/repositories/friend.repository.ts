@@ -137,6 +137,15 @@ export const friendRepository = {
     return friendships.map((f) => f.friend);
   },
 
+  async findFriendIdsByUserId(userId: string): Promise<string[]> {
+    const friendships = await prisma.friendship.findMany({
+      where:  { userId },
+      select: { friendId: true },
+    });
+
+    return friendships.map((friendship) => friendship.friendId);
+  },
+
   async findPendingRequests(receiverId: string): Promise<PendingRequest[]> {
     return prisma.friendRequest.findMany({
       where:   { receiverId, status: 'PENDING' },

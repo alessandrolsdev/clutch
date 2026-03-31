@@ -15,7 +15,7 @@ vi.mock('@/core/repositories/post.repository', () => ({
 }));
 
 vi.mock('@/core/repositories/presence.repository', () => ({
-  presenceRepository: { set: vi.fn(), get: vi.fn(), setOffline: vi.fn() },
+  presenceRepository: { set: vi.fn(), get: vi.fn(), setOffline: vi.fn(), publishScopedUpdate: vi.fn() },
 }));
 
 vi.mock('@/core/repositories/user.repository', () => ({
@@ -33,7 +33,13 @@ vi.mock('@/core/repositories/friend.repository', () => ({
   friendRepository: {
     createRequest: vi.fn(), findRequestById: vi.fn(), existsRequest: vi.fn(),
     existsFriendship: vi.fn(), acceptRequest: vi.fn(), removeFriendship: vi.fn(),
-    findFriendsByUserId: vi.fn(), findPendingRequests: vi.fn(),
+    findFriendsByUserId: vi.fn(), findPendingRequests: vi.fn(), findFriendIdsByUserId: vi.fn(),
+  },
+}));
+
+vi.mock('@/core/services/notification.service', () => ({
+  notificationService: {
+    create: vi.fn(),
   },
 }));
 
@@ -42,6 +48,7 @@ vi.mock('@/infra/integrations/igdb/igdb.service',    () => ({ igdbService:   {} 
 vi.mock('@/infra/integrations/epic/epic.service',    () => ({ epicService:   {} }));
 
 import { postRepository }     from '@/core/repositories/post.repository';
+import { notificationService } from '@/core/services/notification.service';
 import { presenceRepository } from '@/core/repositories/presence.repository';
 import { userRepository }     from '@/core/repositories/user.repository';
 
@@ -173,6 +180,15 @@ describe('Posts Routes', () => {
       });
 
       expect(response.statusCode).toBe(200);
+      expect(notificationService.create).toHaveBeenCalledWith({
+        userId:  'user-id-1',
+        actorId: 'user-id-2',
+        type:    'POST_LIKE',
+        payload: {
+          postId:          'post-id-1',
+          interactionType: 'GG',
+        },
+      });
       await app.close();
     });
 
@@ -190,6 +206,7 @@ describe('Posts Routes', () => {
       });
 
       expect(response.statusCode).toBe(400);
+      expect(notificationService.create).not.toHaveBeenCalled();
       await app.close();
     });
 
@@ -230,6 +247,16 @@ describe('Posts Routes', () => {
       });
 
       expect(response.statusCode).toBe(201);
+      expect(notificationService.create).toHaveBeenCalledWith({
+        userId:  'user-id-1',
+        actorId: 'user-id-2',
+        type:    'POST_COMMENT',
+        payload: {
+          postId:    'post-id-1',
+          commentId: 'c1',
+          parentId:  null,
+        },
+      });
       await app.close();
     });
 

@@ -23,12 +23,12 @@ vi.mock('@/core/repositories/friend.repository', () => ({
   friendRepository: {
     createRequest: vi.fn(), findRequestById: vi.fn(), existsRequest: vi.fn(),
     existsFriendship: vi.fn(), acceptRequest: vi.fn(), removeFriendship: vi.fn(),
-    findFriendsByUserId: vi.fn(), findPendingRequests: vi.fn(),
+    findFriendsByUserId: vi.fn(), findPendingRequests: vi.fn(), findFriendIdsByUserId: vi.fn(),
   },
 }));
 
 vi.mock('@/core/repositories/presence.repository', () => ({
-  presenceRepository: { set: vi.fn(), get: vi.fn(), setOffline: vi.fn() },
+  presenceRepository: { set: vi.fn(), get: vi.fn(), setOffline: vi.fn(), publishScopedUpdate: vi.fn() },
 }));
 
 vi.mock('@/core/repositories/post.repository', () => ({

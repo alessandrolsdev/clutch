@@ -24,9 +24,15 @@ export interface SetPresenceInput {
   platform?:    string | null;
 }
 
+export interface PresenceRealtimeMessage {
+  event:   'FRIEND_PRESENCE';
+  payload: PresenceData;
+  ts:      number;
+}
+
 export const presenceRepository = {
 
-  async set(userId: string, input: SetPresenceInput): Promise<void> {
+  async set(userId: string, input: SetPresenceInput): Promise<PresenceData> {
     const data: PresenceData = {
       userId,
       status:      input.status,
@@ -65,11 +71,7 @@ export const presenceRepository = {
       },
     });
 
-    // ── Pub/Sub → Go service ───────────────────────────────
-    await redis.publish(
-      REDIS_KEYS.presenceUpdate,
-      JSON.stringify(data),
-    );
+    return data;
   },
 
   async get(userId: string): Promise<PresenceData> {
@@ -105,7 +107,7 @@ export const presenceRepository = {
     };
   },
 
-  async setOffline(userId: string): Promise<void> {
+  async setOffline(userId: string): Promise<PresenceData> {
     // ── Remove do Redis ────────────────────────────────────
     await redis.del(REDIS_KEYS.presence(userId));
 
@@ -116,18 +118,14 @@ export const presenceRepository = {
       update: { status: 'OFFLINE', currentGame: null, platform: null },
     });
 
-    // ── Publica OFFLINE no Pub/Sub ─────────────────────────
-    await redis.publish(
-      REDIS_KEYS.presenceUpdate,
-      JSON.stringify({
-        userId,
-        status:      'OFFLINE',
-        currentGame: null,
-        gameDetails: null,
-        platform:    null,
-        updatedAt:   new Date().toISOString(),
-      }),
-    );
+    return {
+      userId,
+      status:      'OFFLINE',
+      currentGame: null,
+      gameDetails: null,
+      platform:    null,
+      updatedAt:   new Date().toISOString(),
+    };
   },
 
   async getFriendsPresence(userIds: string[]): Promise<PresenceData[]> {
@@ -162,6 +160,29 @@ export const presenceRepository = {
     });
 
     return presences;
+  },
+
+  async publishScopedUpdate(presence: PresenceData, recipientIds: string[]): Promise<void> {
+    const uniqueRecipients = Array.from(new Set(
+      recipientIds.filter((recipientId) => recipientId !== presence.userId),
+    ));
+
+    if (uniqueRecipients.length === 0) {
+      return;
+    }
+
+    const message: PresenceRealtimeMessage = {
+      event:   'FRIEND_PRESENCE',
+      payload: presence,
+      ts:      Date.now(),
+    };
+
+    await Promise.all(uniqueRecipients.map((recipientId) => (
+      redis.publish(
+        REDIS_KEYS.presenceFeed(recipientId),
+        JSON.stringify(message),
+      )
+    )));
   },
 
 };
