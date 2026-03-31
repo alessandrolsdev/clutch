@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { NotificationsBell } from '@/components/notifications/notifications-bell';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils/cn';
 import { fetchPendingFriendRequests } from '@/services/friends';
@@ -108,70 +109,73 @@ export function Navbar({
 
         <div className="flex items-center gap-2">
           {variant === 'app' ? (
-            <div className="relative">
-              <ActionButton
-                type="button"
-                aria-label="Open friend requests preview"
-                onClick={() => {
-                  setIsRequestsOpen((current) => !current);
-                }}
-              >
-                Requests
-                <FriendRequestsBadge
-                  count={pendingRequests.length}
-                  isLoading={pendingRequestsQuery.isPending}
-                />
-              </ActionButton>
+            <>
+              <NotificationsBell />
+              <div className="relative">
+                <ActionButton
+                  type="button"
+                  aria-label="Open friend requests preview"
+                  onClick={() => {
+                    setIsRequestsOpen((current) => !current);
+                  }}
+                >
+                  Requests
+                  <FriendRequestsBadge
+                    count={pendingRequests.length}
+                    isLoading={pendingRequestsQuery.isPending}
+                  />
+                </ActionButton>
 
-              {isRequestsOpen && status === 'authenticated' ? (
-                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-40 w-[22rem] max-w-[calc(100vw-2rem)]">
-                  <Card>
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <p className="text-xs uppercase tracking-[0.35em] text-secondary">
-                          Pedidos
-                        </p>
-                        <h2 className="font-display text-xl font-semibold text-primary">
-                          Friend requests
-                        </h2>
-                      </div>
-
-                      {pendingRequestsQuery.isPending ? (
-                        <p className="text-sm text-secondary">
-                          Carregando pedidos pendentes...
-                        </p>
-                      ) : null}
-
-                      {pendingRequestsQuery.isError ? (
-                        <p className="text-sm text-status-afk">
-                          Nao foi possivel carregar os pedidos pendentes.
-                        </p>
-                      ) : null}
-
-                      {!pendingRequestsQuery.isPending &&
-                      !pendingRequestsQuery.isError &&
-                      pendingRequests.length === 0 ? (
-                        <p className="text-sm text-secondary">
-                          Nenhum pedido pendente no momento.
-                        </p>
-                      ) : null}
-
-                      {pendingRequests.length > 0 ? (
-                        <div className="space-y-3">
-                          {pendingRequests.map((request) => (
-                            <FriendRequestCard
-                              key={request.id}
-                              request={request}
-                              receiverUserId={user?.id ?? ''}
-                            />
-                          ))}
+                {isRequestsOpen && status === 'authenticated' ? (
+                  <div className="absolute right-0 top-[calc(100%+0.75rem)] z-40 w-[22rem] max-w-[calc(100vw-2rem)]">
+                    <Card>
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <p className="text-xs uppercase tracking-[0.35em] text-secondary">
+                            Pedidos
+                          </p>
+                          <h2 className="font-display text-xl font-semibold text-primary">
+                            Friend requests
+                          </h2>
                         </div>
-                      ) : null}
-                    </div>
-                  </Card>
-                </div>
-              ) : null}
-            </div>
+
+                        {pendingRequestsQuery.isPending ? (
+                          <p className="text-sm text-secondary">
+                            Carregando pedidos pendentes...
+                          </p>
+                        ) : null}
+
+                        {pendingRequestsQuery.isError ? (
+                          <p className="text-sm text-status-afk">
+                            Nao foi possivel carregar os pedidos pendentes.
+                          </p>
+                        ) : null}
+
+                        {!pendingRequestsQuery.isPending &&
+                        !pendingRequestsQuery.isError &&
+                        pendingRequests.length === 0 ? (
+                          <p className="text-sm text-secondary">
+                            Nenhum pedido pendente no momento.
+                          </p>
+                        ) : null}
+
+                        {pendingRequests.length > 0 ? (
+                          <div className="space-y-3">
+                            {pendingRequests.map((request) => (
+                              <FriendRequestCard
+                                key={request.id}
+                                request={request}
+                                receiverUserId={user?.id ?? ''}
+                              />
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    </Card>
+                  </div>
+                ) : null}
+              </div>
+            </>
           ) : (
             <Badge tone="accent">No sidebar</Badge>
           )}
