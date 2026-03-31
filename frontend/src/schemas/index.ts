@@ -4,4 +4,7 @@ export {
   loginBackendResponseSchema,
   loginRequestSchema,
   loginSessionSchema,
+  registerBackendResponseSchema,
+  registerRequestSchema,
+  registerSessionSchema,
 } from './auth';
