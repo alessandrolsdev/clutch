@@ -3,7 +3,8 @@ import { DEFAULT_PORT, resolveServerPort } from '../../../src/config/server-conf
 
 describe('server-config', () => {
   it('retorna a porta padrão quando PORT não está definida', () => {
-    expect(resolveServerPort(undefined)).toBe(DEFAULT_PORT);
+    expect(resolveServerPort(undefined)).toBe(3344);
+    expect(DEFAULT_PORT).toBe(3344);
   });
 
   it('retorna a porta configurada quando PORT é válida', () => {
