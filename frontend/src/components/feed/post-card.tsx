@@ -1,7 +1,16 @@
+'use client';
+
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { CommentSection } from '@/components/feed/comment-section';
+import { GameContextBadge } from '@/components/feed/game-context-badge';
+import { ReactionBar } from '@/components/feed/reaction-bar';
+import { useAuth } from '@/hooks/use-auth';
 import { type FeedPost } from '@/schemas/feed';
+import { deletePost, FeedRequestError } from '@/services/feed';
 
 type PostCardProps = {
   post: FeedPost;
@@ -21,15 +30,33 @@ function formatPostDate(value: string): string {
 }
 
 export function PostCard({ post }: PostCardProps) {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
   const displayName =
     post.author.profile?.displayName && post.author.profile.displayName.length > 0
       ? post.author.profile.displayName
       : post.author.username;
   const avatarFallback = post.author.username.slice(0, 2).toUpperCase();
+  const isOwnPost = user?.id === post.author.id;
+
+  const deletePostMutation = useMutation({
+    mutationFn: deletePost,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['feed'],
+      });
+    },
+  });
+
+  const deleteErrorMessage = deletePostMutation.error instanceof FeedRequestError
+    ? deletePostMutation.error.message
+    : deletePostMutation.isError
+      ? 'Nao foi possivel excluir este post agora.'
+      : null;
 
   return (
     <Card data-testid="feed-post-card">
-      <article className="space-y-4">
+      <article className="space-y-5">
         <header className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 items-start gap-3">
             <Avatar
@@ -61,17 +88,42 @@ export function PostCard({ post }: PostCardProps) {
         ) : null}
 
         {post.gameContext ? (
-          <p className="text-xs text-secondary">
-            Jogando {post.gameContext.gameName || 'desconhecido'} em{' '}
-            {post.gameContext.platform || 'plataforma nao informada'}
-          </p>
+          <GameContextBadge gameContext={post.gameContext} />
         ) : null}
 
-        <footer className="flex flex-wrap items-center justify-between gap-2 text-xs text-secondary">
-          <span>{formatPostDate(post.createdAt)}</span>
-          <span>
-            {post._count.interactions} reacoes • {post._count.comments} comentarios
-          </span>
+        <ReactionBar
+          postId={post.id}
+          initialReactionCount={post._count.interactions}
+          canInteract={!isOwnPost}
+        />
+
+        <CommentSection
+          postId={post.id}
+          initialCommentCount={post._count.comments}
+        />
+
+        <footer className="space-y-3 border-t border-border/70 pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-secondary">
+            <span>{formatPostDate(post.createdAt)}</span>
+            {isOwnPost ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={deletePostMutation.isPending}
+                onClick={() => {
+                  deletePostMutation.mutate(post.id);
+                }}
+              >
+                {deletePostMutation.isPending ? 'Excluindo...' : 'Excluir post'}
+              </Button>
+            ) : null}
+          </div>
+
+          {deleteErrorMessage ? (
+            <p role="alert" className="text-sm text-status-afk">
+              {deleteErrorMessage}
+            </p>
+          ) : null}
         </footer>
       </article>
     </Card>
