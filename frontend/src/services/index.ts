@@ -32,6 +32,11 @@ export {
   syncSteamLibrary,
 } from './integrations';
 export {
+  fetchPresenceCredential,
+  PresenceConnection,
+  PresenceRequestError,
+} from './presence';
+export {
   fetchProfileByUsername,
   ProfileRequestError,
   updateProfileByUsername,

@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card';
 import { PresenceBadge } from '@/components/profile/presence-badge';
 import { type FriendSummary, type FriendPresenceStatus } from '@/schemas/friends';
 import { fetchFriends } from '@/services/friends';
+import { usePresenceStore, type PresenceEntry } from '@/store/presence-store';
 
 type FriendsListProps = {
   userId: string;
@@ -28,6 +29,29 @@ export function sortFriendsByPresence(friends: FriendSummary[]): FriendSummary[]
   });
 }
 
+function resolvePresence(
+  friend: FriendSummary,
+  realtimePresence: PresenceEntry | undefined,
+) {
+  return {
+    status: realtimePresence?.status ?? friend.presence?.status ?? 'OFFLINE',
+    currentGame: realtimePresence?.currentGame ?? friend.presence?.currentGame ?? null,
+    platform: realtimePresence?.platform ?? friend.presence?.platform ?? null,
+  } as const;
+}
+
+export function sortFriendsByEffectivePresence(
+  friends: FriendSummary[],
+  entries: Record<string, PresenceEntry>,
+): FriendSummary[] {
+  return [...friends].sort((left, right) => {
+    const leftStatus = resolvePresence(left, entries[left.id]).status;
+    const rightStatus = resolvePresence(right, entries[right.id]).status;
+
+    return presenceOrder[leftStatus] - presenceOrder[rightStatus];
+  });
+}
+
 function FriendsListLoadingState() {
   return (
     <Card data-testid="friends-list-loading">
@@ -44,6 +68,7 @@ export function FriendsList({
   userId,
   title = 'Amigos',
 }: FriendsListProps) {
+  const presenceEntries = usePresenceStore((state) => state.entries);
   const friendsQuery = useQuery({
     queryKey: ['friends', userId],
     queryFn: () => fetchFriends(userId),
@@ -68,7 +93,7 @@ export function FriendsList({
     );
   }
 
-  const friends = sortFriendsByPresence(friendsQuery.data);
+  const friends = sortFriendsByEffectivePresence(friendsQuery.data, presenceEntries);
 
   if (friends.length === 0) {
     return (
@@ -102,6 +127,7 @@ export function FriendsList({
                 ? friend.profile.displayName
                 : friend.username;
             const avatarFallback = friend.username.slice(0, 2).toUpperCase();
+            const effectivePresence = resolvePresence(friend, presenceEntries[friend.id]);
 
             return (
               <div
@@ -124,9 +150,9 @@ export function FriendsList({
                 </div>
 
                 <PresenceBadge
-                  status={friend.presence?.status ?? 'OFFLINE'}
-                  currentGame={friend.presence?.currentGame ?? null}
-                  platform={friend.presence?.platform ?? null}
+                  status={effectivePresence.status}
+                  currentGame={effectivePresence.currentGame}
+                  platform={effectivePresence.platform}
                 />
               </div>
             );
