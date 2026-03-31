@@ -5,3 +5,4 @@ export {
   loginRequestSchema,
   loginSessionSchema,
 } from './auth';
+export { feedResponseSchema } from './feed';
