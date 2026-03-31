@@ -8,12 +8,14 @@ import { integrationRoutes } from './api/routes/integrations.routes';
 import { postRoutes } from './api/routes/posts.routes';
 import { notificationRoutes } from './api/routes/notifications.routes';
 import { authenticate } from './api/middlewares/authenticate';
+import { resolveServerPort } from './config/server-config';
 
 // ─────────────────────────────────────────────────────────────
 // CLUTCH ⚡ — Entry point
 // ─────────────────────────────────────────────────────────────
 
 const app = Fastify({ logger: true });
+const port = resolveServerPort(process.env['PORT']);
 
 // ── JWT Plugin ────────────────────────────────────────────────
 await app.register(fastifyJwt, {
@@ -42,8 +44,12 @@ await app.register(notificationRoutes, { prefix: '/notifications' });
 // ── Start ─────────────────────────────────────────────────────
 const start = async (): Promise<void> => {
   try {
-    await app.listen({ port: 3333, host: '0.0.0.0' });
+    await app.listen({ port, host: '0.0.0.0' });
   } catch (err) {
+    if (err instanceof Error && 'code' in err && err.code === 'EADDRINUSE') {
+      app.log.error(`Port ${port} is already in use. Stop the running API instance or set PORT to a different value.`);
+    }
+
     app.log.error(err);
     process.exit(1);
   }
