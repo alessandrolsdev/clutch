@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { friendRepository } from '@/core/repositories/friend.repository';
+import { notificationService } from '@/core/services/notification.service';
 import { userRepository }   from '@/core/repositories/user.repository';
 
 // ─────────────────────────────────────────────────────────────
@@ -36,6 +37,16 @@ export async function friendRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const friendRequest = await friendRepository.createRequest(request.userId, targetId);
+      await notificationService.create({
+        userId:  targetId,
+        actorId: request.userId,
+        type:    'FRIEND_REQUEST',
+        payload: {
+          requestId: friendRequest.id,
+          senderId:  request.userId,
+        },
+      });
+
       return reply.status(201).send({ id: friendRequest.id, status: friendRequest.status });
     },
   );
@@ -61,6 +72,15 @@ export async function friendRoutes(app: FastifyInstance): Promise<void> {
         friendRequest.senderId,
         friendRequest.receiverId,
       );
+      await notificationService.create({
+        userId:  friendRequest.senderId,
+        actorId: request.userId,
+        type:    'FRIEND_ACCEPTED',
+        payload: {
+          requestId: request.params.requestId,
+          friendId:  request.userId,
+        },
+      });
 
       return reply.status(200).send({ message: 'Amizade confirmada.' });
     },

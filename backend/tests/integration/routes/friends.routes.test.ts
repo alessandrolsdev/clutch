@@ -5,7 +5,13 @@ vi.mock('@/core/repositories/friend.repository', () => ({
   friendRepository: {
     createRequest: vi.fn(), findRequestById: vi.fn(), existsRequest: vi.fn(),
     existsFriendship: vi.fn(), acceptRequest: vi.fn(), removeFriendship: vi.fn(),
-    findFriendsByUserId: vi.fn(), findPendingRequests: vi.fn(),
+    findFriendsByUserId: vi.fn(), findPendingRequests: vi.fn(), findFriendIdsByUserId: vi.fn(),
+  },
+}));
+
+vi.mock('@/core/services/notification.service', () => ({
+  notificationService: {
+    create: vi.fn(),
   },
 }));
 
@@ -25,6 +31,7 @@ vi.mock('@/infra/integrations/igdb/igdb.service',    () => ({ igdbService:   {} 
 vi.mock('@/infra/integrations/epic/epic.service',    () => ({ epicService:   {} }));
 
 import { friendRepository } from '@/core/repositories/friend.repository';
+import { notificationService } from '@/core/services/notification.service';
 import { userRepository }   from '@/core/repositories/user.repository';
 
 const mockUser = {
@@ -58,6 +65,15 @@ describe('Friends Routes', () => {
       });
 
       expect(response.statusCode).toBe(201);
+      expect(notificationService.create).toHaveBeenCalledWith({
+        userId:  'user-id-2',
+        actorId: 'user-id-1',
+        type:    'FRIEND_REQUEST',
+        payload: {
+          requestId: 'request-id-1',
+          senderId:  'user-id-1',
+        },
+      });
       await app.close();
     });
 
@@ -133,6 +149,15 @@ describe('Friends Routes', () => {
       });
 
       expect(response.statusCode).toBe(200);
+      expect(notificationService.create).toHaveBeenCalledWith({
+        userId:  'user-id-1',
+        actorId: 'user-id-2',
+        type:    'FRIEND_ACCEPTED',
+        payload: {
+          requestId: 'request-id-1',
+          friendId:  'user-id-2',
+        },
+      });
       await app.close();
     });
 
