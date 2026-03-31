@@ -65,7 +65,20 @@ npm install
 npx prisma migrate dev
 ```
 
-### 6. Iniciar o servidor
+### 6. Popular o banco com dados demo
+```bash
+npm run db:seed
+```
+
+O seed é determinístico, pode ser reexecutado e não depende de Steam, IGDB, Epic ou Discord para concluir.
+
+**Conta demo após o seed:**
+```txt
+Email: clutchplayer@clutch.gg
+Senha: clutch123
+```
+
+### 7. Iniciar o servidor
 ```bash
 npm run dev
 ```
@@ -94,6 +107,21 @@ npm run test:coverage
 ```
 
 **Threshold mínimo:** 80% de cobertura em linhas, funções e statements.
+
+### Seed do banco
+
+```bash
+cd backend
+npm run db:seed
+```
+
+O seed cria uma conta demo e dados suficientes para validar:
+- perfil público
+- feed social
+- amizades aceitas e pendentes
+- comentários
+- notificações
+- presença
 
 ---
 
