@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { CreatePostForm } from '@/components/feed/create-post-form';
 import { PostCard } from '@/components/feed/post-card';
 import { Card } from '@/components/ui/card';
 import { useAuth } from '@/hooks/use-auth';
@@ -91,9 +92,11 @@ export function FeedPageContent() {
           Social feed
         </h1>
         <p className="text-sm leading-6 text-secondary">
-          Linha do tempo read-only com base no contrato real do backend.
+          Timeline do CLUTCH com publicacao integrada ao contrato real do backend.
         </p>
       </header>
+
+      <CreatePostForm userId={userId} />
 
       <div className="space-y-4">
         {feedQuery.data.posts.map((post) => (

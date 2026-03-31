@@ -3,11 +3,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FeedPageContent } from '@/components/feed/feed-page-content';
-import { fetchFeed } from '@/services/feed';
+import { createPost, fetchFeed } from '@/services/feed';
 import { useAuth } from '@/hooks/use-auth';
 
 vi.mock('@/services/feed', () => ({
   fetchFeed: vi.fn(),
+  createPost: vi.fn(),
 }));
 
 vi.mock('@/hooks/use-auth', () => ({
@@ -15,6 +16,7 @@ vi.mock('@/hooks/use-auth', () => ({
 }));
 
 const mockedFetchFeed = vi.mocked(fetchFeed);
+const mockedCreatePost = vi.mocked(createPost);
 const mockedUseAuth = vi.mocked(useAuth);
 
 function renderWithQuery(ui: ReactElement) {
@@ -34,6 +36,7 @@ function renderWithQuery(ui: ReactElement) {
 describe('FeedPageContent', () => {
   beforeEach(() => {
     mockedFetchFeed.mockReset();
+    mockedCreatePost.mockReset();
     mockedUseAuth.mockReset();
   });
 
@@ -85,6 +88,15 @@ describe('FeedPageContent', () => {
       ],
       nextCursor: null,
     });
+    mockedCreatePost.mockResolvedValue({
+      id: 'post-created',
+      userId: 'user-1',
+      contentText: 'Novo post',
+      mediaUrl: null,
+      type: 'TEXT',
+      gameContext: null,
+      createdAt: '2026-03-31T12:00:00.000Z',
+    });
 
     renderWithQuery(<FeedPageContent />);
 
@@ -92,6 +104,9 @@ describe('FeedPageContent', () => {
       expect(screen.getByTestId('feed-success')).toBeInTheDocument();
     });
 
+    expect(
+      screen.getByRole('heading', { name: /compartilhe algo com sua timeline/i }),
+    ).toBeInTheDocument();
     expect(screen.getByText(/primeiro post/i)).toBeInTheDocument();
     expect(screen.getAllByTestId('feed-post-card')).toHaveLength(1);
   });
