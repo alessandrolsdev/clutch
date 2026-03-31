@@ -4,6 +4,7 @@ import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FriendsList } from '@/components/friends/friends-list';
 import { fetchFriends } from '@/services/friends';
+import { resetPresenceStore, usePresenceStore } from '@/store/presence-store';
 
 vi.mock('@/services/friends', () => ({
   fetchFriends: vi.fn(),
@@ -28,6 +29,7 @@ function renderFriendsList() {
 describe('FriendsList', () => {
   beforeEach(() => {
     mockedFetchFriends.mockReset();
+    resetPresenceStore();
   });
 
   it('orders friends by presence priority', async () => {
@@ -58,5 +60,39 @@ describe('FriendsList', () => {
     expect(items[0]).toHaveTextContent(/in game/i);
     expect(items[1]).toHaveTextContent(/online/i);
     expect(items[2]).toHaveTextContent(/offline/i);
+  });
+
+  it('reorders the list when realtime presence overrides the fetched snapshot', async () => {
+    mockedFetchFriends.mockResolvedValue([
+      {
+        id: 'friend-1',
+        username: 'offline',
+        profile: { displayName: 'Offline', avatarUrl: null, accentColor: null },
+        presence: { status: 'OFFLINE', currentGame: null, platform: null },
+      },
+      {
+        id: 'friend-2',
+        username: 'online',
+        profile: { displayName: 'Online', avatarUrl: null, accentColor: null },
+        presence: { status: 'ONLINE', currentGame: null, platform: null },
+      },
+    ]);
+
+    usePresenceStore.getState().upsertPresence(
+      {
+        userId: 'friend-1',
+        status: 'IN_GAME',
+        currentGame: 'Marvel Rivals',
+        platform: 'PC',
+      },
+      123,
+    );
+
+    renderFriendsList();
+
+    const items = await screen.findAllByTestId('friend-list-item');
+    expect(items[0]).toHaveTextContent(/offline/i);
+    expect(items[0]).toHaveTextContent(/jogando marvel rivals/i);
+    expect(items[1]).toHaveTextContent(/online/i);
   });
 });
