@@ -1,4 +1,5 @@
 import React from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { AppShell } from '@/components/layout/app-shell';
@@ -12,10 +13,20 @@ vi.mock('next/navigation', () => ({
 
 describe('AppShell', () => {
   it('renders the authenticated shell and toggles the mobile sidebar', () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
+      },
+    });
+
     render(
-      <AppShell>
-        <div>Authenticated content</div>
-      </AppShell>,
+      <QueryClientProvider client={queryClient}>
+        <AppShell>
+          <div>Authenticated content</div>
+        </AppShell>
+      </QueryClientProvider>,
     );
 
     expect(screen.getByText('Authenticated content')).toBeInTheDocument();

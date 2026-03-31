@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -7,9 +8,10 @@ import { type ProfileResponse } from '@/schemas/profile';
 
 type GamerCardProps = {
   profile: ProfileResponse;
+  actions?: ReactNode;
 };
 
-export function GamerCard({ profile }: GamerCardProps) {
+export function GamerCard({ profile, actions }: GamerCardProps) {
   const displayName = profile.profile.displayName || profile.username;
   const badgeList = profile.profile.badges.slice(0, 4);
   const initials = profile.username.slice(0, 2).toUpperCase();
@@ -52,7 +54,10 @@ export function GamerCard({ profile }: GamerCardProps) {
             </div>
           </div>
 
-          <Badge tone="accent">Nv. {profile.stats.level}</Badge>
+          <div className="flex flex-col items-end gap-3">
+            <Badge tone="accent">Nv. {profile.stats.level}</Badge>
+            {actions}
+          </div>
         </div>
 
         <p className="text-sm leading-6 text-secondary">
