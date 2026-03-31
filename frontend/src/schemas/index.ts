@@ -8,5 +8,18 @@ export {
   registerRequestSchema,
   registerSessionSchema,
 } from './auth';
-export { feedResponseSchema } from './feed';
+export {
+  commentContentSchema,
+  createPostRequestSchema,
+  createPostCommentRequestSchema,
+  createPostCommentResponseSchema,
+  createPostResponseSchema,
+  feedResponseSchema,
+  deletePostResponseSchema,
+  interactionTypeSchema,
+  postCommentsResponseSchema,
+  postCommentSchema,
+  toggleInteractionRequestSchema,
+  toggleInteractionResponseSchema,
+} from './feed';
 export { profileResponseSchema } from './profile';
