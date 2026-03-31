@@ -1,6 +1,8 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { FriendButton } from '@/components/friends/friend-button';
+import { FriendsList } from '@/components/friends/friends-list';
 import { Card } from '@/components/ui/card';
 import { GamerCard } from '@/components/profile/gamer-card';
 import { GameLibraryPreview } from '@/components/profile/game-library-preview';
@@ -91,8 +93,15 @@ export function ProfilePageContent({ username }: ProfilePageContentProps) {
 
   return (
     <div className="space-y-section" data-testid="profile-success">
-      <GamerCard profile={profileQuery.data} />
+      <GamerCard
+        profile={profileQuery.data}
+        actions={<FriendButton targetUserId={profileQuery.data.id} />}
+      />
       <ProfileStats stats={profileQuery.data.stats} />
+      <FriendsList
+        userId={profileQuery.data.id}
+        title={`Amigos de @${profileQuery.data.username}`}
+      />
       <GameLibraryPreview games={profileQuery.data.gameLibrary} />
     </div>
   );

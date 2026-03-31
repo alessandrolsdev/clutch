@@ -22,4 +22,12 @@ export {
   toggleInteractionRequestSchema,
   toggleInteractionResponseSchema,
 } from './feed';
+export {
+  createFriendRequestResponseSchema,
+  friendActionResponseSchema,
+  friendPresenceStatusSchema,
+  friendsResponseSchema,
+  pendingFriendRequestSchema,
+  pendingFriendRequestsResponseSchema,
+} from './friends';
 export { profileResponseSchema } from './profile';
