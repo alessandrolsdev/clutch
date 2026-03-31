@@ -1,4 +1,4 @@
-const DEFAULT_PORT = 3333;
+const DEFAULT_PORT = 3344;
 
 export function resolveServerPort(rawPort: string | undefined): number {
   if (!rawPort) {
