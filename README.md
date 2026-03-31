@@ -125,6 +125,20 @@ npm run build
 
 Esta etapa entrega apenas a base do app: Next.js 15, TypeScript strict, Tailwind v3, aliases, shell inicial e setup de testes.
 
+### Login local
+Depois da foundation e da issue `#87`, o login do frontend fica em:
+
+```txt
+http://localhost:3000/login
+```
+
+Use a conta demo seeded no backend:
+
+```txt
+Email: clutchplayer@clutch.gg
+Senha: clutch123
+```
+
 ---
 
 ## 🧪 Testes
