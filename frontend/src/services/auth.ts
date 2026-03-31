@@ -1,4 +1,10 @@
-import { loginRequestSchema, loginSessionSchema, type LoginRequestValues, type LoginSession } from '@/schemas/auth';
+import {
+  loginRequestSchema,
+  loginSessionSchema,
+  type LoginRequestValues,
+  type LoginSession,
+} from '@/schemas/auth';
+import { apiRequest } from '@/lib/api';
 
 type ErrorResponse = {
   message?: string;
@@ -43,12 +49,9 @@ function resolveErrorMessage(payload: unknown, fallback: string): string {
 export async function login(input: LoginRequestValues): Promise<LoginSession> {
   const credentials = loginRequestSchema.parse(input);
 
-  const response = await fetch('/api/auth/login', {
+  const response = await apiRequest('/auth/login', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(credentials),
+    body: credentials,
   });
 
   const payload = await readJson(response);
