@@ -1,11 +1,22 @@
 import { apiRequest } from '@/lib/api';
 import {
+  createPostCommentRequestSchema,
+  createPostCommentResponseSchema,
   createPostRequestSchema,
   createPostResponseSchema,
+  deletePostResponseSchema,
   feedResponseSchema,
+  postCommentsResponseSchema,
+  toggleInteractionRequestSchema,
+  toggleInteractionResponseSchema,
   type CreatePostRequest,
+  type CreatePostCommentRequest,
+  type CreatePostCommentResponse,
   type CreatePostResponse,
   type FeedResponse,
+  type InteractionType,
+  type PostComment,
+  type ToggleInteractionResponse,
 } from '@/schemas/feed';
 
 type ErrorResponse = {
@@ -106,4 +117,79 @@ export async function createPost(
   }
 
   return createPostResponseSchema.parse(responsePayload);
+}
+
+export async function togglePostInteraction(input: {
+  postId: string;
+  type: InteractionType;
+}): Promise<ToggleInteractionResponse> {
+  const payload = toggleInteractionRequestSchema.parse({ type: input.type });
+
+  const response = await apiRequest(`/posts/${encodeURIComponent(input.postId)}/interactions`, {
+    method: 'POST',
+    body: payload,
+  });
+  const responsePayload = await readJson(response);
+
+  if (!response.ok) {
+    throw new FeedRequestError(
+      response.status,
+      resolveErrorMessage(responsePayload, 'Nao foi possivel atualizar a reacao agora.'),
+    );
+  }
+
+  return toggleInteractionResponseSchema.parse(responsePayload);
+}
+
+export async function fetchPostComments(postId: string): Promise<PostComment[]> {
+  const response = await apiRequest(`/posts/comments/${encodeURIComponent(postId)}`, {
+    method: 'GET',
+  });
+  const responsePayload = await readJson(response);
+
+  if (!response.ok) {
+    throw new FeedRequestError(
+      response.status,
+      resolveErrorMessage(responsePayload, 'Nao foi possivel carregar os comentarios agora.'),
+    );
+  }
+
+  return postCommentsResponseSchema.parse(responsePayload);
+}
+
+export async function createPostComment(
+  input: CreatePostCommentRequest,
+): Promise<CreatePostCommentResponse> {
+  const payload = createPostCommentRequestSchema.parse(input);
+
+  const response = await apiRequest('/posts/comments', {
+    method: 'POST',
+    body: payload,
+  });
+  const responsePayload = await readJson(response);
+
+  if (!response.ok) {
+    throw new FeedRequestError(
+      response.status,
+      resolveErrorMessage(responsePayload, 'Nao foi possivel enviar o comentario agora.'),
+    );
+  }
+
+  return createPostCommentResponseSchema.parse(responsePayload);
+}
+
+export async function deletePost(postId: string): Promise<void> {
+  const response = await apiRequest(`/posts/${encodeURIComponent(postId)}`, {
+    method: 'DELETE',
+  });
+  const responsePayload = await readJson(response);
+
+  if (!response.ok) {
+    throw new FeedRequestError(
+      response.status,
+      resolveErrorMessage(responsePayload, 'Nao foi possivel excluir o post agora.'),
+    );
+  }
+
+  deletePostResponseSchema.parse(responsePayload);
 }
