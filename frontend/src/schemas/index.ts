@@ -1,5 +1,6 @@
 export {};
 export {
+  authSessionSchema,
   loginBackendResponseSchema,
   loginRequestSchema,
   loginSessionSchema,
