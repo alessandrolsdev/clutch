@@ -1,5 +1,5 @@
 import { notificationRepository } from '@/core/repositories/notification.repository';
-import { redis } from '@/infra/cache/redis';
+import { redis, REDIS_KEYS } from '@/infra/cache/redis';
 
 // ─────────────────────────────────────────────────────────────
 // Notification Service
@@ -35,7 +35,7 @@ export const notificationService = {
 
     // ── Publica no Redis → Go service entrega via WebSocket ─
     await redis.publish(
-      `notifications:${input.userId}`,
+      REDIS_KEYS.notifications(input.userId),
       JSON.stringify({
         id:        notification.id,
         type:      notification.type,

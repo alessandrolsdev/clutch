@@ -27,6 +27,8 @@ vi.mock('@/infra/cache/redis', () => ({
   },
   REDIS_KEYS: {
     presence:       (id: string) => `presence:${id}`,
+    presenceFeed:   (id: string) => `realtime:presence:${id}`,
+    notifications:  (id: string) => `notifications:${id}`,
     presenceUpdate: 'presence:updates',
   },
   REDIS_TTL: { presence: 300 },

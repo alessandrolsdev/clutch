@@ -203,6 +203,25 @@ describe('postRepository', () => {
     });
   });
 
+  describe('findInteraction', () => {
+    it('retorna interaction quando ela existe', async () => {
+      vi.mocked(prisma.interaction.findUnique).mockResolvedValue(mockInteraction);
+
+      const result = await postRepository.findInteraction('post-id-1', 'user-id-1', 'GG');
+
+      expect(result).toEqual(mockInteraction);
+      expect(prisma.interaction.findUnique).toHaveBeenCalledWith({
+        where: {
+          postId_userId_type: {
+            postId: 'post-id-1',
+            userId: 'user-id-1',
+            type:   'GG',
+          },
+        },
+      });
+    });
+  });
+
   // ── createComment ──────────────────────────────────────────
   describe('createComment', () => {
     it('cria comentário corretamente', async () => {

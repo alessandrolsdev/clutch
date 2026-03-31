@@ -15,6 +15,8 @@ vi.mock('@/infra/cache/redis', () => ({
   },
   REDIS_KEYS: {
     presence:       (userId: string) => `presence:${userId}`,
+    presenceFeed:   (userId: string) => `realtime:presence:${userId}`,
+    notifications:  (userId: string) => `notifications:${userId}`,
     friendsList:    (userId: string) => `friends:${userId}`,
     presenceUpdate: 'presence:updates',
   },
@@ -64,7 +66,6 @@ describe('presenceRepository', () => {
   describe('set', () => {
     it('salva no Redis com TTL correto', async () => {
       vi.mocked(redis.setex).mockResolvedValue('OK');
-      vi.mocked(redis.publish).mockResolvedValue(1);
       vi.mocked(prisma.userPresence.upsert).mockResolvedValue(mockDbPresence);
 
       await presenceRepository.set('user-id-1', { status: 'ONLINE' });
@@ -78,7 +79,6 @@ describe('presenceRepository', () => {
 
     it('atualiza Postgres via upsert', async () => {
       vi.mocked(redis.setex).mockResolvedValue('OK');
-      vi.mocked(redis.publish).mockResolvedValue(1);
       vi.mocked(prisma.userPresence.upsert).mockResolvedValue(mockDbPresence);
 
       await presenceRepository.set('user-id-1', { status: 'IN_GAME', currentGame: 'Valorant' });
@@ -91,18 +91,6 @@ describe('presenceRepository', () => {
       );
     });
 
-    it('publica no canal Redis Pub/Sub', async () => {
-      vi.mocked(redis.setex).mockResolvedValue('OK');
-      vi.mocked(redis.publish).mockResolvedValue(1);
-      vi.mocked(prisma.userPresence.upsert).mockResolvedValue(mockDbPresence);
-
-      await presenceRepository.set('user-id-1', { status: 'ONLINE' });
-
-      expect(redis.publish).toHaveBeenCalledWith(
-        'presence:updates',
-        expect.any(String),
-      );
-    });
   });
 
   // ── get ────────────────────────────────────────────────────
@@ -142,7 +130,6 @@ describe('presenceRepository', () => {
   describe('setOffline', () => {
     it('remove chave do Redis', async () => {
       vi.mocked(redis.del).mockResolvedValue(1);
-      vi.mocked(redis.publish).mockResolvedValue(1);
       vi.mocked(prisma.userPresence.upsert).mockResolvedValue(mockDbPresence);
 
       await presenceRepository.setOffline('user-id-1');
@@ -152,7 +139,6 @@ describe('presenceRepository', () => {
 
     it('atualiza status para OFFLINE no Postgres', async () => {
       vi.mocked(redis.del).mockResolvedValue(1);
-      vi.mocked(redis.publish).mockResolvedValue(1);
       vi.mocked(prisma.userPresence.upsert).mockResolvedValue(mockDbPresence);
 
       await presenceRepository.setOffline('user-id-1');
@@ -187,6 +173,35 @@ describe('presenceRepository', () => {
       expect(result).toHaveLength(2);
       expect(result[0]?.status).toBe('ONLINE');
       expect(result[1]?.status).toBe('OFFLINE');
+    });
+  });
+
+  describe('publishScopedUpdate', () => {
+    it('publica apenas para destinatários autorizados e exclui o próprio usuário', async () => {
+      vi.mocked(redis.publish).mockResolvedValue(1);
+
+      await presenceRepository.publishScopedUpdate(mockPresenceData, [
+        'friend-id-1',
+        'user-id-1',
+        'friend-id-1',
+        'friend-id-2',
+      ]);
+
+      expect(redis.publish).toHaveBeenCalledTimes(2);
+      expect(redis.publish).toHaveBeenCalledWith(
+        'realtime:presence:friend-id-1',
+        expect.any(String),
+      );
+      expect(redis.publish).toHaveBeenCalledWith(
+        'realtime:presence:friend-id-2',
+        expect.any(String),
+      );
+    });
+
+    it('não publica quando não há destinatários autorizados', async () => {
+      await presenceRepository.publishScopedUpdate(mockPresenceData, ['user-id-1']);
+
+      expect(redis.publish).not.toHaveBeenCalled();
     });
   });
 

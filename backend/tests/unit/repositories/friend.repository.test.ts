@@ -77,6 +77,19 @@ describe('friendRepository', () => {
     });
   });
 
+  describe('findRequestById', () => {
+    it('retorna pedido quando ele existe', async () => {
+      vi.mocked(prisma.friendRequest.findUnique).mockResolvedValue(mockRequest);
+
+      const result = await friendRepository.findRequestById('request-id-1');
+
+      expect(result).toEqual(mockRequest);
+      expect(prisma.friendRequest.findUnique).toHaveBeenCalledWith({
+        where: { id: 'request-id-1' },
+      });
+    });
+  });
+
   // ── existsFriendship ───────────────────────────────────────
   describe('existsFriendship', () => {
     it('retorna true quando amizade existe', async () => {
@@ -134,6 +147,23 @@ describe('friendRepository', () => {
       expect(prisma.friendship.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { userId: 'user-id-1' } }),
       );
+    });
+  });
+
+  describe('findFriendIdsByUserId', () => {
+    it('retorna apenas os ids dos amigos do usuário', async () => {
+      vi.mocked(prisma.friendship.findMany).mockResolvedValue([
+        { friendId: 'friend-id-1' },
+        { friendId: 'friend-id-2' },
+      ] as never);
+
+      const result = await friendRepository.findFriendIdsByUserId('user-id-1');
+
+      expect(result).toEqual(['friend-id-1', 'friend-id-2']);
+      expect(prisma.friendship.findMany).toHaveBeenCalledWith({
+        where:  { userId: 'user-id-1' },
+        select: { friendId: true },
+      });
     });
   });
 
