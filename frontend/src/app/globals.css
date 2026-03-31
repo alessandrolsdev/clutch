@@ -18,7 +18,7 @@
   }
 
   body {
-    @apply bg-background-primary text-primary font-sans antialiased;
+    @apply bg-background-primary font-sans text-primary antialiased;
     min-height: 100vh;
     background-image:
       radial-gradient(circle at top, rgba(124, 58, 237, 0.16), transparent 32%),
@@ -28,59 +28,5 @@
   a {
     color: inherit;
     text-decoration: none;
-  }
-}
-
-@layer utilities {
-  .bg-background-primary {
-    background-color: var(--background-primary);
-  }
-
-  .bg-background-secondary {
-    background-color: var(--background-secondary);
-  }
-
-  .bg-background-tertiary {
-    background-color: var(--background-tertiary);
-  }
-
-  .border-border {
-    border-color: var(--border-default);
-  }
-
-  .text-primary {
-    color: var(--text-primary);
-  }
-
-  .text-secondary {
-    color: var(--text-secondary);
-  }
-
-  .text-muted {
-    color: var(--text-muted);
-  }
-
-  .accent-purple {
-    color: var(--accent-purple);
-  }
-
-  .accent-cyan {
-    color: var(--accent-cyan);
-  }
-
-  .status-online {
-    color: var(--status-online);
-  }
-
-  .status-ingame {
-    color: var(--status-ingame);
-  }
-
-  .status-afk {
-    color: var(--status-afk);
-  }
-
-  .status-offline {
-    color: var(--status-offline);
   }
 }
