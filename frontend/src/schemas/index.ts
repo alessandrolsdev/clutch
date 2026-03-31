@@ -40,4 +40,17 @@ export {
   postCommentNotificationPayloadSchema,
   postLikeNotificationPayloadSchema,
 } from './notifications';
-export { profileResponseSchema } from './profile';
+export {
+  epicConnectRequestSchema,
+  epicConnectResponseSchema,
+  igdbSearchRequestSchema,
+  igdbSearchResponseSchema,
+  steamConnectRequestSchema,
+  steamConnectResponseSchema,
+  steamSyncResponseSchema,
+} from './integrations';
+export {
+  profileResponseSchema,
+  profileUpdateRequestSchema,
+  profileUpdateResponseSchema,
+} from './profile';

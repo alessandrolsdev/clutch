@@ -61,5 +61,46 @@ export const profileResponseSchema = z.object({
   ),
 });
 
+export const profileUpdateRequestSchema = z.object({
+  displayName: z
+    .string()
+    .trim()
+    .min(1, 'O display name precisa ter pelo menos 1 caractere.')
+    .max(50, 'O display name aceita no maximo 50 caracteres.'),
+  bio: z
+    .string()
+    .trim()
+    .max(300, 'A bio aceita no maximo 300 caracteres.'),
+  avatarUrl: z
+    .string()
+    .trim()
+    .url('Digite uma URL de avatar valida.')
+    .or(z.literal('')),
+  bannerUrl: z
+    .string()
+    .trim()
+    .url('Digite uma URL de banner valida.')
+    .or(z.literal('')),
+  accentColor: z
+    .string()
+    .trim()
+    .regex(/^#[0-9A-Fa-f]{6}$/, 'Use uma cor hex valida, como #7C3AED.'),
+});
+
+export const profileUpdateResponseSchema = z.object({
+  id: z.string().min(1),
+  userId: z.string().min(1),
+  displayName: z.string().nullable(),
+  bio: z.string().nullable(),
+  avatarUrl: z.string().nullable(),
+  bannerUrl: z.string().nullable(),
+  accentColor: z.string().nullable(),
+  badges: z.array(z.string()),
+  createdAt: z.string().min(1),
+  updatedAt: z.string().min(1),
+});
+
 export type ProfileResponse = z.infer<typeof profileResponseSchema>;
 export type ProfilePresenceStatus = z.infer<typeof profilePresenceStatusSchema>;
+export type ProfileUpdateValues = z.infer<typeof profileUpdateRequestSchema>;
+export type ProfileUpdateResponse = z.infer<typeof profileUpdateResponseSchema>;

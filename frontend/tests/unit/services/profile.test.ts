@@ -3,6 +3,7 @@ import { apiRequest } from '@/lib/api';
 import {
   fetchProfileByUsername,
   ProfileRequestError,
+  updateProfileByUsername,
 } from '@/services/profile';
 
 vi.mock('@/lib/api', () => ({
@@ -97,5 +98,50 @@ describe('profile service', () => {
       status: 500,
       message: 'Erro interno.',
     } satisfies Partial<ProfileRequestError>);
+  });
+
+  it('updates the profile with the real patch contract', async () => {
+    mockedApiRequest.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: 'profile-1',
+          userId: 'user-1',
+          displayName: 'CLUTCH Player',
+          bio: 'Bio',
+          avatarUrl: 'https://cdn.clutch.gg/avatar.jpg',
+          bannerUrl: 'https://cdn.clutch.gg/banner.jpg',
+          accentColor: '#7C3AED',
+          badges: ['Founder'],
+          createdAt: '2026-03-29T22:15:00.000Z',
+          updatedAt: '2026-03-31T22:15:00.000Z',
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      ),
+    );
+
+    const response = await updateProfileByUsername('clutchplayer', {
+      displayName: 'CLUTCH Player',
+      bio: 'Bio',
+      avatarUrl: 'https://cdn.clutch.gg/avatar.jpg',
+      bannerUrl: 'https://cdn.clutch.gg/banner.jpg',
+      accentColor: '#7C3AED',
+    });
+
+    expect(response.userId).toBe('user-1');
+    expect(mockedApiRequest).toHaveBeenCalledWith('/profiles/clutchplayer', {
+      method: 'PATCH',
+      body: {
+        displayName: 'CLUTCH Player',
+        bio: 'Bio',
+        avatarUrl: 'https://cdn.clutch.gg/avatar.jpg',
+        bannerUrl: 'https://cdn.clutch.gg/banner.jpg',
+        accentColor: '#7C3AED',
+      },
+    });
   });
 });

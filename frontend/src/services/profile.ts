@@ -1,5 +1,12 @@
 import { apiRequest } from '@/lib/api';
-import { profileResponseSchema, type ProfileResponse } from '@/schemas/profile';
+import {
+  profileResponseSchema,
+  profileUpdateRequestSchema,
+  profileUpdateResponseSchema,
+  type ProfileResponse,
+  type ProfileUpdateResponse,
+  type ProfileUpdateValues,
+} from '@/schemas/profile';
 
 type ErrorResponse = {
   message?: string;
@@ -63,4 +70,34 @@ export async function fetchProfileByUsername(
   }
 
   return profileResponseSchema.parse(payload);
+}
+
+export async function updateProfileByUsername(
+  username: string,
+  input: ProfileUpdateValues,
+): Promise<ProfileUpdateResponse> {
+  const payload = profileUpdateRequestSchema.parse(input);
+  const normalizedPayload = {
+    displayName: payload.displayName.trim(),
+    bio: payload.bio.trim(),
+    avatarUrl: payload.avatarUrl.trim() || undefined,
+    bannerUrl: payload.bannerUrl.trim() || undefined,
+    accentColor: payload.accentColor.trim(),
+  };
+
+  const response = await apiRequest(`/profiles/${encodeURIComponent(username)}`, {
+    method: 'PATCH',
+    body: normalizedPayload,
+  });
+
+  const responsePayload = await readJson(response);
+
+  if (!response.ok) {
+    throw new ProfileRequestError(
+      response.status,
+      resolveErrorMessage(responsePayload, 'Nao foi possivel atualizar o perfil agora.'),
+    );
+  }
+
+  return profileUpdateResponseSchema.parse(responsePayload);
 }
