@@ -4,5 +4,9 @@ export {
   loginBackendResponseSchema,
   loginRequestSchema,
   loginSessionSchema,
+  registerBackendResponseSchema,
+  registerRequestSchema,
+  registerSessionSchema,
 } from './auth';
 export { feedResponseSchema } from './feed';
+export { profileResponseSchema } from './profile';
