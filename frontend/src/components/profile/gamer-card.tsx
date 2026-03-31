@@ -1,3 +1,5 @@
+'use client';
+
 import type { ReactNode } from 'react';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -5,6 +7,7 @@ import { Card } from '@/components/ui/card';
 import { PresenceBadge } from '@/components/profile/presence-badge';
 import { PlatformBadges } from '@/components/profile/platform-badges';
 import { type ProfileResponse } from '@/schemas/profile';
+import { usePresenceStore } from '@/store/presence-store';
 
 type GamerCardProps = {
   profile: ProfileResponse;
@@ -15,6 +18,12 @@ export function GamerCard({ profile, actions }: GamerCardProps) {
   const displayName = profile.profile.displayName || profile.username;
   const badgeList = profile.profile.badges.slice(0, 4);
   const initials = profile.username.slice(0, 2).toUpperCase();
+  const realtimePresence = usePresenceStore((state) => state.entries[profile.id]);
+  const effectivePresence = {
+    status: realtimePresence?.status ?? profile.presence.status,
+    currentGame: realtimePresence?.currentGame ?? profile.presence.currentGame,
+    platform: realtimePresence?.platform ?? profile.presence.platform,
+  };
 
   return (
     <Card className="overflow-hidden p-0">
@@ -47,9 +56,9 @@ export function GamerCard({ profile, actions }: GamerCardProps) {
               </h1>
               <p className="truncate text-sm text-secondary">@{profile.username}</p>
               <PresenceBadge
-                status={profile.presence.status}
-                currentGame={profile.presence.currentGame}
-                platform={profile.presence.platform}
+                status={effectivePresence.status}
+                currentGame={effectivePresence.currentGame}
+                platform={effectivePresence.platform}
               />
             </div>
           </div>

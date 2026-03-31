@@ -50,6 +50,14 @@ export {
   steamSyncResponseSchema,
 } from './integrations';
 export {
+  friendPresenceEventPayloadSchema,
+  friendPresenceSocketEventSchema,
+  presenceCredentialResponseSchema,
+  presencePongSocketEventSchema,
+  presenceSocketEventSchema,
+  presenceStatusSchema,
+} from './presence';
+export {
   profileResponseSchema,
   profileUpdateRequestSchema,
   profileUpdateResponseSchema,
