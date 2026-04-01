@@ -1,13 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
+import type { AddressInfo } from 'node:net';
 import { buildApp } from '../helpers/build-app';
 import { DEMO_ACCOUNT, runSeed } from '../../prisma/seed';
 
 const prisma = new PrismaClient();
-const baseUrl = 'http://127.0.0.1:3344';
 
 let app: FastifyInstance;
+let baseUrl: string;
 
 describe('Server connectivity', () => {
   beforeAll(async () => {
@@ -15,7 +16,15 @@ describe('Server connectivity', () => {
     await runSeed(prisma);
 
     app = await buildApp();
-    await app.listen({ port: 3344, host: '127.0.0.1' });
+    await app.listen({ port: 0, host: '127.0.0.1' });
+
+    const address = app.server.address();
+
+    if (!address || typeof address === 'string') {
+      throw new Error('Server connectivity test could not resolve a TCP address.');
+    }
+
+    baseUrl = `http://127.0.0.1:${(address as AddressInfo).port}`;
   }, 30_000);
 
   afterAll(async () => {
