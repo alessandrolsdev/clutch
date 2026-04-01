@@ -3,10 +3,12 @@ import { POST } from '@/app/api/auth/register/route';
 import { AUTH_SESSION_COOKIE_NAME } from '@/lib/auth/session';
 
 const originalApiUrl = process.env.NEXT_PUBLIC_API_URL;
+const originalInternalApiUrl = process.env.INTERNAL_API_URL;
 
 describe('auth register route', () => {
   beforeEach(() => {
-    process.env.NEXT_PUBLIC_API_URL = 'http://backend.test';
+    process.env.INTERNAL_API_URL = 'http://backend.test';
+    process.env.NEXT_PUBLIC_API_URL = 'http://localhost/api';
     vi.restoreAllMocks();
   });
 
@@ -107,6 +109,12 @@ describe('auth register route', () => {
 });
 
 afterAll(() => {
+  if (typeof originalInternalApiUrl === 'undefined') {
+    delete process.env.INTERNAL_API_URL;
+  } else {
+    process.env.INTERNAL_API_URL = originalInternalApiUrl;
+  }
+
   if (typeof originalApiUrl === 'undefined') {
     delete process.env.NEXT_PUBLIC_API_URL;
     return;

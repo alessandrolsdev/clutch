@@ -2,11 +2,13 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { POST } from '@/app/api/auth/login/route';
 import { AUTH_SESSION_COOKIE_NAME } from '@/lib/auth/session';
 
-const originalEnv = process.env.NEXT_PUBLIC_API_URL;
+const originalApiUrl = process.env.NEXT_PUBLIC_API_URL;
+const originalInternalApiUrl = process.env.INTERNAL_API_URL;
 
 describe('auth login route', () => {
   beforeEach(() => {
-    process.env.NEXT_PUBLIC_API_URL = 'http://backend.test';
+    process.env.INTERNAL_API_URL = 'http://backend.test';
+    process.env.NEXT_PUBLIC_API_URL = 'http://localhost/api';
     vi.restoreAllMocks();
   });
 
@@ -89,10 +91,16 @@ describe('auth login route', () => {
 });
 
 afterAll(() => {
-  if (typeof originalEnv === 'undefined') {
+  if (typeof originalInternalApiUrl === 'undefined') {
+    delete process.env.INTERNAL_API_URL;
+  } else {
+    process.env.INTERNAL_API_URL = originalInternalApiUrl;
+  }
+
+  if (typeof originalApiUrl === 'undefined') {
     delete process.env.NEXT_PUBLIC_API_URL;
     return;
   }
 
-  process.env.NEXT_PUBLIC_API_URL = originalEnv;
+  process.env.NEXT_PUBLIC_API_URL = originalApiUrl;
 });
