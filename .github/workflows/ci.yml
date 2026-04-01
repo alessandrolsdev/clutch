@@ -143,6 +143,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node.js 24 for websocket smoke helper
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
       - name: Prepare compose environment
         run: cp .env.example .env
 
@@ -232,6 +237,34 @@ jobs:
           fi
 
           grep -q '"username":"clutchplayer"' /tmp/auth-me-response.json
+
+      - name: Validate presence credential route
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          presence_status="$(curl -sS \
+            -b /tmp/clutch-session.cookies \
+            -o /tmp/presence-token-response.json \
+            -w "%{http_code}" \
+            http://localhost/api/auth/presence-token)"
+
+          if [ "${presence_status}" != "200" ]; then
+            echo "Falha ao obter a credencial de presence. Status: ${presence_status}"
+            echo "--- presence token body ---"
+            cat /tmp/presence-token-response.json
+            exit 1
+          fi
+
+          grep -q '"token":"' /tmp/presence-token-response.json
+
+      - name: Validate authenticated websocket handshake
+        env:
+          PRESENCE_TOKEN_FILE: /tmp/presence-token-response.json
+          PRESENCE_WS_URL: ws://localhost
+          PRESENCE_WS_ORIGIN: http://localhost
+          PRESENCE_WS_TIMEOUT_MS: 15000
+        run: node ./scripts/ci/validate-presence-handshake.mjs
 
       - name: Show compose status
         if: always()
