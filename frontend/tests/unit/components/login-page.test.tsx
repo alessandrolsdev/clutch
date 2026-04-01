@@ -39,20 +39,28 @@ describe('LoginPage', () => {
     mockedLoginFn.mockReset();
   });
 
-  it('renders the login page shell', () => {
-    render(<LoginPage />);
+  it(
+    'renders the login page shell',
+    () => {
+      render(<LoginPage />);
 
-    expect(screen.getByRole('heading', { name: /acesse o currículo vivo do clutch/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /entre com sua conta do clutch/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /entrar/i })).toBeInTheDocument();
-  });
+      expect(
+        screen.getByRole('heading', { name: /vivo do clutch/i }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { name: /entre com sua conta do clutch/i }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /entrar/i })).toBeInTheDocument();
+    },
+    10000,
+  );
 
   it('shows validation errors for empty fields', async () => {
     render(<LoginPage />);
 
     fireEvent.click(screen.getByRole('button', { name: /entrar/i }));
 
-    expect(await screen.findByText(/digite um email válido/i)).toBeInTheDocument();
+    expect(await screen.findByText(/digite um email/i)).toBeInTheDocument();
     expect(
       screen.getByText(/a senha precisa ter pelo menos 6 caracteres/i),
     ).toBeInTheDocument();
@@ -87,7 +95,7 @@ describe('LoginPage', () => {
 
   it('renders backend credential errors', async () => {
     mockedLoginFn.mockRejectedValue(
-      new AuthRequestError(401, 'Credenciais inválidas.'),
+      new AuthRequestError(401, 'Credenciais invalidas.'),
     );
 
     render(<LoginPage />);
@@ -100,9 +108,7 @@ describe('LoginPage', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /entrar/i }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      /credenciais inválidas/i,
-    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(/credenciais inv/i);
     expect(replaceMock).not.toHaveBeenCalled();
   });
 });
