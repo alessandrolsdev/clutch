@@ -1,0 +1,60 @@
+http:
+  routers:
+    backend-health:
+      entryPoints:
+        - web
+      rule: Path(`/api/health`)
+      priority: 100
+      middlewares:
+        - strip-api-prefix
+      service: backend
+
+    presence-ws:
+      entryPoints:
+        - web
+      rule: PathPrefix(`/ws/presence`)
+      priority: 100
+      service: presence
+
+    presence-http:
+      entryPoints:
+        - web
+      rule: Path(`/presence/health`) || Path(`/presence/stats`)
+      priority: 90
+      middlewares:
+        - strip-presence-prefix
+      service: presence
+
+    frontend:
+      entryPoints:
+        - web
+      rule: PathPrefix(`/`)
+      priority: 1
+      service: frontend
+
+  middlewares:
+    strip-api-prefix:
+      stripPrefix:
+        prefixes:
+          - /api
+
+    strip-presence-prefix:
+      stripPrefix:
+        prefixes:
+          - /presence
+
+  services:
+    frontend:
+      loadBalancer:
+        servers:
+          - url: http://frontend:3000
+
+    backend:
+      loadBalancer:
+        servers:
+          - url: http://backend:3344
+
+    presence:
+      loadBalancer:
+        servers:
+          - url: http://presence:8080
