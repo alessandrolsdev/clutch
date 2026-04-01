@@ -184,18 +184,54 @@ jobs:
       - name: Validate frontend login route
         run: curl -fsS http://localhost/login > /dev/null
 
-      - name: Validate login via proxy
+      - name: Validate session login via proxy
         shell: bash
         run: |
           set -euo pipefail
 
-          status="$(curl -sS -o /tmp/login-response.json -w "%{http_code}" \
+          login_status="$(curl -sS \
+            -D /tmp/login-headers.txt \
+            -c /tmp/clutch-session.cookies \
+            -o /tmp/login-response.json \
+            -w "%{http_code}" \
             -X POST http://localhost/api/auth/login \
             -H "Content-Type: application/json" \
             -d '{"email":"clutchplayer@clutch.gg","password":"clutch123"}')"
 
-          test "${status}" = "200"
-          grep -q '"token"' /tmp/login-response.json
+          if [ "${login_status}" != "200" ]; then
+            echo "Falha no login via proxy. Status: ${login_status}"
+            echo "--- login headers ---"
+            cat /tmp/login-headers.txt
+            echo "--- login body ---"
+            cat /tmp/login-response.json
+            exit 1
+          fi
+
+          if ! grep -iq '^set-cookie: clutch_session=' /tmp/login-headers.txt; then
+            echo "Login nao retornou o cookie de sessao esperado."
+            echo "--- login headers ---"
+            cat /tmp/login-headers.txt
+            echo "--- login body ---"
+            cat /tmp/login-response.json
+            exit 1
+          fi
+
+          me_status="$(curl -sS \
+            -b /tmp/clutch-session.cookies \
+            -o /tmp/auth-me-response.json \
+            -w "%{http_code}" \
+            http://localhost/api/auth/me)"
+
+          if [ "${me_status}" != "200" ]; then
+            echo "Falha ao restaurar sessao via /api/auth/me. Status: ${me_status}"
+            echo "--- login headers ---"
+            cat /tmp/login-headers.txt
+            echo "--- auth/me body ---"
+            cat /tmp/auth-me-response.json
+            exit 1
+          fi
+
+          grep -q '"username":"clutchplayer"' /tmp/auth-me-response.json
 
       - name: Show compose status
         if: always()
