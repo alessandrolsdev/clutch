@@ -56,7 +56,8 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Se esta for a primeira subida depois de trocar a imagem do backend, o boot pode demorar mais enquanto o container recompõe `node_modules` e regenera o Prisma client no volume de desenvolvimento.
+O backend agora reaproveita o volume de `node_modules` e só sincroniza dependências ou Prisma quando detecta drift real no runtime.
+O seed demo deixou de rodar em todo restart para reduzir custo operacional e evitar efeitos colaterais desnecessários.
 
 O compose sobe:
 - `traefik` na porta `80`
@@ -75,9 +76,22 @@ Todos os serviços se comunicam por nome Docker (`frontend`, `backend`, `presenc
 - Backend health via frontend proxy: `http://localhost/api/health`
 - Presence health via proxy: `http://localhost/presence/health`
 
-### 5. Conta demo
+### 5. Bootstrap dos dados demo
 
-O backend aplica migrations e roda o seed no boot do container.  
+Depois da primeira subida, carregue a base demo explicitamente:
+
+```bash
+docker compose exec backend sh ./scripts/container-bootstrap.sh
+```
+
+Esse comando:
+- aplica migrations pendentes
+- popula a conta demo e os dados sociais determinísticos
+
+Você pode reexecutá-lo quando quiser restaurar a base demo sem depender do restart do container.
+
+### 6. Conta demo
+
 O seed é determinístico e pode ser reexecutado sem depender de Steam, IGDB, Epic ou Discord.
 
 ```txt
@@ -101,6 +115,8 @@ curl http://localhost/presence/health
 
 ### Login via frontend proxy
 ```bash
+docker compose exec backend sh ./scripts/container-bootstrap.sh
+
 curl -X POST http://localhost/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"clutchplayer@clutch.gg","password":"clutch123"}'
