@@ -82,7 +82,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 15
-      start_period: 90s
+      start_period: 45s
     networks:
       - clutch
 
