@@ -3,7 +3,7 @@ http:
     backend-health:
       entryPoints:
         - web
-      rule: Path(`/api/health`)
+      rule: PathPrefix(`/api/health`)
       priority: 100
       middlewares:
         - strip-api-prefix
