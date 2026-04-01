@@ -28,14 +28,17 @@ CLUTCH é uma rede social para gamers, otakus e geeks. Perfil unificado, Rich Pr
 
 ## 📋 Pré-requisitos
 
-- [Node.js 20+](https://nodejs.org)
 - [Docker + Docker Compose](https://www.docker.com)
-- [Go 1.22+](https://golang.org) *(para o presence-service)*
 - [Git](https://git-scm.com)
+- Node.js 20+ apenas se você quiser rodar serviços fora dos containers
+- Go 1.24+ apenas se você quiser rodar o `presence-service` fora dos containers
 
 ---
 
 ## 🚀 Como rodar localmente
+
+O ambiente local agora é **container-first** e sobe por **porta única externa** via proxy reverso.  
+Você não precisa mais expor `3000`, `3344`, `5432`, `6379` ou `8080` no host.
 
 ### 1. Clonar o repositório
 ```bash
@@ -43,101 +46,78 @@ git clone https://github.com/alessandrolsdev/clutch.git
 cd clutch
 ```
 
-### 2. Subir Postgres e Redis
+### 2. Configurar variáveis do compose
 ```bash
-docker-compose up -d
-```
-
-### 3. Configurar variáveis de ambiente
-```bash
-cd backend
 cp .env.example .env
-# Edite o .env com seus valores
 ```
 
-### 4. Instalar dependências
+### 3. Subir todo o ambiente
 ```bash
-npm install
+docker compose up --build
 ```
 
-### 5. Rodar as migrations
-```bash
-npx prisma migrate dev
-```
+Se esta for a primeira subida depois de trocar a imagem do backend, o boot pode demorar mais enquanto o container recompõe `node_modules` e regenera o Prisma client no volume de desenvolvimento.
 
-### 6. Popular o banco com dados demo
-```bash
-npm run db:seed
-```
+O compose sobe:
+- `traefik` na porta `80`
+- `frontend` internamente na `3000`
+- `backend` internamente na `3344`
+- `presence` internamente na `8080`
+- `postgres` internamente na `5432`
+- `redis` internamente na `6379`
 
-O seed é determinístico, pode ser reexecutado e não depende de Steam, IGDB, Epic ou Discord para concluir.
+Todos os serviços se comunicam por nome Docker (`frontend`, `backend`, `presence`, `postgres`, `redis`).
 
-**Conta demo após o seed:**
+### 4. Acessar o app
+
+- Frontend: `http://localhost`
+- Login: `http://localhost/login`
+- Backend health via frontend proxy: `http://localhost/api/health`
+- Presence health via proxy: `http://localhost/presence/health`
+
+### 5. Conta demo
+
+O backend aplica migrations e roda o seed no boot do container.  
+O seed é determinístico e pode ser reexecutado sem depender de Steam, IGDB, Epic ou Discord.
+
 ```txt
 Email: clutchplayer@clutch.gg
 Senha: clutch123
-```
-
-### 7. Iniciar o servidor
-```bash
-npm run dev
-```
-
-O backend estará disponível em `http://localhost:3333`.
-
-**Health check:**
-```bash
-curl http://localhost:3333/health
-# { "status": "ok", "service": "clutch-backend" }
 ```
 
 ---
 
-## Frontend foundation
+## Validação rápida do ambiente
 
-Com a issue `#83`, o frontend agora vive de fato em [frontend/](/C:/Github/clutch/frontend).
-
-### 1. Configurar variaveis do frontend
+### Health do backend
 ```bash
-cd frontend
-cp .env.example .env.local
+curl http://localhost/api/health
 ```
 
-### 2. Instalar dependencias
+### Health do presence
 ```bash
-npm install
+curl http://localhost/presence/health
 ```
 
-### 3. Subir o app
+### Login via frontend proxy
 ```bash
-npm run dev
+curl -X POST http://localhost/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"clutchplayer@clutch.gg","password":"clutch123"}'
 ```
 
-O frontend ficara disponivel em `http://localhost:3000`.
-
-### 4. Validar a foundation
-```bash
-npm run typecheck
-npm run lint
-npm run test
-npm run build
-```
-
-Esta etapa entrega apenas a base do app: Next.js 15, TypeScript strict, Tailwind v3, aliases, shell inicial e setup de testes.
-
-### Login local
-Depois da foundation e da issue `#87`, o login do frontend fica em:
+### Presença em tempo real
+O browser conecta o WebSocket pelo mesmo host público:
 
 ```txt
-http://localhost:3000/login
+ws://localhost/ws/presence?token=<jwt>
 ```
 
-Use a conta demo seeded no backend:
+O token continua vindo da rota local autenticada do frontend.
 
-```txt
-Email: clutchplayer@clutch.gg
-Senha: clutch123
-```
+### Desenvolvimento manual fora de containers
+Ainda é possível rodar serviços manualmente, mas esse fluxo deixou de ser o padrão.  
+O caminho recomendado para DX local agora é sempre `docker compose up --build`.
 
 ---
 
@@ -192,7 +172,7 @@ clutch/
 │       ├── core/services/        ← Regras de negócio
 │       └── infra/                ← Database, Redis, integrações
 ├── frontend/                     ← Next.js 15
-└── docker-compose.yml            ← Postgres + Redis
+└── docker-compose.yml            ← Traefik + frontend + backend + presence + postgres + redis
 ```
 
 ---
