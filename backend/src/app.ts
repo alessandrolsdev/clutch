@@ -8,10 +8,15 @@ import { integrationRoutes } from './api/routes/integrations.routes';
 import { postRoutes } from './api/routes/posts.routes';
 import { notificationRoutes } from './api/routes/notifications.routes';
 import { authenticate } from './api/middlewares/authenticate';
+import {
+  runReadinessChecks,
+  type ReadinessReport,
+} from './config/health';
 
-type BuildAppOptions = {
+export type BuildAppOptions = {
   jwtSecret?: string;
   logger?: boolean;
+  readinessCheck?: () => Promise<ReadinessReport>;
 };
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
@@ -23,9 +28,25 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
   app.decorate('authenticate', authenticate);
 
+  const readinessCheck = options.readinessCheck ?? runReadinessChecks;
+
   app.get('/health', async () => ({
     status: 'ok',
   }));
+
+  app.get('/health/live', async () => ({
+    status: 'ok',
+  }));
+
+  app.get('/health/ready', async (_request, reply) => {
+    const readiness = await readinessCheck();
+
+    if (readiness.status === 'error') {
+      return reply.status(503).send(readiness);
+    }
+
+    return reply.status(200).send(readiness);
+  });
 
   await app.register(authRoutes, { prefix: '/auth' });
   await app.register(profileRoutes, { prefix: '/profiles' });
