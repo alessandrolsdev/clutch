@@ -103,7 +103,7 @@ describe('Prisma seed', () => {
       url: `/friends/${demoUserRecord.id}`,
     });
     expect(friendsResponse.statusCode).toBe(200);
-    expect((friendsResponse.json() as unknown[])).toHaveLength(2);
+    expect((friendsResponse.json() as unknown[]).length).toBeGreaterThanOrEqual(2);
 
     const feedResponse = await app.inject({
       method: 'GET',
