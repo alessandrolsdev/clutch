@@ -74,6 +74,8 @@ Todos os serviços se comunicam por nome Docker (`frontend`, `backend`, `presenc
 - Frontend: `http://localhost`
 - Login: `http://localhost/login`
 - Backend health via frontend proxy: `http://localhost/api/health`
+- Backend liveness via frontend proxy: `http://localhost/api/health/live`
+- Backend readiness via frontend proxy: `http://localhost/api/health/ready`
 - Presence health via proxy: `http://localhost/presence/health`
 
 ### 5. Bootstrap dos dados demo
@@ -108,6 +110,12 @@ Senha: clutch123
 curl http://localhost/api/health
 ```
 
+### Liveness e readiness do backend
+```bash
+curl http://localhost/api/health/live
+curl http://localhost/api/health/ready
+```
+
 ### Health do presence
 ```bash
 curl http://localhost/presence/health
@@ -130,6 +138,11 @@ ws://localhost/ws/presence?token=<jwt>
 ```
 
 O token continua vindo da rota local autenticada do frontend.
+
+### Readiness do stack
+- `backend` fica saudável quando banco e Redis respondem em `/health/ready`
+- `frontend` fica saudável quando `http://127.0.0.1:3000/login` responde no container
+- `traefik` só sobe como healthy depois do ping interno e das dependências saudáveis
 
 ### Desenvolvimento manual fora de containers
 Ainda é possível rodar serviços manualmente, mas esse fluxo deixou de ser o padrão.  
