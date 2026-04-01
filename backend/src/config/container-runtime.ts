@@ -15,8 +15,13 @@ export type ContainerRuntimePlan = {
 export function resolveContainerRuntimePlan(
   state: ContainerRuntimeState,
 ): ContainerRuntimePlan {
+  const missingRuntimeStamps =
+    state.storedPackageLockHash === null ||
+    state.storedPrismaSchemaHash === null;
+
   const installDependencies =
     !state.nodeModulesReady ||
+    missingRuntimeStamps ||
     (state.storedPackageLockHash !== null &&
       state.storedPackageLockHash !== state.packageLockHash);
 
