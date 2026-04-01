@@ -19,14 +19,14 @@ function buildState(
 }
 
 describe('container-runtime', () => {
-  it('não reinstala dependências nem regenera o Prisma quando o runtime já está sincronizado', () => {
+  it('nao reinstala dependencias nem regenera o Prisma quando o runtime ja esta sincronizado', () => {
     expect(resolveContainerRuntimePlan(buildState())).toEqual({
       installDependencies: false,
       generatePrismaClient: false,
     });
   });
 
-  it('instala dependências e regenera o Prisma quando node_modules ainda não está pronto', () => {
+  it('instala dependencias e regenera o Prisma quando node_modules ainda nao esta pronto', () => {
     expect(
       resolveContainerRuntimePlan(
         buildState({
@@ -39,7 +39,7 @@ describe('container-runtime', () => {
     });
   });
 
-  it('reinstala dependências quando o package-lock mudou depois do baseline salvo', () => {
+  it('reinstala dependencias quando o package-lock mudou depois do baseline salvo', () => {
     expect(
       resolveContainerRuntimePlan(
         buildState({
@@ -52,7 +52,7 @@ describe('container-runtime', () => {
     });
   });
 
-  it('adota o baseline atual sem reinstalar quando ainda não existe hash persistido', () => {
+  it('reinstala dependencias e regenera o Prisma quando os runtime stamps ainda nao existem', () => {
     expect(
       resolveContainerRuntimePlan(
         buildState({
@@ -61,12 +61,25 @@ describe('container-runtime', () => {
         }),
       ),
     ).toEqual({
-      installDependencies: false,
-      generatePrismaClient: false,
+      installDependencies: true,
+      generatePrismaClient: true,
     });
   });
 
-  it('regenera o Prisma quando o schema muda sem alterar dependências', () => {
+  it('forca a sincronizacao inicial quando apenas um dos runtime stamps esta ausente', () => {
+    expect(
+      resolveContainerRuntimePlan(
+        buildState({
+          storedPrismaSchemaHash: null,
+        }),
+      ),
+    ).toEqual({
+      installDependencies: true,
+      generatePrismaClient: true,
+    });
+  });
+
+  it('regenera o Prisma quando o schema muda sem alterar dependencias', () => {
     expect(
       resolveContainerRuntimePlan(
         buildState({
@@ -79,7 +92,7 @@ describe('container-runtime', () => {
     });
   });
 
-  it('regenera o Prisma quando o client ainda não existe no volume atual', () => {
+  it('regenera o Prisma quando o client ainda nao existe no volume atual', () => {
     expect(
       resolveContainerRuntimePlan(
         buildState({
