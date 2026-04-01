@@ -1,11 +1,30 @@
-import { getClientEnv } from '@/lib/config/env';
+function resolveApiBaseUrl(): string {
+  const internalApiUrl = process.env.INTERNAL_API_URL?.trim();
 
-export function buildApiUrl(pathname: string): string {
-  const { apiUrl } = getClientEnv();
-
-  if (!apiUrl) {
-    throw new Error('NEXT_PUBLIC_API_URL is not configured.');
+  if (internalApiUrl) {
+    return internalApiUrl;
   }
 
-  return new URL(pathname, apiUrl).toString();
+  const publicApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+
+  if (publicApiUrl) {
+    return publicApiUrl;
+  }
+
+  throw new Error('API URL is not configured.');
+}
+
+function normalizeBaseUrl(baseUrl: string): string {
+  return baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+}
+
+function normalizePathname(pathname: string): string {
+  return pathname.replace(/^\/+/, '');
+}
+
+export function buildApiUrl(pathname: string): string {
+  const baseUrl = normalizeBaseUrl(resolveApiBaseUrl());
+  const normalizedPath = normalizePathname(pathname);
+
+  return new URL(normalizedPath, baseUrl).toString();
 }

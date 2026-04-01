@@ -1,14 +1,27 @@
 import bcrypt from 'bcrypt';
-import {
+import * as prismaClientPackage from '@prisma/client';
+import type {
+  Prisma,
+  PrismaClient as PrismaClientType,
+} from '@prisma/client';
+import { fileURLToPath } from 'node:url';
+
+const {
   InteractionType,
   NotificationType,
   Platform,
   PostType,
   PresenceStatus,
-  Prisma,
+  Prisma: PrismaRuntime,
   PrismaClient,
-} from '@prisma/client';
-import { fileURLToPath } from 'node:url';
+} = prismaClientPackage;
+
+type InteractionType = (typeof InteractionType)[keyof typeof InteractionType];
+type NotificationType = (typeof NotificationType)[keyof typeof NotificationType];
+type Platform = (typeof Platform)[keyof typeof Platform];
+type PostType = (typeof PostType)[keyof typeof PostType];
+type PresenceStatus = (typeof PresenceStatus)[keyof typeof PresenceStatus];
+type PrismaClient = PrismaClientType;
 
 const prisma = new PrismaClient();
 
@@ -155,7 +168,7 @@ type SeedIntegrationConfig = {
 };
 
 function toNullableJsonInput(value: Prisma.JsonObject | null): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput {
-  return value ?? Prisma.JsonNull;
+  return value ?? PrismaRuntime.JsonNull;
 }
 
 const seedUsers: SeedUserRecord[] = [

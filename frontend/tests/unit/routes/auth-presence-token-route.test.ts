@@ -3,10 +3,12 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET } from '@/app/api/auth/presence-token/route';
 
 const originalApiUrl = process.env.NEXT_PUBLIC_API_URL;
+const originalInternalApiUrl = process.env.INTERNAL_API_URL;
 
 describe('auth presence token route', () => {
   beforeEach(() => {
-    process.env.NEXT_PUBLIC_API_URL = 'http://backend.test';
+    process.env.INTERNAL_API_URL = 'http://backend.test';
+    process.env.NEXT_PUBLIC_API_URL = 'http://localhost/api';
     vi.restoreAllMocks();
   });
 
@@ -70,6 +72,12 @@ describe('auth presence token route', () => {
 });
 
 afterAll(() => {
+  if (typeof originalInternalApiUrl === 'undefined') {
+    delete process.env.INTERNAL_API_URL;
+  } else {
+    process.env.INTERNAL_API_URL = originalInternalApiUrl;
+  }
+
   if (typeof originalApiUrl === 'undefined') {
     delete process.env.NEXT_PUBLIC_API_URL;
     return;
