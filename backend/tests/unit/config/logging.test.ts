@@ -5,6 +5,9 @@ import {
   createBackendRuntimeLogEntry,
   createFastifyLoggerOptions,
   resolveBackendRequestId,
+  sanitizeConnectionUrl,
+  sanitizeSensitiveText,
+  serializeErrorDetails,
 } from '@/config/logging';
 
 describe('logging config', () => {
@@ -49,5 +52,42 @@ describe('logging config', () => {
     expect(loggerOptions.base).toEqual({ service: BACKEND_SERVICE_NAME });
     expect(loggerOptions.messageKey).toBe('message');
     expect(typeof loggerOptions.timestamp).toBe('function');
+  });
+
+  it('mascara senha em url de conexao preservando host e porta', () => {
+    const target = sanitizeConnectionUrl('redis://default:super-secret@redis.internal:6379/0');
+
+    expect(target.redactedUrl).toBe('redis://default:***@redis.internal:6379/0');
+    expect(target.scheme).toBe('redis');
+    expect(target.host).toBe('redis.internal');
+    expect(target.port).toBe('6379');
+  });
+
+  it('preserva url sem senha', () => {
+    const target = sanitizeConnectionUrl('redis://redis.internal:6379/0');
+
+    expect(target.redactedUrl).toBe('redis://redis.internal:6379/0');
+    expect(target.host).toBe('redis.internal');
+    expect(target.port).toBe('6379');
+  });
+
+  it('mascara senha em url invalida sem quebrar o parse', () => {
+    const target = sanitizeConnectionUrl('redis://default:super-secret@%zz:6379');
+
+    expect(target.redactedUrl).toBe('redis://default:***@%zz:6379');
+    expect(target.host).toBe('%zz');
+    expect(target.port).toBe('6379');
+  });
+
+  it('sanitiza urls sensiveis dentro de mensagens de erro', () => {
+    const error = new Error('parse "redis://default:super-secret@%zz:6379": invalid URL escape "%zz"');
+
+    const details = serializeErrorDetails(error);
+
+    expect(sanitizeSensitiveText(error.message)).toBe(
+      'parse "redis://default:***@%zz:6379": invalid URL escape "%zz"',
+    );
+    expect(details.errorMessage).toBe('parse "redis://default:***@%zz:6379": invalid URL escape "%zz"');
+    expect(String(details.stack)).not.toContain('super-secret');
   });
 });
