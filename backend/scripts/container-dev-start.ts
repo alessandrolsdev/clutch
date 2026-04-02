@@ -3,7 +3,10 @@ import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { resolveContainerRuntimePlan } from '../src/config/container-runtime';
+import {
+  resolveContainerDependencySyncCommand,
+  resolveContainerRuntimePlan,
+} from '../src/config/container-runtime';
 
 const cwd = process.cwd();
 const nodeModulesPath = join(cwd, 'node_modules');
@@ -87,7 +90,8 @@ async function main(): Promise<void> {
 
   if (plan.installDependencies) {
     console.log('[container-dev-start] Sincronizando dependências do backend...');
-    await runCommand('npm', ['install']);
+    const [command, ...args] = resolveContainerDependencySyncCommand();
+    await runCommand(command, args);
   }
 
   if (plan.generatePrismaClient) {
