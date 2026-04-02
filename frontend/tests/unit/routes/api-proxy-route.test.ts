@@ -17,6 +17,7 @@ describe('api proxy route', () => {
       expect(init?.headers).toBeDefined();
       const headers = new Headers(init?.headers);
       expect(headers.get('authorization')).toBe('Bearer jwt-token');
+      expect(headers.get('x-request-id')).toBe('req-proxy-123');
 
       return new Response(
         JSON.stringify({
@@ -38,6 +39,7 @@ describe('api proxy route', () => {
     const request = new NextRequest('http://localhost/api/profiles/clutchplayer', {
       headers: {
         cookie: 'clutch_session=jwt-token',
+        'x-request-id': 'req-proxy-123',
       },
     });
 
@@ -50,17 +52,19 @@ describe('api proxy route', () => {
   });
 
   it('clears the session cookie on backend 401 responses', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => {
-        return new Response(JSON.stringify({ message: 'Token inválido ou expirado.' }), {
-          status: 401,
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-      }) as typeof fetch,
-    );
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      expect(headers.get('x-request-id')).toBeTruthy();
+
+      return new Response(JSON.stringify({ message: 'Token inválido ou expirado.' }), {
+        status: 401,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+    });
+
+    vi.stubGlobal('fetch', fetchMock as typeof fetch);
 
     const request = new NextRequest('http://localhost/api/profiles/clutchplayer', {
       headers: {
@@ -73,6 +77,7 @@ describe('api proxy route', () => {
     });
 
     expect(response.status).toBe(401);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(response.headers.get('set-cookie')).toContain('clutch_session=');
   });
 });

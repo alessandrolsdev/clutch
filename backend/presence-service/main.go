@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
+	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -34,6 +36,7 @@ var (
 		"http://localhost:3001",
 		"http://127.0.0.1:3001",
 	}
+	connectionCounter atomic.Uint64
 )
 
 type presenceConfig struct {
@@ -48,10 +51,29 @@ type presenceClaims struct {
 }
 
 type Client struct {
-	hub    *Hub
-	conn   *websocket.Conn
-	send   chan []byte
-	userId string
+	hub          *Hub
+	conn         *websocket.Conn
+	send         chan []byte
+	userId       string
+	connectionId string
+}
+
+func newConnectionID() string {
+	return fmt.Sprintf("conn-%d-%d", time.Now().UnixMilli(), connectionCounter.Add(1))
+}
+
+func isIgnorableWebsocketCloseError(err error) bool {
+	if err == nil {
+		return true
+	}
+
+	if errors.Is(err, net.ErrClosed) {
+		return true
+	}
+
+	message := err.Error()
+	return strings.Contains(message, "websocket: close sent") ||
+		strings.Contains(message, "use of closed network connection")
 }
 
 func loadPresenceConfig() presenceConfig {
@@ -159,29 +181,56 @@ func newPresenceHandler(hub *Hub, cfg presenceConfig) http.HandlerFunc {
 	wsUpgrader := newUpgrader(cfg)
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !isOriginAllowed(r.Header.Get("Origin"), cfg.allowedOrigins) {
+		origin := r.Header.Get("Origin")
+
+		if !isOriginAllowed(origin, cfg.allowedOrigins) {
+			writePresenceLog("warn", "websocket_origin_rejected", "WebSocket origin rejected", map[string]interface{}{
+				"origin":     origin,
+				"remoteAddr": r.RemoteAddr,
+			})
 			http.Error(w, errDisallowedOrigin.Error(), http.StatusForbidden)
 			return
 		}
 
 		userID, err := authenticateRequest(r, cfg)
 		if err != nil {
+			fields := errorFields(err)
+			fields["origin"] = origin
+			fields["remoteAddr"] = r.RemoteAddr
+			writePresenceLog("warn", "websocket_handshake_rejected", "WebSocket handshake rejected", fields)
 			http.Error(w, "unauthorized websocket connection", http.StatusUnauthorized)
 			return
 		}
 
+		writePresenceLog("info", "websocket_handshake_authenticated", "WebSocket handshake authenticated", map[string]interface{}{
+			"userId":     userID,
+			"origin":     origin,
+			"remoteAddr": r.RemoteAddr,
+		})
+
 		conn, err := wsUpgrader.Upgrade(w, r, nil)
 		if err != nil {
-			log.Printf("websocket upgrade error: %v", err)
+			fields := errorFields(err)
+			fields["userId"] = userID
+			fields["origin"] = origin
+			writePresenceLog("error", "websocket_upgrade_failed", "WebSocket upgrade failed", fields)
 			return
 		}
 
 		client := &Client{
-			hub:    hub,
-			conn:   conn,
-			send:   make(chan []byte, 256),
-			userId: userID,
+			hub:          hub,
+			conn:         conn,
+			send:         make(chan []byte, 256),
+			userId:       userID,
+			connectionId: newConnectionID(),
 		}
+
+		writePresenceLog("info", "websocket_connection_opened", "WebSocket connection opened", map[string]interface{}{
+			"userId":       userID,
+			"connectionId": client.connectionId,
+			"origin":       origin,
+			"remoteAddr":   r.RemoteAddr,
+		})
 
 		hub.register <- client
 
@@ -194,36 +243,68 @@ func (c *Client) readPump() {
 	defer func() {
 		c.hub.unregister <- c
 		if err := c.conn.Close(); err != nil {
-			log.Printf("error closing connection: %v", err)
+			if !isIgnorableWebsocketCloseError(err) {
+				fields := errorFields(err)
+				fields["userId"] = c.userId
+				fields["connectionId"] = c.connectionId
+				writePresenceLog("error", "websocket_close_failed", "Failed to close websocket connection", fields)
+			}
 		}
+		writePresenceLog("info", "websocket_connection_closed", "WebSocket connection closed", map[string]interface{}{
+			"userId":       c.userId,
+			"connectionId": c.connectionId,
+		})
 	}()
 
 	c.conn.SetReadLimit(maxMessageSize)
 	if err := c.conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
-		log.Printf("error setting read deadline: %v", err)
+		fields := errorFields(err)
+		fields["userId"] = c.userId
+		fields["connectionId"] = c.connectionId
+		writePresenceLog("error", "websocket_read_deadline_failed", "Failed to set websocket read deadline", fields)
 		return
 	}
 	c.conn.SetPongHandler(func(string) error {
+		writePresenceLog("info", "websocket_pong_received", "WebSocket pong received", map[string]interface{}{
+			"userId":       c.userId,
+			"connectionId": c.connectionId,
+		})
 		return c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	})
 
 	for {
 		_, message, err := c.conn.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("websocket error: %v", err)
+			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseNoStatusReceived) {
+				break
+			}
+
+			if !isIgnorableWebsocketCloseError(err) {
+				fields := errorFields(err)
+				fields["userId"] = c.userId
+				fields["connectionId"] = c.connectionId
+				writePresenceLog("error", "websocket_read_failed", "Unexpected websocket read error", fields)
 			}
 			break
 		}
 
 		var msg map[string]interface{}
 		if err := json.Unmarshal(message, &msg); err == nil && msg["event"] == "PING" {
+			writePresenceLog("info", "websocket_ping_received", "WebSocket ping received", map[string]interface{}{
+				"userId":       c.userId,
+				"connectionId": c.connectionId,
+			})
+
 			pong, _ := json.Marshal(WsMessage{
 				Event:   EventPong,
 				Payload: nil,
 				Ts:      time.Now().UnixMilli(),
 			})
 			c.send <- pong
+			writePresenceLog("info", "websocket_pong_sent", "WebSocket pong sent", map[string]interface{}{
+				"userId":       c.userId,
+				"connectionId": c.connectionId,
+			})
 		}
 	}
 }
@@ -233,7 +314,12 @@ func (c *Client) writePump() {
 	defer func() {
 		ticker.Stop()
 		if err := c.conn.Close(); err != nil {
-			log.Printf("error closing connection: %v", err)
+			if !isIgnorableWebsocketCloseError(err) {
+				fields := errorFields(err)
+				fields["userId"] = c.userId
+				fields["connectionId"] = c.connectionId
+				writePresenceLog("error", "websocket_close_failed", "Failed to close websocket connection", fields)
+			}
 		}
 	}()
 
@@ -241,28 +327,50 @@ func (c *Client) writePump() {
 		select {
 		case message, ok := <-c.send:
 			if err := c.conn.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
-				log.Printf("error setting write deadline: %v", err)
+				fields := errorFields(err)
+				fields["userId"] = c.userId
+				fields["connectionId"] = c.connectionId
+				writePresenceLog("error", "websocket_write_deadline_failed", "Failed to set websocket write deadline", fields)
 				return
 			}
 			if !ok {
 				if err := c.conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil {
-					log.Printf("error writing close message: %v", err)
+					if !isIgnorableWebsocketCloseError(err) {
+						fields := errorFields(err)
+						fields["userId"] = c.userId
+						fields["connectionId"] = c.connectionId
+						writePresenceLog("error", "websocket_close_message_failed", "Failed to write websocket close message", fields)
+					}
 				}
 				return
 			}
 			if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
-				log.Printf("error writing message: %v", err)
+				fields := errorFields(err)
+				fields["userId"] = c.userId
+				fields["connectionId"] = c.connectionId
+				writePresenceLog("error", "websocket_write_failed", "Failed to write websocket message", fields)
 				return
 			}
 
 		case <-ticker.C:
 			if err := c.conn.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
-				log.Printf("error setting write deadline: %v", err)
+				fields := errorFields(err)
+				fields["userId"] = c.userId
+				fields["connectionId"] = c.connectionId
+				writePresenceLog("error", "websocket_write_deadline_failed", "Failed to set websocket write deadline", fields)
 				return
 			}
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				fields := errorFields(err)
+				fields["userId"] = c.userId
+				fields["connectionId"] = c.connectionId
+				writePresenceLog("error", "websocket_ping_failed", "Failed to send websocket ping", fields)
 				return
 			}
+			writePresenceLog("info", "websocket_ping_sent", "WebSocket ping sent", map[string]interface{}{
+				"userId":       c.userId,
+				"connectionId": c.connectionId,
+			})
 		}
 	}
 }
@@ -278,14 +386,22 @@ func main() {
 
 	opt, err := redis.ParseURL(redisURL)
 	if err != nil {
-		log.Fatalf("failed to parse Redis URL: %v", err)
+		fields := errorFields(err)
+		fields["redisUrl"] = redisURL
+		writePresenceLog("error", "redis_url_parse_failed", "Failed to parse Redis URL", fields)
+		os.Exit(1)
 	}
 
 	redisClient := redis.NewClient(opt)
 	if err := redisClient.Ping(ctx).Err(); err != nil {
-		log.Fatalf("failed to connect to Redis: %v", err)
+		fields := errorFields(err)
+		fields["redisUrl"] = redisURL
+		writePresenceLog("error", "redis_connect_failed", "Failed to connect to Redis", fields)
+		os.Exit(1)
 	}
-	log.Println("connected to Redis")
+	writePresenceLog("info", "redis_connected", "Connected to Redis", map[string]interface{}{
+		"redisUrl": redisURL,
+	})
 
 	hub := NewHub(redisClient)
 	go hub.Run(ctx)
@@ -299,7 +415,9 @@ func main() {
 			"service":     "clutch-presence",
 			"status":      "ok",
 		}); err != nil {
-			log.Printf("error encoding stats: %v", err)
+			fields := errorFields(err)
+			fields["path"] = r.URL.Path
+			writePresenceLog("error", "stats_encode_failed", "Failed to encode stats response", fields)
 		}
 	})
 
@@ -309,7 +427,9 @@ func main() {
 			"status":  "ok",
 			"service": "clutch-presence",
 		}); err != nil {
-			log.Printf("error encoding health: %v", err)
+			fields := errorFields(err)
+			fields["path"] = r.URL.Path
+			writePresenceLog("error", "health_encode_failed", "Failed to encode health response", fields)
 		}
 	})
 
@@ -318,8 +438,14 @@ func main() {
 		port = "8080"
 	}
 
-	log.Printf("CLUTCH Presence Service listening on ws://localhost:%s/ws/presence", port)
+	writePresenceLog("info", "presence_server_listening", "Presence service listening", map[string]interface{}{
+		"port": port,
+		"path": "/ws/presence",
+	})
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
-		log.Fatalf("server error: %v", err)
+		fields := errorFields(err)
+		fields["port"] = port
+		writePresenceLog("error", "presence_server_failed", "Presence service stopped unexpectedly", fields)
+		os.Exit(1)
 	}
 }

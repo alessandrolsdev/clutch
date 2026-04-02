@@ -3,17 +3,12 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 )
-
-// ─────────────────────────────────────────────────────────────
-// Hub — gerencia todas as conexões WebSocket ativas
-// ─────────────────────────────────────────────────────────────
 
 type WsEvent string
 
@@ -52,7 +47,7 @@ const (
 
 type Hub struct {
 	mu          sync.RWMutex
-	clients     map[string]*Client // userId → Client
+	clients     map[string]*Client
 	register    chan *Client
 	unregister  chan *Client
 	redisClient *redis.Client
@@ -71,7 +66,7 @@ func (h *Hub) Run(ctx context.Context) {
 	pubsub := h.redisClient.PSubscribe(ctx, presenceChannelPrefix+"*", notificationsChannelPrefix+"*")
 	defer func() {
 		if err := pubsub.Close(); err != nil {
-			log.Printf("error closing pubsub: %v", err)
+			writePresenceLog("error", "redis_pubsub_close_failed", "Failed to close Redis pubsub", errorFields(err))
 		}
 	}()
 
@@ -86,7 +81,11 @@ func (h *Hub) Run(ctx context.Context) {
 			h.mu.Lock()
 			h.clients[client.userId] = client
 			h.mu.Unlock()
-			log.Printf("client registered: %s (total: %d)", client.userId, h.Count())
+			writePresenceLog("info", "websocket_client_registered", "WebSocket client registered", map[string]interface{}{
+				"userId":       client.userId,
+				"connectionId": client.connectionId,
+				"connections":  h.Count(),
+			})
 
 		case client := <-h.unregister:
 			h.mu.Lock()
@@ -95,7 +94,11 @@ func (h *Hub) Run(ctx context.Context) {
 				close(client.send)
 			}
 			h.mu.Unlock()
-			log.Printf("client unregistered: %s (total: %d)", client.userId, h.Count())
+			writePresenceLog("info", "websocket_client_unregistered", "WebSocket client unregistered", map[string]interface{}{
+				"userId":       client.userId,
+				"connectionId": client.connectionId,
+				"connections":  h.Count(),
+			})
 
 		case msg := <-redisCh:
 			h.routeRealtimeMessage(msg.Channel, msg.Payload)
@@ -110,31 +113,42 @@ func (h *Hub) routeRealtimeMessage(channel string, payload string) {
 	case strings.HasPrefix(channel, notificationsChannelPrefix):
 		h.deliverNotification(channel, payload)
 	default:
-		log.Printf("unsupported realtime channel: %s", channel)
+		writePresenceLog("warn", "redis_channel_unsupported", "Unsupported realtime channel received", map[string]interface{}{
+			"channel": channel,
+		})
 	}
 }
 
 func (h *Hub) deliverPresenceUpdate(channel string, payload string) {
 	recipientID, ok := channelRecipientID(channel, presenceChannelPrefix)
 	if !ok {
-		log.Printf("invalid presence channel: %s", channel)
+		writePresenceLog("warn", "presence_channel_invalid", "Invalid presence channel received", map[string]interface{}{
+			"channel": channel,
+		})
 		return
 	}
 
 	var message WsMessage
 	if err := json.Unmarshal([]byte(payload), &message); err != nil {
-		log.Printf("error parsing presence update: %v", err)
+		fields := errorFields(err)
+		fields["channel"] = channel
+		writePresenceLog("error", "presence_payload_parse_failed", "Failed to parse presence update payload", fields)
 		return
 	}
 
 	if message.Event != EventFriendPresence {
-		log.Printf("unexpected presence event: %s", message.Event)
+		writePresenceLog("warn", "presence_event_unexpected", "Unexpected presence event received", map[string]interface{}{
+			"channel": channel,
+			"event":   string(message.Event),
+		})
 		return
 	}
 
 	data, err := json.Marshal(message)
 	if err != nil {
-		log.Printf("error marshaling presence message: %v", err)
+		fields := errorFields(err)
+		fields["channel"] = channel
+		writePresenceLog("error", "presence_payload_marshal_failed", "Failed to marshal presence message", fields)
 		return
 	}
 
@@ -144,13 +158,17 @@ func (h *Hub) deliverPresenceUpdate(channel string, payload string) {
 func (h *Hub) deliverNotification(channel string, payload string) {
 	recipientID, ok := channelRecipientID(channel, notificationsChannelPrefix)
 	if !ok {
-		log.Printf("invalid notification channel: %s", channel)
+		writePresenceLog("warn", "notification_channel_invalid", "Invalid notification channel received", map[string]interface{}{
+			"channel": channel,
+		})
 		return
 	}
 
 	var notification NotificationPayload
 	if err := json.Unmarshal([]byte(payload), &notification); err != nil {
-		log.Printf("error parsing notification payload: %v", err)
+		fields := errorFields(err)
+		fields["channel"] = channel
+		writePresenceLog("error", "notification_payload_parse_failed", "Failed to parse notification payload", fields)
 		return
 	}
 
@@ -162,7 +180,9 @@ func (h *Hub) deliverNotification(channel string, payload string) {
 
 	data, err := json.Marshal(message)
 	if err != nil {
-		log.Printf("error marshaling notification message: %v", err)
+		fields := errorFields(err)
+		fields["channel"] = channel
+		writePresenceLog("error", "notification_payload_marshal_failed", "Failed to marshal notification message", fields)
 		return
 	}
 
@@ -199,6 +219,10 @@ func (h *Hub) sendToUser(userID string, data []byte) {
 			delete(h.clients, userID)
 		}
 		h.mu.Unlock()
+		writePresenceLog("warn", "websocket_client_dropped", "Dropped slow websocket client", map[string]interface{}{
+			"userId":       userID,
+			"connectionId": client.connectionId,
+		})
 	}
 }
 

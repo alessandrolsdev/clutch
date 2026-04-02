@@ -17,31 +17,35 @@ describe('auth login route', () => {
   });
 
   it('sets an httpOnly cookie when login succeeds', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => {
-        return new Response(
-          JSON.stringify({
-            id: 'user-1',
-            username: 'clutchplayer',
-            token: 'jwt-token',
-            message: 'Acesso autorizado.',
-          }),
-          {
-            status: 200,
-            headers: {
-              'Content-Type': 'application/json',
-            },
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+
+      expect(headers.get('x-request-id')).toBe('req-login-123');
+
+      return new Response(
+        JSON.stringify({
+          id: 'user-1',
+          username: 'clutchplayer',
+          token: 'jwt-token',
+          message: 'Acesso autorizado.',
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
           },
-        );
-      }) as typeof fetch,
-    );
+        },
+      );
+    });
+
+    vi.stubGlobal('fetch', fetchMock as typeof fetch);
 
     const response = await POST(
       new Request('http://localhost/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'x-request-id': 'req-login-123',
         },
         body: JSON.stringify({
           email: 'clutchplayer@clutch.gg',
@@ -51,23 +55,27 @@ describe('auth login route', () => {
     );
 
     expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(response.headers.get('set-cookie')).toContain(AUTH_SESSION_COOKIE_NAME);
     expect(response.headers.get('set-cookie')).toContain('HttpOnly');
     expect(response.headers.get('set-cookie')).toContain('jwt-token');
   });
 
   it('propagates invalid credentials without setting a session cookie', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => {
-        return new Response(JSON.stringify({ message: 'Credenciais inválidas.' }), {
-          status: 401,
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-      }) as typeof fetch,
-    );
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+
+      expect(headers.get('x-request-id')).toBeTruthy();
+
+      return new Response(JSON.stringify({ message: 'Credenciais inválidas.' }), {
+        status: 401,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+    });
+
+    vi.stubGlobal('fetch', fetchMock as typeof fetch);
 
     const response = await POST(
       new Request('http://localhost/api/auth/login', {
@@ -83,6 +91,7 @@ describe('auth login route', () => {
     );
 
     expect(response.status).toBe(401);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(response.headers.get('set-cookie')).toBeNull();
     await expect(response.json()).resolves.toEqual({
       message: 'Credenciais inválidas.',
