@@ -57,7 +57,6 @@ describe('logging config', () => {
   it('mascara senha em url de conexao preservando host e porta', () => {
     const target = sanitizeConnectionUrl('redis://default:super-secret@redis.internal:6379/0');
 
-    expect(target.redactedUrl).toBe('redis://default:***@redis.internal:6379/0');
     expect(target.scheme).toBe('redis');
     expect(target.host).toBe('redis.internal');
     expect(target.port).toBe('6379');
@@ -66,7 +65,6 @@ describe('logging config', () => {
   it('preserva url sem senha', () => {
     const target = sanitizeConnectionUrl('redis://redis.internal:6379/0');
 
-    expect(target.redactedUrl).toBe('redis://redis.internal:6379/0');
     expect(target.host).toBe('redis.internal');
     expect(target.port).toBe('6379');
   });
@@ -74,7 +72,6 @@ describe('logging config', () => {
   it('mascara senha em url invalida sem quebrar o parse', () => {
     const target = sanitizeConnectionUrl('redis://default:super-secret@%zz:6379');
 
-    expect(target.redactedUrl).toBe('redis://default:***@%zz:6379');
     expect(target.host).toBe('%zz');
     expect(target.port).toBe('6379');
   });
@@ -85,9 +82,12 @@ describe('logging config', () => {
     const details = serializeErrorDetails(error);
 
     expect(sanitizeSensitiveText(error.message)).toBe(
-      'parse "redis://default:***@%zz:6379": invalid URL escape "%zz"',
+      'parse "[connection scheme=redis host=%zz port=6379]": invalid URL escape "%zz"',
     );
-    expect(details.errorMessage).toBe('parse "redis://default:***@%zz:6379": invalid URL escape "%zz"');
+    expect(details.errorMessage).toBe(
+      'parse "[connection scheme=redis host=%zz port=6379]": invalid URL escape "%zz"',
+    );
     expect(String(details.stack)).not.toContain('super-secret');
+    expect(String(details.stack)).not.toContain('redis://');
   });
 });

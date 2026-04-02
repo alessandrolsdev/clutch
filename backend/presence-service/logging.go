@@ -17,7 +17,6 @@ type sanitizedConnectionTarget struct {
 	Scheme      string
 	Host        string
 	Port        string
-	RedactedURL string
 }
 
 var sensitiveURLPattern = regexp.MustCompile(`[A-Za-z][A-Za-z0-9+.-]*://[^\s"'<>]+`)
@@ -84,83 +83,68 @@ func sanitizeConnectionURL(rawURL string) sanitizedConnectionTarget {
 
 	parsedURL, err := url.Parse(trimmedURL)
 	if err != nil {
-		return sanitizedConnectionTarget{
-			RedactedURL: redactConnectionURLFallback(trimmedURL),
-		}
+		return parseConnectionTargetFallback(trimmedURL)
 	}
 
-	redactedURL := parsedURL.String()
-	if parsedURL.User != nil {
-		username := parsedURL.User.Username()
-		if _, hasPassword := parsedURL.User.Password(); hasPassword {
-			redactedURL = buildRedactedURL(parsedURL, username)
+	return sanitizedConnectionTarget{
+		Scheme: parsedURL.Scheme,
+		Host:   parsedURL.Hostname(),
+		Port:   parsedURL.Port(),
+	}
+}
+
+func parseConnectionTargetFallback(rawURL string) sanitizedConnectionTarget {
+	schemeSeparatorIndex := strings.Index(rawURL, "://")
+	if schemeSeparatorIndex < 0 {
+		return sanitizedConnectionTarget{}
+	}
+
+	scheme := rawURL[:schemeSeparatorIndex]
+	remainder := rawURL[schemeSeparatorIndex+3:]
+	atIndex := strings.LastIndex(remainder, "@")
+	hostAndPath := remainder
+	if atIndex >= 0 {
+		hostAndPath = remainder[atIndex+1:]
+	}
+
+	slashIndex := strings.Index(hostAndPath, "/")
+	hostPort := hostAndPath
+	if slashIndex >= 0 {
+		hostPort = hostAndPath[:slashIndex]
+	}
+
+	colonIndex := strings.LastIndex(hostPort, ":")
+	if colonIndex < 0 {
+		return sanitizedConnectionTarget{
+			Scheme: scheme,
+			Host:   hostPort,
 		}
 	}
 
 	return sanitizedConnectionTarget{
-		Scheme:      parsedURL.Scheme,
-		Host:        parsedURL.Hostname(),
-		Port:        parsedURL.Port(),
-		RedactedURL: redactedURL,
+		Scheme: scheme,
+		Host:   hostPort[:colonIndex],
+		Port:   hostPort[colonIndex+1:],
 	}
 }
 
-func buildRedactedURL(parsedURL *url.URL, username string) string {
-	var builder strings.Builder
-
-	if parsedURL.Scheme != "" {
-		builder.WriteString(parsedURL.Scheme)
-		builder.WriteString("://")
+func formatSanitizedConnectionTarget(target sanitizedConnectionTarget) string {
+	parts := make([]string, 0, 3)
+	if target.Scheme != "" {
+		parts = append(parts, "scheme="+target.Scheme)
+	}
+	if target.Host != "" {
+		parts = append(parts, "host="+target.Host)
+	}
+	if target.Port != "" {
+		parts = append(parts, "port="+target.Port)
 	}
 
-	if username != "" {
-		builder.WriteString(username)
-	}
-	builder.WriteString(":***@")
-	builder.WriteString(parsedURL.Host)
-
-	if parsedURL.RawPath != "" {
-		builder.WriteString(parsedURL.RawPath)
-	} else {
-		builder.WriteString(parsedURL.EscapedPath())
+	if len(parts) == 0 {
+		return "[connection redacted]"
 	}
 
-	if parsedURL.RawQuery != "" {
-		builder.WriteString("?")
-		builder.WriteString(parsedURL.RawQuery)
-	}
-
-	if parsedURL.Fragment != "" {
-		builder.WriteString("#")
-		builder.WriteString(parsedURL.Fragment)
-	}
-
-	return builder.String()
-}
-
-func redactConnectionURLFallback(rawURL string) string {
-	schemeSeparatorIndex := strings.Index(rawURL, "://")
-	if schemeSeparatorIndex < 0 {
-		return rawURL
-	}
-
-	scheme := rawURL[:schemeSeparatorIndex+3]
-	remainder := rawURL[schemeSeparatorIndex+3:]
-	atIndex := strings.LastIndex(remainder, "@")
-	if atIndex < 0 {
-		return rawURL
-	}
-
-	userInfo := remainder[:atIndex]
-	hostAndPath := remainder[atIndex+1:]
-
-	colonIndex := strings.Index(userInfo, ":")
-	if colonIndex < 0 {
-		return rawURL
-	}
-
-	username := userInfo[:colonIndex]
-	return scheme + username + ":***@" + hostAndPath
+	return "[connection " + strings.Join(parts, " ") + "]"
 }
 
 func connectionLogFields(prefix string, rawURL string, status string) map[string]interface{} {
@@ -178,9 +162,6 @@ func connectionLogFields(prefix string, rawURL string, status string) map[string
 	if target.Port != "" {
 		fields[prefix+"Port"] = target.Port
 	}
-	if target.RedactedURL != "" && target.Host == "" {
-		fields[prefix+"UrlRedacted"] = target.RedactedURL
-	}
 
 	return fields
 }
@@ -191,10 +172,6 @@ func sanitizeSensitiveText(value string) string {
 	}
 
 	return sensitiveURLPattern.ReplaceAllStringFunc(value, func(match string) string {
-		target := sanitizeConnectionURL(match)
-		if target.RedactedURL == "" {
-			return match
-		}
-		return target.RedactedURL
+		return formatSanitizedConnectionTarget(sanitizeConnectionURL(match))
 	})
 }

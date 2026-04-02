@@ -12,6 +12,10 @@ services:
       - --ping.entrypoint=ping
       - --log.level=INFO
       - --accesslog=true
+      - --accesslog.format=json
+      - --accesslog.fields.defaultmode=keep
+      - --accesslog.fields.names.RequestPath=drop
+      - --accesslog.fields.names.RequestLine=drop
     ports:
       - "80:80"
     volumes:
