@@ -36,7 +36,6 @@ func TestSanitizeConnectionURL(t *testing.T) {
 	tests := []struct {
 		name           string
 		rawURL         string
-		wantRedacted   string
 		wantScheme     string
 		wantHost       string
 		wantPort       string
@@ -44,7 +43,6 @@ func TestSanitizeConnectionURL(t *testing.T) {
 		{
 			name:         "masks password while preserving host and port",
 			rawURL:       "redis://default:super-secret@redis.internal:6379/0",
-			wantRedacted: "redis://default:***@redis.internal:6379/0",
 			wantScheme:   "redis",
 			wantHost:     "redis.internal",
 			wantPort:     "6379",
@@ -52,15 +50,16 @@ func TestSanitizeConnectionURL(t *testing.T) {
 		{
 			name:         "preserves url without password",
 			rawURL:       "redis://redis.internal:6379/0",
-			wantRedacted: "redis://redis.internal:6379/0",
 			wantScheme:   "redis",
 			wantHost:     "redis.internal",
 			wantPort:     "6379",
 		},
 		{
-			name:         "redacts invalid url without panicking",
+			name:       "handles invalid url without panicking",
 			rawURL:       "redis://default:super-secret@%zz:6379",
-			wantRedacted: "redis://default:***@%zz:6379",
+			wantScheme:   "redis",
+			wantHost:     "%zz",
+			wantPort:     "6379",
 		},
 	}
 
@@ -72,9 +71,6 @@ func TestSanitizeConnectionURL(t *testing.T) {
 
 			target := sanitizeConnectionURL(tt.rawURL)
 
-			if target.RedactedURL != tt.wantRedacted {
-				t.Fatalf("expected redacted url %q, got %q", tt.wantRedacted, target.RedactedURL)
-			}
 			if target.Scheme != tt.wantScheme {
 				t.Fatalf("expected scheme %q, got %q", tt.wantScheme, target.Scheme)
 			}
@@ -108,12 +104,9 @@ func TestConnectionLogFields(t *testing.T) {
 		if _, ok := fields["redisUrl"]; ok {
 			t.Fatalf("did not expect redisUrl for valid connection target")
 		}
-		if _, ok := fields["redisUrlRedacted"]; ok {
-			t.Fatalf("did not expect redisUrlRedacted for valid connection target")
-		}
 	})
 
-	t.Run("falls back to redacted url for invalid urls", func(t *testing.T) {
+	t.Run("uses host and port for urls even when password exists", func(t *testing.T) {
 		t.Parallel()
 
 		fields := connectionLogFields("redis", "redis://default:super-secret@%zz:6379", "parse_failed")
@@ -121,14 +114,11 @@ func TestConnectionLogFields(t *testing.T) {
 		if fields["status"] != "parse_failed" {
 			t.Fatalf("expected status parse_failed, got %v", fields["status"])
 		}
-		if fields["redisUrlRedacted"] != "redis://default:***@%zz:6379" {
-			t.Fatalf("expected redisUrlRedacted to be masked, got %v", fields["redisUrlRedacted"])
+		if fields["redisHost"] != "%zz" {
+			t.Fatalf("expected redisHost %%zz, got %v", fields["redisHost"])
 		}
-		if _, ok := fields["redisHost"]; ok {
-			t.Fatalf("did not expect redisHost for invalid connection target")
-		}
-		if _, ok := fields["redisPort"]; ok {
-			t.Fatalf("did not expect redisPort for invalid connection target")
+		if fields["redisPort"] != "6379" {
+			t.Fatalf("expected redisPort 6379, got %v", fields["redisPort"])
 		}
 	})
 }
@@ -141,7 +131,7 @@ func TestSanitizeSensitiveText(t *testing.T) {
 
 		sanitized := sanitizeSensitiveText(`parse "redis://default:super-secret@%zz:6379": invalid URL escape "%zz"`)
 
-		if sanitized != `parse "redis://default:***@%zz:6379": invalid URL escape "%zz"` {
+		if sanitized != `parse "[connection scheme=redis host=%zz port=6379]": invalid URL escape "%zz"` {
 			t.Fatalf("expected sanitized error string, got %q", sanitized)
 		}
 	})
@@ -151,7 +141,7 @@ func TestSanitizeSensitiveText(t *testing.T) {
 
 		sanitized := sanitizeSensitiveText(`connected to redis://redis.internal:6379/0`)
 
-		if sanitized != `connected to redis://redis.internal:6379/0` {
+		if sanitized != `connected to [connection scheme=redis host=redis.internal port=6379]` {
 			t.Fatalf("expected url without password to stay unchanged, got %q", sanitized)
 		}
 	})
