@@ -4,6 +4,7 @@ WORKDIR /app
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends openssl ca-certificates gosu \
+  && npm install --global tsx@4.20.6 \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
