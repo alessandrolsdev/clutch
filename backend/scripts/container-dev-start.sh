@@ -2,4 +2,4 @@
 
 set -eu
 
-exec ./node_modules/.bin/tsx ./scripts/container-dev-start.ts
+exec tsx ./scripts/container-dev-start.ts
