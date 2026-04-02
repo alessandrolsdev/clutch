@@ -13,50 +13,58 @@ describe('auth presence token route', () => {
   });
 
   it('returns the websocket credential when the session cookie is valid', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => {
-        return new Response(
-          JSON.stringify({
-            id: 'user-1',
-            username: 'clutchplayer',
-            email: 'clutchplayer@clutch.gg',
-          }),
-          {
-            status: 200,
-            headers: {
-              'Content-Type': 'application/json',
-            },
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+
+      expect(headers.get('x-request-id')).toBe('req-presence-123');
+
+      return new Response(
+        JSON.stringify({
+          id: 'user-1',
+          username: 'clutchplayer',
+          email: 'clutchplayer@clutch.gg',
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
           },
-        );
-      }) as typeof fetch,
-    );
+        },
+      );
+    });
+
+    vi.stubGlobal('fetch', fetchMock as typeof fetch);
 
     const request = new NextRequest('http://localhost/api/auth/presence-token', {
       headers: {
         cookie: 'clutch_session=jwt-token',
+        'x-request-id': 'req-presence-123',
       },
     });
 
     const response = await GET(request);
 
     expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     await expect(response.json()).resolves.toEqual({ token: 'jwt-token' });
     expect(response.headers.get('cache-control')).toBe('no-store');
   });
 
   it('clears the cookie when the backend rejects the session token', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => {
-        return new Response(JSON.stringify({ message: 'Token invalido ou expirado.' }), {
-          status: 401,
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-      }) as typeof fetch,
-    );
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+
+      expect(headers.get('x-request-id')).toBeTruthy();
+
+      return new Response(JSON.stringify({ message: 'Token invalido ou expirado.' }), {
+        status: 401,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+    });
+
+    vi.stubGlobal('fetch', fetchMock as typeof fetch);
 
     const request = new NextRequest('http://localhost/api/auth/presence-token', {
       headers: {
@@ -67,6 +75,7 @@ describe('auth presence token route', () => {
     const response = await GET(request);
 
     expect(response.status).toBe(401);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(response.headers.get('set-cookie')).toContain('clutch_session=');
   });
 });
