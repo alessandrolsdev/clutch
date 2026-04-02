@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  resolveContainerDependencySyncCommand,
   resolveContainerRuntimePlan,
   type ContainerRuntimeState,
 } from '../../../src/config/container-runtime';
@@ -19,6 +20,10 @@ function buildState(
 }
 
 describe('container-runtime', () => {
+  it('usa npm ci para sincronizar dependencias em volumes novos sem reescrever o lockfile', () => {
+    expect(resolveContainerDependencySyncCommand()).toEqual(['npm', 'ci']);
+  });
+
   it('nao reinstala dependencias nem regenera o Prisma quando o runtime ja esta sincronizado', () => {
     expect(resolveContainerRuntimePlan(buildState())).toEqual({
       installDependencies: false,

@@ -12,6 +12,13 @@ export type ContainerRuntimePlan = {
   generatePrismaClient: boolean;
 };
 
+export function resolveContainerDependencySyncCommand(): readonly [
+  'npm',
+  'ci',
+] {
+  return ['npm', 'ci'];
+}
+
 export function resolveContainerRuntimePlan(
   state: ContainerRuntimeState,
 ): ContainerRuntimePlan {
