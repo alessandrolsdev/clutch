@@ -4,7 +4,7 @@ import { constants } from 'node:fs';
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
-  resolveContainerDependencySyncCommand,
+  resolveContainerDependencySyncCommands,
   resolveContainerRuntimePlan,
 } from '../src/config/container-runtime';
 
@@ -65,6 +65,35 @@ async function runCommand(command: string, args: string[]): Promise<void> {
   });
 }
 
+async function syncDependencies(): Promise<void> {
+  const attempts = resolveContainerDependencySyncCommands();
+
+  for (const [index, [command, ...args]] of attempts.entries()) {
+    try {
+      if (index === 0) {
+        console.log(
+          `[container-dev-start] Tentando sincronizar dependencias com ${command} ${args.join(' ')}...`,
+        );
+      } else {
+        console.warn(
+          `[container-dev-start] Fallback de dependencias com ${command} ${args.join(' ')}...`,
+        );
+      }
+
+      await runCommand(command, args);
+      return;
+    } catch (error) {
+      if (index === attempts.length - 1) {
+        throw error;
+      }
+
+      console.warn(
+        `[container-dev-start] Falha em ${command} ${args.join(' ')}. Tentando fallback...`,
+      );
+    }
+  }
+}
+
 async function writeRuntimeStamps(packageLockHash: string, prismaSchemaHash: string): Promise<void> {
   await mkdir(runtimeStatePath, { recursive: true });
   await writeFile(packageLockStampPath, `${packageLockHash}\n`, 'utf8');
@@ -90,8 +119,7 @@ async function main(): Promise<void> {
 
   if (plan.installDependencies) {
     console.log('[container-dev-start] Sincronizando dependências do backend...');
-    const [command, ...args] = resolveContainerDependencySyncCommand();
-    await runCommand(command, args);
+    await syncDependencies();
   }
 
   if (plan.generatePrismaClient) {
