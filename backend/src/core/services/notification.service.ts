@@ -1,10 +1,6 @@
-import { notificationRepository } from '../repositories/notification.repository';
 import { redis, REDIS_KEYS } from '../../infra/cache/redis';
-
-// ─────────────────────────────────────────────────────────────
-// Notification Service
-// Salva no Postgres + publica no Redis para entrega em tempo real
-// ─────────────────────────────────────────────────────────────
+import { writeBackendRuntimeLog } from '../../config/logging';
+import { notificationRepository } from '../repositories/notification.repository';
 
 export type NotificationType =
   | 'FRIEND_REQUEST'
@@ -16,38 +12,44 @@ export type NotificationType =
   | 'SYSTEM';
 
 export interface CreateNotificationInput {
-  userId:   string;
+  userId: string;
   actorId?: string | null;
-  type:     NotificationType;
-  payload:  Record<string, unknown>;
+  type: NotificationType;
+  payload: Record<string, unknown>;
 }
 
 export const notificationService = {
-
   async create(input: CreateNotificationInput): Promise<void> {
-    // ── Salva no Postgres ──────────────────────────────────
     const notification = await notificationRepository.create({
-      userId:  input.userId,
+      userId: input.userId,
       actorId: input.actorId ?? null,
-      type:    input.type,
+      type: input.type,
       payload: input.payload,
     });
 
-    // ── Publica no Redis → Go service entrega via WebSocket ─
-    await redis.publish(
-      REDIS_KEYS.notifications(input.userId),
-      JSON.stringify({
-        id:        notification.id,
-        type:      notification.type,
-        payload:   notification.payload,
-        actorId:   notification.actorId,
-        isRead:    notification.isRead,
-        createdAt: notification.createdAt,
-      }),
-    ).catch((err: unknown) => {
-      // Redis offline não deve derrubar o servidor
-      console.warn('[notifications] Redis publish failed:', err);
-    });
+    await redis
+      .publish(
+        REDIS_KEYS.notifications(input.userId),
+        JSON.stringify({
+          id: notification.id,
+          type: notification.type,
+          payload: notification.payload,
+          actorId: notification.actorId,
+          isRead: notification.isRead,
+          createdAt: notification.createdAt,
+        }),
+      )
+      .catch((err: unknown) => {
+        writeBackendRuntimeLog(
+          'warn',
+          'notification_redis_publish_failed',
+          'Redis publish failed while broadcasting notification',
+          {
+            userId: input.userId,
+            type: input.type,
+            errorMessage: err instanceof Error ? err.message : String(err),
+          },
+        );
+      });
   },
-
 };

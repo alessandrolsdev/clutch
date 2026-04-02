@@ -12,6 +12,12 @@ import {
   runReadinessChecks,
   type ReadinessReport,
 } from './config/health';
+import {
+  createFastifyLoggerOptions,
+  logBackendError,
+  REQUEST_ID_HEADER,
+  resolveBackendRequestId,
+} from './config/logging';
 
 export type BuildAppOptions = {
   jwtSecret?: string;
@@ -20,7 +26,14 @@ export type BuildAppOptions = {
 };
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
-  const app = Fastify({ logger: options.logger ?? true });
+  const requestStartTimes = new WeakMap<object, number>();
+
+  const app = Fastify({
+    logger: options.logger === false ? false : createFastifyLoggerOptions(),
+    disableRequestLogging: true,
+    requestIdHeader: REQUEST_ID_HEADER,
+    genReqId: (request) => resolveBackendRequestId(request.headers),
+  });
 
   await app.register(fastifyJwt, {
     secret: options.jwtSecret ?? process.env['JWT_SECRET'] ?? 'clutch-dev-secret-change-in-production',
@@ -29,6 +42,53 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   app.decorate('authenticate', authenticate);
 
   const readinessCheck = options.readinessCheck ?? runReadinessChecks;
+
+  app.addHook('onRequest', async (request) => {
+    requestStartTimes.set(request, Date.now());
+    request.log.info(
+      {
+        event: 'http_request_start',
+        requestId: request.id,
+        method: request.method,
+        path: request.url,
+      },
+      'HTTP request started',
+    );
+  });
+
+  app.addHook('onResponse', async (request, reply) => {
+    const startedAt = requestStartTimes.get(request) ?? Date.now();
+
+    request.log.info(
+      {
+        event: 'http_request_complete',
+        requestId: request.id,
+        method: request.method,
+        path: request.url,
+        status: reply.statusCode,
+        duration_ms: Math.max(Date.now() - startedAt, 0),
+      },
+      'HTTP request completed',
+    );
+  });
+
+  app.addHook('onError', async (request, reply, error) => {
+    const startedAt = requestStartTimes.get(request) ?? Date.now();
+
+    logBackendError(
+      request.log,
+      'http_request_error',
+      'HTTP request failed',
+      error,
+      {
+        requestId: request.id,
+        method: request.method,
+        path: request.url,
+        status: reply.statusCode >= 400 ? reply.statusCode : 500,
+        duration_ms: Math.max(Date.now() - startedAt, 0),
+      },
+    );
+  });
 
   app.get('/health', async () => ({
     status: 'ok',

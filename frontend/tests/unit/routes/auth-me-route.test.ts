@@ -13,34 +13,39 @@ describe('auth me route', () => {
   });
 
   it('returns the hydrated session when the cookie is valid', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => {
-        return new Response(
-          JSON.stringify({
-            id: 'user-1',
-            username: 'clutchplayer',
-            email: 'clutchplayer@clutch.gg',
-          }),
-          {
-            status: 200,
-            headers: {
-              'Content-Type': 'application/json',
-            },
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+
+      expect(headers.get('x-request-id')).toBe('req-auth-me-123');
+
+      return new Response(
+        JSON.stringify({
+          id: 'user-1',
+          username: 'clutchplayer',
+          email: 'clutchplayer@clutch.gg',
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
           },
-        );
-      }) as typeof fetch,
-    );
+        },
+      );
+    });
+
+    vi.stubGlobal('fetch', fetchMock as typeof fetch);
 
     const request = new NextRequest('http://localhost/api/auth/me', {
       headers: {
         cookie: 'clutch_session=jwt-token',
+        'x-request-id': 'req-auth-me-123',
       },
     });
 
     const response = await GET(request);
 
     expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     await expect(response.json()).resolves.toEqual({
       id: 'user-1',
       username: 'clutchplayer',
@@ -49,17 +54,20 @@ describe('auth me route', () => {
   });
 
   it('clears the cookie when the backend rejects the token', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => {
-        return new Response(JSON.stringify({ message: 'Token inválido ou expirado.' }), {
-          status: 401,
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-      }) as typeof fetch,
-    );
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+
+      expect(headers.get('x-request-id')).toBeTruthy();
+
+      return new Response(JSON.stringify({ message: 'Token inválido ou expirado.' }), {
+        status: 401,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+    });
+
+    vi.stubGlobal('fetch', fetchMock as typeof fetch);
 
     const request = new NextRequest('http://localhost/api/auth/me', {
       headers: {
@@ -70,6 +78,7 @@ describe('auth me route', () => {
     const response = await GET(request);
 
     expect(response.status).toBe(401);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(response.headers.get('set-cookie')).toContain('clutch_session=');
   });
 });
