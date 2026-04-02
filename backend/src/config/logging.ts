@@ -14,7 +14,6 @@ type SanitizedConnectionTarget = {
   scheme: string;
   host: string;
   port: string;
-  redactedUrl: string;
 };
 
 type RuntimeLogEntry = RuntimeLogContext & {
@@ -90,28 +89,43 @@ export function createFastifyLoggerOptions(): FastifyServerOptions['logger'] {
   } satisfies FastifyServerOptions['logger'];
 }
 
-function redactConnectionUrlFallback(rawUrl: string): string {
+function parseConnectionTargetFallback(rawUrl: string): SanitizedConnectionTarget {
   const schemeSeparatorIndex = rawUrl.indexOf('://');
   if (schemeSeparatorIndex < 0) {
-    return rawUrl;
+    return {
+      scheme: '',
+      host: '',
+      port: '',
+    };
   }
 
-  const scheme = rawUrl.slice(0, schemeSeparatorIndex + 3);
+  const scheme = rawUrl.slice(0, schemeSeparatorIndex);
   const remainder = rawUrl.slice(schemeSeparatorIndex + 3);
   const atIndex = remainder.lastIndexOf('@');
-  if (atIndex < 0) {
-    return rawUrl;
+  const hostAndPath = atIndex >= 0 ? remainder.slice(atIndex + 1) : remainder;
+  const slashIndex = hostAndPath.indexOf('/');
+  const hostPort = slashIndex >= 0 ? hostAndPath.slice(0, slashIndex) : hostAndPath;
+  const colonIndex = hostPort.lastIndexOf(':');
+
+  return {
+    scheme,
+    host: colonIndex >= 0 ? hostPort.slice(0, colonIndex) : hostPort,
+    port: colonIndex >= 0 ? hostPort.slice(colonIndex + 1) : '',
+  };
+}
+
+function formatSanitizedConnectionTarget(target: SanitizedConnectionTarget): string {
+  const parts = [
+    target.scheme ? `scheme=${target.scheme}` : null,
+    target.host ? `host=${target.host}` : null,
+    target.port ? `port=${target.port}` : null,
+  ].filter((value): value is string => Boolean(value));
+
+  if (parts.length === 0) {
+    return '[connection redacted]';
   }
 
-  const userInfo = remainder.slice(0, atIndex);
-  const hostAndPath = remainder.slice(atIndex + 1);
-  const colonIndex = userInfo.indexOf(':');
-  if (colonIndex < 0) {
-    return rawUrl;
-  }
-
-  const username = userInfo.slice(0, colonIndex);
-  return `${scheme}${username}:***@${hostAndPath}`;
+  return `[connection ${parts.join(' ')}]`;
 }
 
 export function sanitizeConnectionUrl(rawUrl: string): SanitizedConnectionTarget {
@@ -121,30 +135,18 @@ export function sanitizeConnectionUrl(rawUrl: string): SanitizedConnectionTarget
       scheme: '',
       host: '',
       port: '',
-      redactedUrl: '',
     };
   }
 
   try {
     const parsedUrl = new URL(trimmedUrl);
-    const redactedUrl =
-      parsedUrl.password.length > 0
-        ? `${parsedUrl.protocol}//${parsedUrl.username}:***@${parsedUrl.host}${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`
-        : parsedUrl.toString();
-
     return {
       scheme: parsedUrl.protocol.replace(/:$/, ''),
       host: parsedUrl.hostname,
       port: parsedUrl.port,
-      redactedUrl,
     };
   } catch {
-    return {
-      scheme: '',
-      host: '',
-      port: '',
-      redactedUrl: redactConnectionUrlFallback(trimmedUrl),
-    };
+    return parseConnectionTargetFallback(trimmedUrl);
   }
 }
 
@@ -153,7 +155,7 @@ export function sanitizeSensitiveText(value: string): string {
     return value;
   }
 
-  return value.replace(SENSITIVE_URL_PATTERN, (match) => sanitizeConnectionUrl(match).redactedUrl || match);
+  return value.replace(SENSITIVE_URL_PATTERN, (match) => formatSanitizedConnectionTarget(sanitizeConnectionUrl(match)));
 }
 
 export function serializeErrorDetails(error: unknown): RuntimeLogContext {
