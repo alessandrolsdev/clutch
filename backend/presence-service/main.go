@@ -387,7 +387,9 @@ func main() {
 	opt, err := redis.ParseURL(redisURL)
 	if err != nil {
 		fields := errorFields(err)
-		fields["redisUrl"] = redisURL
+		for key, value := range connectionLogFields("redis", redisURL, "parse_failed") {
+			fields[key] = value
+		}
 		writePresenceLog("error", "redis_url_parse_failed", "Failed to parse Redis URL", fields)
 		os.Exit(1)
 	}
@@ -395,13 +397,13 @@ func main() {
 	redisClient := redis.NewClient(opt)
 	if err := redisClient.Ping(ctx).Err(); err != nil {
 		fields := errorFields(err)
-		fields["redisUrl"] = redisURL
+		for key, value := range connectionLogFields("redis", redisURL, "connect_failed") {
+			fields[key] = value
+		}
 		writePresenceLog("error", "redis_connect_failed", "Failed to connect to Redis", fields)
 		os.Exit(1)
 	}
-	writePresenceLog("info", "redis_connected", "Connected to Redis", map[string]interface{}{
-		"redisUrl": redisURL,
-	})
+	writePresenceLog("info", "redis_connected", "Connected to Redis", connectionLogFields("redis", redisURL, "connected"))
 
 	hub := NewHub(redisClient)
 	go hub.Run(ctx)
