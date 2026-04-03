@@ -48,10 +48,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
     const user         = await userRepository.create({ username, email, password: passwordHash });
 
-    const token = app.jwt.sign(
-      { id: user.id, username: user.username },
-      { expiresIn: '7d' },
-    );
+    const token = app.signAccessToken({ id: user.id, username: user.username });
 
     return reply.status(201).send({ id: user.id, username: user.username, token });
   });
@@ -77,10 +74,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(401).send({ message: 'Credenciais inválidas.' });
     }
 
-    const token = app.jwt.sign(
-      { id: user.id, username: user.username },
-      { expiresIn: '7d' },
-    );
+    const token = app.signAccessToken({ id: user.id, username: user.username });
 
     return reply.status(200).send({
       id:       user.id,

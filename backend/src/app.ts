@@ -1,5 +1,4 @@
 import Fastify, { FastifyInstance } from 'fastify';
-import fastifyJwt from '@fastify/jwt';
 import { authRoutes } from './api/routes/auth.routes';
 import { profileRoutes } from './api/routes/profile.routes';
 import { friendRoutes } from './api/routes/friends.routes';
@@ -18,6 +17,10 @@ import {
   REQUEST_ID_HEADER,
   resolveBackendRequestId,
 } from './config/logging';
+import {
+  createJwtSigner,
+  createJwtVerifier,
+} from './config/jwt';
 
 export type BuildAppOptions = {
   jwtSecret?: string;
@@ -34,12 +37,12 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     requestIdHeader: REQUEST_ID_HEADER,
     genReqId: (request) => resolveBackendRequestId(request.headers),
   });
-
-  await app.register(fastifyJwt, {
-    secret: options.jwtSecret ?? process.env['JWT_SECRET'] ?? 'clutch-dev-secret-change-in-production',
-  });
+  const signAccessToken = createJwtSigner(options.jwtSecret);
+  const verifyAccessToken = createJwtVerifier(options.jwtSecret);
 
   app.decorate('authenticate', authenticate);
+  app.decorate('signAccessToken', signAccessToken);
+  app.decorate('verifyAccessToken', verifyAccessToken);
 
   const readinessCheck = options.readinessCheck ?? runReadinessChecks;
 
