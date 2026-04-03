@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, no-unused-vars */
-import '@fastify/jwt';
 import { FastifyRequest, FastifyReply } from 'fastify';
+import type { JwtPayload } from '../config/jwt';
 
 // ─────────────────────────────────────────────────────────────
 // Type augmentation — adiciona authenticate ao FastifyInstance
@@ -10,6 +10,8 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 declare module 'fastify' {
   interface FastifyInstance {
     authenticate(request: FastifyRequest, reply: FastifyReply): Promise<void>;
+    signAccessToken(payload: JwtPayload): string;
+    verifyAccessToken(token: string): JwtPayload;
   }
 
   interface FastifyRequest {
