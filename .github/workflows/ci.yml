@@ -266,13 +266,30 @@ jobs:
           PRESENCE_WS_TIMEOUT_MS: 15000
         run: node ./scripts/ci/validate-presence-handshake.mjs
 
+      - name: Collect stack logs
+        if: always()
+        run: docker compose logs --no-color backend frontend presence traefik > /tmp/clutch-stack.logs
+
+      - name: Fail on sensitive data in stack logs
+        if: success()
+        run: node ./scripts/ci/check-sensitive-logs.mjs scan /tmp/clutch-stack.logs
+
       - name: Show compose status
         if: always()
         run: docker compose ps
 
-      - name: Show compose logs
+      - name: Show sanitized compose logs
         if: failure()
-        run: docker compose logs --no-color backend frontend presence traefik
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ ! -f /tmp/clutch-stack.logs ]; then
+            docker compose logs --no-color backend frontend presence traefik > /tmp/clutch-stack.logs
+          fi
+
+          tail -n 200 /tmp/clutch-stack.logs > /tmp/clutch-stack-tail.logs
+          node ./scripts/ci/check-sensitive-logs.mjs sanitize /tmp/clutch-stack-tail.logs
 
       - name: Shutdown stack
         if: always()
