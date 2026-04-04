@@ -106,6 +106,50 @@ describe('auth presence token route', () => {
     expect(response.headers.get('set-cookie')).toContain('clutch_refresh=refresh-rotated');
     await expect(response.json()).resolves.toEqual({ token: 'new-access-token' });
   });
+
+  it('returns 401 and clears cookies when refresh fails', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.endsWith('/auth/me')) {
+        return new Response(JSON.stringify({ message: 'Token inválido ou expirado.' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      return new Response(
+        JSON.stringify({
+          message: 'Refresh token inválido ou expirado.',
+        }),
+        {
+          status: 401,
+          headers: {
+            'Content-Type': 'application/json',
+            'Set-Cookie': 'clutch_refresh=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0',
+          },
+        },
+      );
+    });
+
+    vi.stubGlobal('fetch', fetchMock as typeof fetch);
+
+    const request = new NextRequest('http://localhost/api/auth/presence-token', {
+      headers: {
+        cookie: 'clutch_session=expired-token; clutch_refresh=invalid-refresh-token',
+      },
+    });
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(401);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(response.headers.get('set-cookie')).toContain('clutch_session=');
+    expect(response.headers.get('set-cookie')).toContain('clutch_refresh=');
+    await expect(response.json()).resolves.toEqual({
+      message: 'Token invalido ou expirado.',
+    });
+  });
 });
 
 afterAll(() => {

@@ -132,6 +132,31 @@ export function createRefreshTokenService(
   const signRefreshToken = createRefreshTokenSigner(options.jwtSecret);
   const verifyRefreshToken = createRefreshTokenVerifier(options.jwtSecret);
   const refreshTokenTtlSeconds = getRefreshTokenCookieMaxAgeSeconds();
+  const sessionLocks = new Map<string, { tail: Promise<void>; pending: number }>();
+
+  async function withSessionLock<T>(sessionId: string, operation: () => Promise<T>): Promise<T> {
+    const existingLock = sessionLocks.get(sessionId) ?? { tail: Promise.resolve(), pending: 0 };
+    existingLock.pending += 1;
+    const previousTail = existingLock.tail;
+    let releaseCurrentLock!: () => void;
+    existingLock.tail = new Promise<void>((resolve) => {
+      releaseCurrentLock = resolve;
+    });
+    sessionLocks.set(sessionId, existingLock);
+
+    await previousTail;
+
+    try {
+      return await operation();
+    } finally {
+      existingLock.pending -= 1;
+      releaseCurrentLock();
+
+      if (existingLock.pending === 0) {
+        sessionLocks.delete(sessionId);
+      }
+    }
+  }
 
   async function persistRefreshToken(refreshToken: string, payload: RefreshTokenPayload): Promise<void> {
     await refreshSessionStore.set(
@@ -169,43 +194,47 @@ export function createRefreshTokenService(
         throw new RefreshTokenInvalidError();
       }
 
-      const existingSession = await refreshSessionStore.get(payload.sessionId);
+      return withSessionLock(payload.sessionId, async () => {
+        const existingSession = await refreshSessionStore.get(payload.sessionId);
 
-      if (!existingSession) {
-        throw new RefreshTokenInvalidError();
-      }
+        if (!existingSession) {
+          throw new RefreshTokenInvalidError();
+        }
 
-      if (!hashesMatch(existingSession.tokenHash, hashRefreshToken(refreshToken))) {
-        await refreshSessionStore.delete(payload.sessionId);
-        throw new RefreshTokenReuseError();
-      }
+        if (!hashesMatch(existingSession.tokenHash, hashRefreshToken(refreshToken))) {
+          await refreshSessionStore.delete(payload.sessionId);
+          throw new RefreshTokenReuseError();
+        }
 
-      assertRefreshSessionPayload(payload, existingSession);
+        assertRefreshSessionPayload(payload, existingSession);
 
-      const nextPayload: RefreshTokenPayload = {
-        ...payload,
-        tokenType: 'refresh',
-        jti: randomUUID(),
-      };
+        const nextPayload: RefreshTokenPayload = {
+          ...payload,
+          tokenType: 'refresh',
+          jti: randomUUID(),
+        };
 
-      const nextAccessToken = signAccessToken({
-        id: payload.id,
-        username: payload.username,
+        const nextAccessToken = signAccessToken({
+          id: payload.id,
+          username: payload.username,
+        });
+        const nextRefreshToken = signRefreshToken(nextPayload);
+
+        await persistRefreshToken(nextRefreshToken, nextPayload);
+
+        return {
+          accessToken: nextAccessToken,
+          refreshToken: nextRefreshToken,
+        };
       });
-      const nextRefreshToken = signRefreshToken(nextPayload);
-
-      await persistRefreshToken(nextRefreshToken, nextPayload);
-
-      return {
-        accessToken: nextAccessToken,
-        refreshToken: nextRefreshToken,
-      };
     },
 
     async revokeSession(refreshToken: string): Promise<void> {
       try {
         const payload = verifyRefreshToken(refreshToken);
-        await refreshSessionStore.delete(payload.sessionId);
+        await withSessionLock(payload.sessionId, async () => {
+          await refreshSessionStore.delete(payload.sessionId);
+        });
       } catch {
         // Logout precisa ser idempotente e limpar o cookie mesmo com token ausente ou invalido.
       }

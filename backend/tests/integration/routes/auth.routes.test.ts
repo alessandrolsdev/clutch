@@ -233,6 +233,19 @@ describe('Auth Routes', () => {
       await app.close();
     });
 
+    it('retorna 401 no refresh quando o cookie de refresh esta ausente', async () => {
+      const app = await buildApp();
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+      });
+
+      expect(response.statusCode).toBe(401);
+      expect(String(response.headers['set-cookie'])).toContain(`${REFRESH_TOKEN_COOKIE_NAME}=`);
+      await app.close();
+    });
+
     it('rotaciona o refresh token e rejeita reuse do token anterior', async () => {
       vi.mocked(userRepository.findByEmail).mockResolvedValue(mockUser);
       vi.mocked(userRepository.findById).mockResolvedValue(mockUser);
