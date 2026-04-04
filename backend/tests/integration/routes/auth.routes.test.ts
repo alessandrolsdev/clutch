@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { buildApp, generateTestToken } from '../../helpers/build-app';
+import { buildApp, generateTestToken, TEST_JWT_SECRET } from '../../helpers/build-app';
+import jwt from 'jsonwebtoken';
 
 vi.mock('@/core/repositories/user.repository', () => ({
   userRepository: {
@@ -32,7 +33,6 @@ const mockUser = {
 };
 
 describe('Auth Routes', () => {
-
   beforeEach(() => vi.clearAllMocks());
 
   describe('POST /auth/register', () => {
@@ -147,6 +147,68 @@ describe('Auth Routes', () => {
     it('retorna 401 sem token', async () => {
       const app      = await buildApp();
       const response = await app.inject({ method: 'GET', url: '/auth/me' });
+
+      expect(response.statusCode).toBe(401);
+      await app.close();
+    });
+
+    it('retorna 401 com header Authorization malformado', async () => {
+      const app   = await buildApp();
+      const token = generateTestToken(app);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/me',
+        headers: { Authorization: `Bearer ${token} extra` },
+      });
+
+      expect(response.statusCode).toBe(401);
+      await app.close();
+    });
+
+    it('retorna 401 com token expirado', async () => {
+      const app = await buildApp();
+      const expiredToken = jwt.sign(
+        {
+          id: 'user-id-1',
+          username: 'clutchplayer',
+        },
+        TEST_JWT_SECRET,
+        {
+          algorithm: 'HS256',
+          expiresIn: -1,
+        },
+      );
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/me',
+        headers: { Authorization: `Bearer ${expiredToken}` },
+      });
+
+      expect(response.statusCode).toBe(401);
+      await app.close();
+    });
+
+    it('retorna 401 com token assinado com algoritmo diferente', async () => {
+      const app = await buildApp();
+      const token = jwt.sign(
+        {
+          id: 'user-id-1',
+          username: 'clutchplayer',
+        },
+        TEST_JWT_SECRET,
+        {
+          algorithm: 'HS384',
+          expiresIn: '7d',
+        },
+      );
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/me',
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
       expect(response.statusCode).toBe(401);
       await app.close();

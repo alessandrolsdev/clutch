@@ -11,9 +11,25 @@ export interface JwtPayload {
 }
 
 const JWT_ALGORITHM = 'HS256';
+const DEFAULT_DEVELOPMENT_JWT_SECRET = 'clutch-dev-secret-change-in-production';
+const BEARER_TOKEN_PATTERN = /^Bearer (?<token>[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/u;
 
 function resolveJwtSecret(secret?: string): Secret {
-  return secret ?? process.env['JWT_SECRET'] ?? 'clutch-dev-secret-change-in-production';
+  if (typeof secret === 'string' && secret.trim().length > 0) {
+    return secret;
+  }
+
+  const environmentSecret = process.env['JWT_SECRET'];
+
+  if (typeof environmentSecret === 'string' && environmentSecret.trim().length > 0) {
+    return environmentSecret;
+  }
+
+  if (process.env['NODE_ENV'] === 'production') {
+    throw new Error('JWT_SECRET deve ser configurado em produção.');
+  }
+
+  return DEFAULT_DEVELOPMENT_JWT_SECRET;
 }
 
 function isJwtPayload(payload: string | JsonWebTokenPayload): payload is JsonWebTokenPayload {
@@ -53,6 +69,7 @@ export function createJwtVerifier(secret?: string) {
   return (token: string): JwtPayload => {
     const verifyOptions: VerifyOptions = {
       algorithms: [JWT_ALGORITHM],
+      ignoreExpiration: false,
     };
 
     const payload = jwt.verify(token, resolvedSecret, verifyOptions);
@@ -62,15 +79,15 @@ export function createJwtVerifier(secret?: string) {
 }
 
 export function extractBearerToken(authorizationHeader?: string): string | null {
-  if (!authorizationHeader) {
+  if (typeof authorizationHeader !== 'string' || authorizationHeader.length === 0) {
     return null;
   }
 
-  const [scheme, token] = authorizationHeader.split(' ');
+  const match = BEARER_TOKEN_PATTERN.exec(authorizationHeader);
 
-  if (scheme !== 'Bearer' || typeof token !== 'string' || token.length === 0) {
+  if (!match?.groups?.['token']) {
     return null;
   }
 
-  return token;
+  return match.groups['token'];
 }
