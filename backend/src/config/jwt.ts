@@ -19,7 +19,8 @@ export interface RefreshTokenPayload extends JwtPayload {
 const JWT_ALGORITHM = 'HS256';
 const DEFAULT_DEVELOPMENT_JWT_SECRET = 'clutch-dev-secret-change-in-production';
 const BEARER_TOKEN_PATTERN = /^Bearer (?<token>[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/u;
-const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 60 * 15;
+// 10 minutos reduz a janela de ataque sem forcar refresh excessivo em navegacao comum.
+const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 60 * 10;
 const DEFAULT_REFRESH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 7;
 
 function resolveJwtSecret(secret?: string): Secret {
@@ -69,6 +70,10 @@ function resolveAccessTokenTtlSeconds(): number {
   return DEFAULT_ACCESS_TOKEN_TTL_SECONDS;
 }
 
+export function getAccessTokenTtlSeconds(): number {
+  return resolveAccessTokenTtlSeconds();
+}
+
 function resolveRefreshTokenTtlSeconds(): number {
   const rawValue = process.env['REFRESH_TOKEN_TTL_SECONDS'];
   const parsedValue = rawValue ? Number(rawValue) : Number.NaN;
@@ -112,7 +117,7 @@ export function createJwtSigner(secret?: string) {
   return (payload: JwtPayload): string => {
     const signOptions: SignOptions = {
       algorithm: JWT_ALGORITHM,
-      expiresIn: `${resolveAccessTokenTtlSeconds()}s`,
+      expiresIn: `${getAccessTokenTtlSeconds()}s`,
     };
 
     return jwt.sign(

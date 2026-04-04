@@ -113,6 +113,50 @@ describe('auth me route', () => {
       email: 'clutchplayer@clutch.gg',
     });
   });
+
+  it('clears the session when the refresh token is invalid', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.endsWith('/auth/me')) {
+        return new Response(JSON.stringify({ message: 'Token inválido ou expirado.' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      return new Response(
+        JSON.stringify({
+          message: 'Refresh token inválido ou expirado.',
+        }),
+        {
+          status: 401,
+          headers: {
+            'Content-Type': 'application/json',
+            'Set-Cookie': 'clutch_refresh=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0',
+          },
+        },
+      );
+    });
+
+    vi.stubGlobal('fetch', fetchMock as typeof fetch);
+
+    const request = new NextRequest('http://localhost/api/auth/me', {
+      headers: {
+        cookie: 'clutch_session=expired-token; clutch_refresh=invalid-refresh-token',
+      },
+    });
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(401);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(response.headers.get('set-cookie')).toContain('clutch_session=');
+    expect(response.headers.get('set-cookie')).toContain('clutch_refresh=');
+    await expect(response.json()).resolves.toEqual({
+      message: 'Token invalido ou expirado.',
+    });
+  });
 });
 
 afterAll(() => {

@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import {
   createRefreshTokenSigner,
   createRefreshTokenVerifier,
+  getAccessTokenTtlSeconds,
   createJwtSigner,
   createJwtVerifier,
   extractBearerToken,
@@ -62,6 +63,21 @@ describe('JWT config', () => {
         typ: 'JWT',
       },
     });
+  });
+
+  it('usa um TTL curto de 10 minutos para o access token', () => {
+    const signAccessToken = createJwtSigner(secret);
+    const token = signAccessToken({
+      id: 'user-id-1',
+      username: 'clutchplayer',
+    });
+
+    const decoded = jwt.decode(token) as jwt.JwtPayload | null;
+
+    expect(getAccessTokenTtlSeconds()).toBe(60 * 10);
+    expect(decoded?.exp).toBeTypeOf('number');
+    expect(decoded?.iat).toBeTypeOf('number');
+    expect((decoded?.exp ?? 0) - (decoded?.iat ?? 0)).toBe(60 * 10);
   });
 
   it('rejeita token invalido', () => {
