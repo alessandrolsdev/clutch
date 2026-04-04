@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import {
-  AUTH_SESSION_COOKIE_NAME,
-  getAuthSessionCookieOptions,
-} from '@/lib/auth/session';
+  appendRefreshSetCookie,
+  setAccessSessionCookie,
+} from '@/lib/auth/backend-refresh';
 import {
   logServerEvent,
   REQUEST_ID_HEADER,
@@ -160,11 +160,8 @@ export async function POST(request: Request) {
     { status: 201 },
   );
 
-  response.cookies.set(
-    AUTH_SESSION_COOKIE_NAME,
-    sessionResult.data.token,
-    getAuthSessionCookieOptions(),
-  );
+  setAccessSessionCookie(response, sessionResult.data.token);
+  appendRefreshSetCookie(response, backendResponse.headers.get('set-cookie'));
 
   logServerEvent('info', 'frontend_auth_register_success', 'Frontend auth register completed', {
     requestId,

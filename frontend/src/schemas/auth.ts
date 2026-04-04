@@ -53,6 +53,11 @@ export const authSessionSchema = z.object({
   email: z.string().email('Email inválido.'),
 });
 
+export const refreshBackendResponseSchema = z.object({
+  token: z.string().min(1),
+  message: z.string().min(1),
+});
+
 export type LoginRequestValues = z.infer<typeof loginRequestSchema>;
 export type LoginSession = z.infer<typeof loginSessionSchema>;
 export type RegisterRequestValues = z.infer<typeof registerRequestSchema>;
