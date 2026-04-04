@@ -17,5 +17,5 @@ export const buildApp = async (
 };
 
 export const generateTestToken = (app: FastifyInstance, userId = 'user-id-1', username = 'clutchplayer'): string => {
-  return app.jwt.sign({ id: userId, username });
+  return app.signAccessToken({ id: userId, username });
 };
