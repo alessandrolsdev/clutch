@@ -16,7 +16,7 @@ describe('auth login route', () => {
     vi.unstubAllGlobals();
   });
 
-  it('sets an httpOnly cookie when login succeeds', async () => {
+  it('sets an httpOnly access cookie and forwards the refresh cookie when login succeeds', async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       const headers = new Headers(init?.headers);
 
@@ -33,6 +33,7 @@ describe('auth login route', () => {
           status: 200,
           headers: {
             'Content-Type': 'application/json',
+            'Set-Cookie': 'clutch_refresh=refresh-token; Path=/; HttpOnly; SameSite=Lax',
           },
         },
       );
@@ -56,9 +57,11 @@ describe('auth login route', () => {
 
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(response.headers.get('set-cookie')).toContain(AUTH_SESSION_COOKIE_NAME);
-    expect(response.headers.get('set-cookie')).toContain('HttpOnly');
-    expect(response.headers.get('set-cookie')).toContain('jwt-token');
+    const setCookieHeader = response.headers.get('set-cookie');
+    expect(setCookieHeader).toContain(AUTH_SESSION_COOKIE_NAME);
+    expect(setCookieHeader).toContain('HttpOnly');
+    expect(setCookieHeader).toContain('jwt-token');
+    expect(setCookieHeader).toContain('clutch_refresh=refresh-token');
   });
 
   it('propagates invalid credentials without setting a session cookie', async () => {

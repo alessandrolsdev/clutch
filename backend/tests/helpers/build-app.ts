@@ -3,6 +3,7 @@ import {
   buildApp as createApp,
   type BuildAppOptions,
 } from '../../src/app';
+import { createInMemoryRefreshSessionStore } from '../../src/core/services/refresh-token.service';
 
 export const TEST_JWT_SECRET = 'clutch-test-secret';
 
@@ -12,6 +13,7 @@ export const buildApp = async (
   return createApp({
     jwtSecret: TEST_JWT_SECRET,
     logger: false,
+    refreshSessionStore: createInMemoryRefreshSessionStore(),
     ...options,
   });
 };

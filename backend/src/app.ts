@@ -21,11 +21,17 @@ import {
   createJwtSigner,
   createJwtVerifier,
 } from './config/jwt';
+import {
+  createRefreshTokenService,
+  type RefreshSessionStore,
+} from './core/services/refresh-token.service';
+import { createRedisRefreshSessionStore } from './infra/cache/refresh-session.store';
 
 export type BuildAppOptions = {
   jwtSecret?: string;
   logger?: boolean;
   readinessCheck?: () => Promise<ReadinessReport>;
+  refreshSessionStore?: RefreshSessionStore;
 };
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
@@ -39,10 +45,15 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   });
   const signAccessToken = createJwtSigner(options.jwtSecret);
   const verifyAccessToken = createJwtVerifier(options.jwtSecret);
+  const refreshTokenService = createRefreshTokenService({
+    jwtSecret: options.jwtSecret,
+    refreshSessionStore: options.refreshSessionStore ?? createRedisRefreshSessionStore(),
+  });
 
   app.decorate('authenticate', authenticate);
   app.decorate('signAccessToken', signAccessToken);
   app.decorate('verifyAccessToken', verifyAccessToken);
+  app.decorate('refreshTokenService', refreshTokenService);
 
   const readinessCheck = options.readinessCheck ?? runReadinessChecks;
 
