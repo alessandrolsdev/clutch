@@ -114,12 +114,28 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const refreshToken = parseCookieValue(request.headers.cookie, REFRESH_TOKEN_COOKIE_NAME);
 
     if (!refreshToken) {
+      request.log.warn({
+        event: 'auth_refresh_failed',
+        requestId: request.id,
+        method: request.method,
+        path: request.url,
+        status: 401,
+        reason: 'missing_refresh_token',
+      }, 'Refresh token is missing');
       reply.header('Set-Cookie', serializeClearedRefreshTokenCookie());
       return reply.status(401).send({ message: 'Refresh token inválido ou expirado.' });
     }
 
     try {
       const session = await app.refreshTokenService.rotateSession(refreshToken);
+
+      request.log.info({
+        event: 'auth_access_token_refreshed',
+        requestId: request.id,
+        method: request.method,
+        path: request.url,
+        status: 200,
+      }, 'Access token refreshed');
 
       reply.header('Set-Cookie', serializeRefreshTokenCookie(session.refreshToken));
 
@@ -131,10 +147,26 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       reply.header('Set-Cookie', serializeClearedRefreshTokenCookie());
 
       if (error instanceof RefreshTokenReuseError) {
+        request.log.warn({
+          event: 'auth_refresh_failed',
+          requestId: request.id,
+          method: request.method,
+          path: request.url,
+          status: 401,
+          reason: 'refresh_token_reuse',
+        }, 'Refresh token reuse detected');
         return reply.status(401).send({ message: 'Refresh token reutilizado ou inválido.' });
       }
 
       if (error instanceof RefreshTokenInvalidError) {
+        request.log.warn({
+          event: 'auth_refresh_failed',
+          requestId: request.id,
+          method: request.method,
+          path: request.url,
+          status: 401,
+          reason: 'invalid_refresh_token',
+        }, 'Refresh token rejected');
         return reply.status(401).send({ message: 'Refresh token inválido ou expirado.' });
       }
 

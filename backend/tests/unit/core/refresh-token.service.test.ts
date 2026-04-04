@@ -42,6 +42,36 @@ describe('refresh token service', () => {
     await expect(service.rotateSession(initialSession.refreshToken)).rejects.toBeInstanceOf(RefreshTokenReuseError);
   });
 
+  it('serializa refresh concorrente da mesma sessao sem gerar duas rotacoes validas', async () => {
+    const service = createRefreshTokenService({
+      jwtSecret,
+      refreshSessionStore: createInMemoryRefreshSessionStore(),
+    });
+
+    const initialSession = await service.issueSession({
+      id: 'user-1',
+      username: 'clutchplayer',
+    });
+
+    const results = await Promise.allSettled([
+      service.rotateSession(initialSession.refreshToken),
+      service.rotateSession(initialSession.refreshToken),
+    ]);
+
+    const fulfilledResults = results.filter(
+      (result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof service.rotateSession>>> =>
+        result.status === 'fulfilled',
+    );
+    const rejectedResults = results.filter(
+      (result): result is PromiseRejectedResult =>
+        result.status === 'rejected',
+    );
+
+    expect(fulfilledResults).toHaveLength(1);
+    expect(rejectedResults).toHaveLength(1);
+    expect(rejectedResults[0]?.reason).toBeInstanceOf(RefreshTokenReuseError);
+  });
+
   it('rejeita refresh token invalido ou expirado', async () => {
     const service = createRefreshTokenService({
       jwtSecret,
