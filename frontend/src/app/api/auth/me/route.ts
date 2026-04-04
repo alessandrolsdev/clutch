@@ -1,5 +1,12 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { AUTH_SESSION_COOKIE_NAME, getClearedAuthSessionCookieOptions } from '@/lib/auth/session';
+import { AUTH_SESSION_COOKIE_NAME } from '@/lib/auth/session';
+import {
+  appendRefreshSetCookie,
+  clearAccessSessionCookie,
+  clearRefreshSessionCookie,
+  refreshAuthSession,
+  setAccessSessionCookie,
+} from '@/lib/auth/backend-refresh';
 import {
   logServerEvent,
   REQUEST_ID_HEADER,
@@ -8,6 +15,20 @@ import {
 } from '@/lib/server/logger';
 import { authSessionSchema } from '@/schemas/auth';
 import { buildApiUrl } from '@/services/http/client';
+
+async function fetchAuthenticatedSession(
+  accessToken: string,
+  requestId: string,
+): Promise<Response> {
+  return fetch(buildApiUrl('/auth/me'), {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      [REQUEST_ID_HEADER]: requestId,
+    },
+    cache: 'no-store',
+  });
+}
 
 export async function GET(request: NextRequest) {
   const requestId = resolveServerRequestId(request.headers.get(REQUEST_ID_HEADER));
@@ -33,13 +54,7 @@ export async function GET(request: NextRequest) {
   let backendResponse: Response;
 
   try {
-    backendResponse = await fetch(buildApiUrl('/auth/me'), {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        [REQUEST_ID_HEADER]: requestId,
-      },
-    });
+    backendResponse = await fetchAuthenticatedSession(token, requestId);
   } catch (error) {
     logServerEvent('error', 'frontend_auth_me_backend_unreachable', 'Frontend auth session restore could not reach backend', {
       requestId,
@@ -52,6 +67,86 @@ export async function GET(request: NextRequest) {
       { message: 'Nao foi possivel contatar o backend de autenticacao.' },
       { status: 502 },
     );
+  }
+
+  if (backendResponse.status === 401) {
+    const refreshResult = await refreshAuthSession(
+      requestId,
+      request.headers.get('cookie'),
+    );
+
+    if (!refreshResult.ok) {
+      const response = NextResponse.json(
+        { message: 'Token invalido ou expirado.' },
+        { status: refreshResult.status },
+      );
+
+      clearAccessSessionCookie(response);
+      clearRefreshSessionCookie(response);
+      appendRefreshSetCookie(response, refreshResult.refreshSetCookie);
+
+      logServerEvent('warn', 'frontend_auth_me_refresh_rejected', 'Frontend auth session refresh was rejected', {
+        requestId,
+        status: refreshResult.status,
+        duration_ms: Date.now() - startedAt,
+      });
+
+      return response;
+    }
+
+    try {
+      backendResponse = await fetchAuthenticatedSession(refreshResult.accessToken, requestId);
+    } catch (error) {
+      logServerEvent('error', 'frontend_auth_me_backend_unreachable', 'Frontend auth session restore could not reach backend after refresh', {
+        requestId,
+        status: 502,
+        duration_ms: Date.now() - startedAt,
+        ...serializeServerError(error),
+      });
+
+      const response = NextResponse.json(
+        { message: 'Nao foi possivel contatar o backend de autenticacao.' },
+        { status: 502 },
+      );
+
+      setAccessSessionCookie(response, refreshResult.accessToken);
+      appendRefreshSetCookie(response, refreshResult.refreshSetCookie);
+
+      return response;
+    }
+
+    const payloadAfterRefresh = await backendResponse.json().catch(() => null);
+    const parsedAfterRefresh = authSessionSchema.safeParse(payloadAfterRefresh);
+
+    if (!backendResponse.ok || !parsedAfterRefresh.success) {
+      const response = NextResponse.json(
+        {
+          message: backendResponse.ok
+            ? 'Resposta invalida do backend de sessao.'
+            : 'Falha ao restaurar a sessao.',
+        },
+        { status: backendResponse.ok ? 502 : backendResponse.status },
+      );
+
+      clearAccessSessionCookie(response);
+      clearRefreshSessionCookie(response);
+      appendRefreshSetCookie(response, refreshResult.refreshSetCookie);
+
+      return response;
+    }
+
+    const response = NextResponse.json(parsedAfterRefresh.data, { status: 200 });
+    setAccessSessionCookie(response, refreshResult.accessToken);
+    appendRefreshSetCookie(response, refreshResult.refreshSetCookie);
+
+    logServerEvent('info', 'frontend_auth_me_success', 'Frontend auth session restored after refresh', {
+      requestId,
+      status: 200,
+      duration_ms: Date.now() - startedAt,
+      username: parsedAfterRefresh.data.username,
+    });
+
+    return response;
   }
 
   const payload = await backendResponse.json().catch(() => null);
@@ -75,11 +170,7 @@ export async function GET(request: NextRequest) {
     );
 
     if (backendResponse.status === 401) {
-      response.cookies.set(
-        AUTH_SESSION_COOKIE_NAME,
-        '',
-        getClearedAuthSessionCookieOptions(),
-      );
+      clearAccessSessionCookie(response);
     }
 
     return response;

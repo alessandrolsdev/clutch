@@ -1,12 +1,24 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import bcrypt from 'bcrypt';
 import { userRepository } from '../../core/repositories/user.repository';
+import {
+  parseCookieValue,
+  REFRESH_TOKEN_COOKIE_NAME,
+  serializeClearedRefreshTokenCookie,
+  serializeRefreshTokenCookie,
+} from '../../config/auth-session';
+import {
+  RefreshTokenInvalidError,
+  RefreshTokenReuseError,
+} from '../../core/services/refresh-token.service';
 
 // ─────────────────────────────────────────────────────────────
 // Auth Routes
 // POST /auth/register
 // POST /auth/login
+// POST /auth/refresh
+// POST /auth/logout
 // GET  /auth/me
 // ─────────────────────────────────────────────────────────────
 
@@ -28,6 +40,19 @@ const loginSchema = z.object({
 });
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
+  async function issueAuthSession(
+    user: { id: string; username: string },
+    reply: FastifyReply,
+  ): Promise<string> {
+    const session = await app.refreshTokenService.issueSession({
+      id: user.id,
+      username: user.username,
+    });
+
+    reply.header('Set-Cookie', serializeRefreshTokenCookie(session.refreshToken));
+
+    return session.accessToken;
+  }
 
   // ── POST /auth/register ──────────────────────────────────
   app.post('/register', async (request, reply) => {
@@ -48,7 +73,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
     const user         = await userRepository.create({ username, email, password: passwordHash });
 
-    const token = app.signAccessToken({ id: user.id, username: user.username });
+    const token = await issueAuthSession(user, reply);
 
     return reply.status(201).send({ id: user.id, username: user.username, token });
   });
@@ -74,7 +99,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(401).send({ message: 'Credenciais inválidas.' });
     }
 
-    const token = app.signAccessToken({ id: user.id, username: user.username });
+    const token = await issueAuthSession(user, reply);
 
     return reply.status(200).send({
       id:       user.id,
@@ -82,6 +107,52 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       token,
       message:  'Acesso autorizado.',
     });
+  });
+
+  // ── POST /auth/refresh ───────────────────────────────────
+  app.post('/refresh', async (request, reply) => {
+    const refreshToken = parseCookieValue(request.headers.cookie, REFRESH_TOKEN_COOKIE_NAME);
+
+    if (!refreshToken) {
+      reply.header('Set-Cookie', serializeClearedRefreshTokenCookie());
+      return reply.status(401).send({ message: 'Refresh token inválido ou expirado.' });
+    }
+
+    try {
+      const session = await app.refreshTokenService.rotateSession(refreshToken);
+
+      reply.header('Set-Cookie', serializeRefreshTokenCookie(session.refreshToken));
+
+      return reply.status(200).send({
+        token: session.accessToken,
+        message: 'Sessão renovada.',
+      });
+    } catch (error) {
+      reply.header('Set-Cookie', serializeClearedRefreshTokenCookie());
+
+      if (error instanceof RefreshTokenReuseError) {
+        return reply.status(401).send({ message: 'Refresh token reutilizado ou inválido.' });
+      }
+
+      if (error instanceof RefreshTokenInvalidError) {
+        return reply.status(401).send({ message: 'Refresh token inválido ou expirado.' });
+      }
+
+      throw error;
+    }
+  });
+
+  // ── POST /auth/logout ────────────────────────────────────
+  app.post('/logout', async (request, reply) => {
+    const refreshToken = parseCookieValue(request.headers.cookie, REFRESH_TOKEN_COOKIE_NAME);
+
+    if (refreshToken) {
+      await app.refreshTokenService.revokeSession(refreshToken);
+    }
+
+    reply.header('Set-Cookie', serializeClearedRefreshTokenCookie());
+
+    return reply.status(200).send({ message: 'Sessão encerrada.' });
   });
 
   // ── GET /auth/me ─────────────────────────────────────────

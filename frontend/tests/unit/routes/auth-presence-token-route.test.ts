@@ -50,33 +50,61 @@ describe('auth presence token route', () => {
     expect(response.headers.get('cache-control')).toBe('no-store');
   });
 
-  it('clears the cookie when the backend rejects the session token', async () => {
-    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      const headers = new Headers(init?.headers);
+  it('refreshes the websocket credential when the access token expires', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
 
-      expect(headers.get('x-request-id')).toBeTruthy();
+      if (url.endsWith('/auth/me')) {
+        if (fetchMock.mock.calls.filter(([calledInput]) => String(calledInput).endsWith('/auth/me')).length === 1) {
+          return new Response(JSON.stringify({ message: 'Token invalido ou expirado.' }), {
+            status: 401,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
 
-      return new Response(JSON.stringify({ message: 'Token invalido ou expirado.' }), {
-        status: 401,
-        headers: {
-          'Content-Type': 'application/json',
+        return new Response(
+          JSON.stringify({
+            id: 'user-1',
+            username: 'clutchplayer',
+            email: 'clutchplayer@clutch.gg',
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          token: 'new-access-token',
+          message: 'Sessão renovada.',
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'Set-Cookie': 'clutch_refresh=refresh-rotated; Path=/; HttpOnly; SameSite=Lax',
+          },
         },
-      });
+      );
     });
 
     vi.stubGlobal('fetch', fetchMock as typeof fetch);
 
     const request = new NextRequest('http://localhost/api/auth/presence-token', {
       headers: {
-        cookie: 'clutch_session=expired-token',
+        cookie: 'clutch_session=expired-token; clutch_refresh=refresh-token',
       },
     });
 
     const response = await GET(request);
 
-    expect(response.status).toBe(401);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(response.headers.get('set-cookie')).toContain('clutch_session=');
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(response.headers.get('set-cookie')).toContain('clutch_session=new-access-token');
+    expect(response.headers.get('set-cookie')).toContain('clutch_refresh=refresh-rotated');
+    await expect(response.json()).resolves.toEqual({ token: 'new-access-token' });
   });
 });
 

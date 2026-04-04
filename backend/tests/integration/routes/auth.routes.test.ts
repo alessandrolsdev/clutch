@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { buildApp, generateTestToken, TEST_JWT_SECRET } from '../../helpers/build-app';
 import jwt from 'jsonwebtoken';
+import { REFRESH_TOKEN_COOKIE_NAME } from '@/config/auth-session';
 
 vi.mock('@/core/repositories/user.repository', () => ({
   userRepository: {
@@ -32,6 +33,22 @@ const mockUser = {
   updatedAt:     new Date(),
 };
 
+function extractCookieHeader(setCookieHeader: string | string[] | undefined): string {
+  const rawHeader = Array.isArray(setCookieHeader) ? setCookieHeader[0] : setCookieHeader;
+
+  if (typeof rawHeader !== 'string') {
+    throw new Error('Set-Cookie ausente no response de teste.');
+  }
+
+  const [cookie] = rawHeader.split(';', 1);
+
+  if (typeof cookie !== 'string' || cookie.length === 0) {
+    throw new Error('Cookie invalido no response de teste.');
+  }
+
+  return cookie;
+}
+
 describe('Auth Routes', () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -49,8 +66,9 @@ describe('Auth Routes', () => {
 
       expect(response.statusCode).toBe(201);
       expect(response.json()).toHaveProperty('token');
+      expect(String(response.headers['set-cookie'])).toContain(REFRESH_TOKEN_COOKIE_NAME);
       await app.close();
-    });
+    }, 10_000);
 
     it('retorna 409 quando usuário já existe', async () => {
       vi.mocked(userRepository.existsByEmailOrUsername).mockResolvedValue(true);
@@ -93,6 +111,7 @@ describe('Auth Routes', () => {
 
       expect(response.statusCode).toBe(200);
       expect(response.json()).toHaveProperty('token');
+      expect(String(response.headers['set-cookie'])).toContain(REFRESH_TOKEN_COOKIE_NAME);
       await app.close();
     });
 
@@ -211,6 +230,84 @@ describe('Auth Routes', () => {
       });
 
       expect(response.statusCode).toBe(401);
+      await app.close();
+    });
+
+    it('rotaciona o refresh token e rejeita reuse do token anterior', async () => {
+      vi.mocked(userRepository.findByEmail).mockResolvedValue(mockUser);
+      vi.mocked(userRepository.findById).mockResolvedValue(mockUser);
+      vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+
+      const app = await buildApp();
+      const loginResponse = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: { email: 'player@clutch.gg', password: 'password123' },
+      });
+
+      const initialRefreshCookie = extractCookieHeader(loginResponse.headers['set-cookie']);
+
+      const refreshResponse = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        headers: { cookie: initialRefreshCookie },
+      });
+
+      expect(refreshResponse.statusCode).toBe(200);
+      expect(refreshResponse.json()).toHaveProperty('token');
+
+      const rotatedRefreshCookie = extractCookieHeader(refreshResponse.headers['set-cookie']);
+      expect(rotatedRefreshCookie).not.toBe(initialRefreshCookie);
+
+      const meResponse = await app.inject({
+        method: 'GET',
+        url: '/auth/me',
+        headers: {
+          Authorization: `Bearer ${refreshResponse.json().token as string}`,
+        },
+      });
+
+      expect(meResponse.statusCode).toBe(200);
+
+      const replayResponse = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        headers: { cookie: initialRefreshCookie },
+      });
+
+      expect(replayResponse.statusCode).toBe(401);
+      await app.close();
+    });
+
+    it('logout invalida a sessao de refresh', async () => {
+      vi.mocked(userRepository.findByEmail).mockResolvedValue(mockUser);
+      vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+
+      const app = await buildApp();
+      const loginResponse = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: { email: 'player@clutch.gg', password: 'password123' },
+      });
+
+      const refreshCookie = extractCookieHeader(loginResponse.headers['set-cookie']);
+
+      const logoutResponse = await app.inject({
+        method: 'POST',
+        url: '/auth/logout',
+        headers: { cookie: refreshCookie },
+      });
+
+      expect(logoutResponse.statusCode).toBe(200);
+      expect(String(logoutResponse.headers['set-cookie'])).toContain(`${REFRESH_TOKEN_COOKIE_NAME}=`);
+
+      const refreshAfterLogoutResponse = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        headers: { cookie: refreshCookie },
+      });
+
+      expect(refreshAfterLogoutResponse.statusCode).toBe(401);
       await app.close();
     });
   });

@@ -27,6 +27,7 @@ export const REDIS_KEYS = {
   presenceFeed:   (userId: string) => `realtime:presence:${userId}`,
   notifications:  (userId: string) => `notifications:${userId}`,
   friendsList:    (userId: string) => `friends:${userId}`,
+  refreshSession: (sessionId: string) => `auth:refresh:${sessionId}`,
   presenceUpdate: 'presence:updates',
 } as const;
 

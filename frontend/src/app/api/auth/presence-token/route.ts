@@ -1,8 +1,12 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { AUTH_SESSION_COOKIE_NAME } from '@/lib/auth/session';
 import {
-  AUTH_SESSION_COOKIE_NAME,
-  getClearedAuthSessionCookieOptions,
-} from '@/lib/auth/session';
+  appendRefreshSetCookie,
+  clearAccessSessionCookie,
+  clearRefreshSessionCookie,
+  refreshAuthSession,
+  setAccessSessionCookie,
+} from '@/lib/auth/backend-refresh';
 import {
   logServerEvent,
   REQUEST_ID_HEADER,
@@ -10,6 +14,17 @@ import {
   serializeServerError,
 } from '@/lib/server/logger';
 import { buildApiUrl } from '@/services/http/client';
+
+async function validateAccessToken(accessToken: string, requestId: string): Promise<Response> {
+  return fetch(buildApiUrl('/auth/me'), {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      [REQUEST_ID_HEADER]: requestId,
+    },
+    cache: 'no-store',
+  });
+}
 
 export async function GET(request: NextRequest) {
   const requestId = resolveServerRequestId(request.headers.get(REQUEST_ID_HEADER));
@@ -35,14 +50,7 @@ export async function GET(request: NextRequest) {
   let backendResponse: Response;
 
   try {
-    backendResponse = await fetch(buildApiUrl('/auth/me'), {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        [REQUEST_ID_HEADER]: requestId,
-      },
-      cache: 'no-store',
-    });
+    backendResponse = await validateAccessToken(token, requestId);
   } catch (error) {
     logServerEvent('error', 'frontend_presence_token_backend_unreachable', 'Frontend presence token validation could not reach backend', {
       requestId,
@@ -55,6 +63,73 @@ export async function GET(request: NextRequest) {
       { message: 'Nao foi possivel validar a sessao de realtime.' },
       { status: 502 },
     );
+  }
+
+  if (backendResponse.status === 401) {
+    const refreshResult = await refreshAuthSession(
+      requestId,
+      request.headers.get('cookie'),
+    );
+
+    if (!refreshResult.ok) {
+      const response = NextResponse.json(
+        { message: 'Token invalido ou expirado.' },
+        { status: refreshResult.status },
+      );
+
+      clearAccessSessionCookie(response);
+      clearRefreshSessionCookie(response);
+      appendRefreshSetCookie(response, refreshResult.refreshSetCookie);
+
+      return response;
+    }
+
+    try {
+      backendResponse = await validateAccessToken(refreshResult.accessToken, requestId);
+    } catch (error) {
+      logServerEvent('error', 'frontend_presence_token_backend_unreachable', 'Frontend presence token validation could not reach backend after refresh', {
+        requestId,
+        status: 502,
+        duration_ms: Date.now() - startedAt,
+        ...serializeServerError(error),
+      });
+
+      const response = NextResponse.json(
+        { message: 'Nao foi possivel validar a sessao de realtime.' },
+        { status: 502 },
+      );
+
+      setAccessSessionCookie(response, refreshResult.accessToken);
+      appendRefreshSetCookie(response, refreshResult.refreshSetCookie);
+
+      return response;
+    }
+
+    if (!backendResponse.ok) {
+      const response = NextResponse.json(
+        { message: 'Nao foi possivel validar a sessao de realtime.' },
+        { status: backendResponse.status },
+      );
+
+      clearAccessSessionCookie(response);
+      clearRefreshSessionCookie(response);
+      appendRefreshSetCookie(response, refreshResult.refreshSetCookie);
+
+      return response;
+    }
+
+    const response = NextResponse.json({ token: refreshResult.accessToken }, { status: 200 });
+    response.headers.set('Cache-Control', 'no-store');
+    setAccessSessionCookie(response, refreshResult.accessToken);
+    appendRefreshSetCookie(response, refreshResult.refreshSetCookie);
+
+    logServerEvent('info', 'frontend_presence_token_success', 'Frontend presence token issued', {
+      requestId,
+      status: 200,
+      duration_ms: Date.now() - startedAt,
+    });
+
+    return response;
   }
 
   if (!backendResponse.ok) {
@@ -76,11 +151,7 @@ export async function GET(request: NextRequest) {
     );
 
     if (backendResponse.status === 401) {
-      response.cookies.set(
-        AUTH_SESSION_COOKIE_NAME,
-        '',
-        getClearedAuthSessionCookieOptions(),
-      );
+      clearAccessSessionCookie(response);
     }
 
     return response;
