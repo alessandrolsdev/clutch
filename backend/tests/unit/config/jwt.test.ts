@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import jwt from 'jsonwebtoken';
 import {
+  createRefreshTokenSigner,
+  createRefreshTokenVerifier,
   createJwtSigner,
   createJwtVerifier,
   extractBearerToken,
@@ -21,6 +23,27 @@ describe('JWT config', () => {
     expect(verifyAccessToken(token)).toEqual({
       id: 'user-id-1',
       username: 'clutchplayer',
+    });
+  });
+
+  it('assina e valida refresh token com sessionId e jti', () => {
+    const signRefreshToken = createRefreshTokenSigner(secret);
+    const verifyRefreshToken = createRefreshTokenVerifier(secret);
+
+    const token = signRefreshToken({
+      id: 'user-id-1',
+      username: 'clutchplayer',
+      tokenType: 'refresh',
+      sessionId: 'session-1',
+      jti: 'refresh-1',
+    });
+
+    expect(verifyRefreshToken(token)).toEqual({
+      id: 'user-id-1',
+      username: 'clutchplayer',
+      tokenType: 'refresh',
+      sessionId: 'session-1',
+      jti: 'refresh-1',
     });
   });
 
@@ -88,6 +111,23 @@ describe('JWT config', () => {
     });
 
     expect(() => verifyAccessToken(token)).toThrow();
+  });
+
+  it('rejeita refresh token com payload incompleto', () => {
+    const verifyRefreshToken = createRefreshTokenVerifier(secret);
+    const token = jwt.sign(
+      {
+        id: 'user-id-1',
+        username: 'clutchplayer',
+      },
+      secret,
+      {
+        algorithm: 'HS256',
+        expiresIn: '7d',
+      },
+    );
+
+    expect(() => verifyRefreshToken(token)).toThrow();
   });
 
   it('extrai apenas bearer token valido', () => {

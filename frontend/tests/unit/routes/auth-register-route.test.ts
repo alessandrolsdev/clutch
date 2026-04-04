@@ -12,7 +12,7 @@ describe('auth register route', () => {
     vi.restoreAllMocks();
   });
 
-  it('sets an httpOnly cookie when register succeeds', async () => {
+  it('sets an httpOnly access cookie and forwards the refresh cookie when register succeeds', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
@@ -26,6 +26,7 @@ describe('auth register route', () => {
             status: 201,
             headers: {
               'Content-Type': 'application/json',
+              'Set-Cookie': 'clutch_refresh=refresh-register-token; Path=/; HttpOnly; SameSite=Lax',
             },
           },
         );
@@ -47,9 +48,11 @@ describe('auth register route', () => {
     );
 
     expect(response.status).toBe(201);
-    expect(response.headers.get('set-cookie')).toContain(AUTH_SESSION_COOKIE_NAME);
-    expect(response.headers.get('set-cookie')).toContain('HttpOnly');
-    expect(response.headers.get('set-cookie')).toContain('jwt-register-token');
+    const setCookieHeader = response.headers.get('set-cookie');
+    expect(setCookieHeader).toContain(AUTH_SESSION_COOKIE_NAME);
+    expect(setCookieHeader).toContain('HttpOnly');
+    expect(setCookieHeader).toContain('jwt-register-token');
+    expect(setCookieHeader).toContain('clutch_refresh=refresh-register-token');
   });
 
   it('returns friendly 409 without setting cookie', async () => {
