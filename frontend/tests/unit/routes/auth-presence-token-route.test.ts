@@ -107,7 +107,7 @@ describe('auth presence token route', () => {
     await expect(response.json()).resolves.toEqual({ token: 'new-access-token' });
   });
 
-  it('returns 401 and clears cookies when refresh fails', async () => {
+  it('returns 401 and clears cookies when the refresh session was revoked', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
 
