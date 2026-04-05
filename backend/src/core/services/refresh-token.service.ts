@@ -13,6 +13,10 @@ export type RefreshSessionRecord = {
   userId: string;
   username: string;
   tokenHash: string;
+  expiresAt: number;
+  status: 'active' | 'revoked';
+  revokedAt: number | null;
+  revokeReason: RefreshTokenRevokeReason | null;
 };
 
 /* eslint-disable no-unused-vars */
@@ -23,9 +27,12 @@ export type RefreshSessionStore = {
 };
 
 export class RefreshTokenReuseError extends Error {
-  constructor() {
+  readonly sessionId: string | null;
+
+  constructor(sessionId: string | null = null) {
     super('Refresh token reutilizado ou invalido.');
     this.name = 'RefreshTokenReuseError';
+    this.sessionId = sessionId;
   }
 }
 
@@ -35,6 +42,29 @@ export class RefreshTokenInvalidError extends Error {
     this.name = 'RefreshTokenInvalidError';
   }
 }
+
+export class RefreshTokenRevokedError extends Error {
+  readonly sessionId: string;
+  readonly reason: RefreshTokenRevokeReason | null;
+
+  constructor(sessionId: string, reason: RefreshTokenRevokeReason | null) {
+    super('Sessao de refresh revogada.');
+    this.name = 'RefreshTokenRevokedError';
+    this.sessionId = sessionId;
+    this.reason = reason;
+  }
+}
+
+export type RefreshTokenRevokeReason =
+  | 'logout'
+  | 'refresh_token_reuse'
+  | 'security';
+
+export type RefreshSessionRevokeResult = {
+  sessionId: string | null;
+  status: 'revoked' | 'noop';
+  reason: RefreshTokenRevokeReason | null;
+};
 
 function hashRefreshToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -54,13 +84,34 @@ function hashesMatch(left: string, right: string): boolean {
 function buildSessionRecord(
   payload: RefreshTokenPayload,
   token: string,
+  expiresAt: number,
 ): RefreshSessionRecord {
   return {
     sessionId: payload.sessionId,
     userId: payload.id,
     username: payload.username,
     tokenHash: hashRefreshToken(token),
+    expiresAt,
+    status: 'active',
+    revokedAt: null,
+    revokeReason: null,
   };
+}
+
+function buildRevokedSessionRecord(
+  session: RefreshSessionRecord,
+  reason: RefreshTokenRevokeReason,
+): RefreshSessionRecord {
+  return {
+    ...session,
+    status: 'revoked',
+    revokedAt: Date.now(),
+    revokeReason: reason,
+  };
+}
+
+function resolveSessionTtlSeconds(session: RefreshSessionRecord): number {
+  return Math.max(1, Math.ceil((session.expiresAt - Date.now()) / 1000));
 }
 
 function assertRefreshSessionPayload(payload: RefreshTokenPayload, session: RefreshSessionRecord): void {
@@ -115,7 +166,10 @@ export type RefreshSessionResult = {
 export type RefreshTokenService = {
   issueSession(input: IssueRefreshSessionInput): Promise<RefreshSessionResult>;
   rotateSession(refreshToken: string): Promise<RefreshSessionResult>;
-  revokeSession(refreshToken: string): Promise<void>;
+  revokeSession(
+    refreshToken: string,
+    reason?: RefreshTokenRevokeReason,
+  ): Promise<RefreshSessionRevokeResult>;
 };
 /* eslint-enable no-unused-vars */
 
@@ -159,9 +213,11 @@ export function createRefreshTokenService(
   }
 
   async function persistRefreshToken(refreshToken: string, payload: RefreshTokenPayload): Promise<void> {
+    const expiresAt = Date.now() + (refreshTokenTtlSeconds * 1000);
+
     await refreshSessionStore.set(
       payload.sessionId,
-      buildSessionRecord(payload, refreshToken),
+      buildSessionRecord(payload, refreshToken, expiresAt),
       refreshTokenTtlSeconds,
     );
   }
@@ -201,9 +257,26 @@ export function createRefreshTokenService(
           throw new RefreshTokenInvalidError();
         }
 
+        if (existingSession.status === 'revoked') {
+          throw new RefreshTokenRevokedError(
+            existingSession.sessionId,
+            existingSession.revokeReason,
+          );
+        }
+
         if (!hashesMatch(existingSession.tokenHash, hashRefreshToken(refreshToken))) {
-          await refreshSessionStore.delete(payload.sessionId);
-          throw new RefreshTokenReuseError();
+          const revokedSession = buildRevokedSessionRecord(
+            existingSession,
+            'refresh_token_reuse',
+          );
+
+          await refreshSessionStore.set(
+            payload.sessionId,
+            revokedSession,
+            resolveSessionTtlSeconds(existingSession),
+          );
+
+          throw new RefreshTokenReuseError(payload.sessionId);
         }
 
         assertRefreshSessionPayload(payload, existingSession);
@@ -229,15 +302,55 @@ export function createRefreshTokenService(
       });
     },
 
-    async revokeSession(refreshToken: string): Promise<void> {
+    async revokeSession(
+      refreshToken: string,
+      reason: RefreshTokenRevokeReason = 'logout',
+    ): Promise<RefreshSessionRevokeResult> {
+      let payload: RefreshTokenPayload;
+
       try {
-        const payload = verifyRefreshToken(refreshToken);
-        await withSessionLock(payload.sessionId, async () => {
-          await refreshSessionStore.delete(payload.sessionId);
-        });
+        payload = verifyRefreshToken(refreshToken);
       } catch {
         // Logout precisa ser idempotente e limpar o cookie mesmo com token ausente ou invalido.
+        return {
+          sessionId: null,
+          status: 'noop',
+          reason: null,
+        };
       }
+
+      return withSessionLock(payload.sessionId, async () => {
+        const existingSession = await refreshSessionStore.get(payload.sessionId);
+
+        if (!existingSession) {
+          return {
+            sessionId: payload.sessionId,
+            status: 'noop',
+            reason: null,
+          };
+        }
+
+        if (existingSession.status === 'revoked') {
+          return {
+            sessionId: existingSession.sessionId,
+            status: 'noop',
+            reason: existingSession.revokeReason,
+          };
+        }
+
+        const revokedSession = buildRevokedSessionRecord(existingSession, reason);
+        await refreshSessionStore.set(
+          payload.sessionId,
+          revokedSession,
+          resolveSessionTtlSeconds(existingSession),
+        );
+
+        return {
+          sessionId: payload.sessionId,
+          status: 'revoked',
+          reason,
+        };
+      });
     },
   };
 }
