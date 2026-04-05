@@ -44,6 +44,38 @@ describe('auth refresh route', () => {
     expect(response.headers.get('set-cookie')).toContain('clutch_refresh=rotated-refresh-token');
     await expect(response.json()).resolves.toEqual({ message: 'Sessao renovada.' });
   });
+
+  it('clears cookies when the backend rejects a revoked refresh session', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(
+        JSON.stringify({
+          message: 'Refresh token inválido ou expirado.',
+        }),
+        {
+          status: 401,
+          headers: {
+            'Content-Type': 'application/json',
+            'Set-Cookie': 'clutch_refresh=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0',
+          },
+        },
+      )) as typeof fetch,
+    );
+
+    const response = await POST(
+      new NextRequest('http://localhost/api/auth/refresh', {
+        method: 'POST',
+        headers: {
+          cookie: 'clutch_refresh=revoked-refresh-token',
+        },
+      }),
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get('set-cookie')).toContain('clutch_session=');
+    expect(response.headers.get('set-cookie')).toContain('clutch_refresh=');
+    await expect(response.json()).resolves.toEqual({ message: 'Sessao invalida ou expirada.' });
+  });
 });
 
 afterAll(() => {

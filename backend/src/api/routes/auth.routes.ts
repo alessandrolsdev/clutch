@@ -10,6 +10,8 @@ import {
 } from '../../config/auth-session';
 import {
   RefreshTokenInvalidError,
+  type RefreshSessionRevokeResult,
+  RefreshTokenRevokedError,
   RefreshTokenReuseError,
 } from '../../core/services/refresh-token.service';
 
@@ -154,8 +156,22 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           path: request.url,
           status: 401,
           reason: 'refresh_token_reuse',
+          sessionId: error.sessionId,
         }, 'Refresh token reuse detected');
         return reply.status(401).send({ message: 'Refresh token reutilizado ou inválido.' });
+      }
+
+      if (error instanceof RefreshTokenRevokedError) {
+        request.log.warn({
+          event: 'auth_refresh_rejected_revoked_session',
+          requestId: request.id,
+          method: request.method,
+          path: request.url,
+          status: 401,
+          sessionId: error.sessionId,
+          reason: error.reason ?? 'revoked_session',
+        }, 'Refresh token rejected because session is revoked');
+        return reply.status(401).send({ message: 'Refresh token inválido ou expirado.' });
       }
 
       if (error instanceof RefreshTokenInvalidError) {
@@ -177,12 +193,39 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   // ── POST /auth/logout ────────────────────────────────────
   app.post('/logout', async (request, reply) => {
     const refreshToken = parseCookieValue(request.headers.cookie, REFRESH_TOKEN_COOKIE_NAME);
+    let revocationResult: RefreshSessionRevokeResult = {
+      sessionId: null,
+      status: 'noop',
+      reason: null,
+    };
 
     if (refreshToken) {
-      await app.refreshTokenService.revokeSession(refreshToken);
+      revocationResult = await app.refreshTokenService.revokeSession(refreshToken, 'logout');
+
+      if (revocationResult.status === 'revoked') {
+        request.log.info({
+          event: 'auth_session_revoked',
+          requestId: request.id,
+          method: request.method,
+          path: request.url,
+          status: 200,
+          sessionId: revocationResult.sessionId,
+          reason: revocationResult.reason,
+        }, 'Refresh session revoked');
+      }
     }
 
     reply.header('Set-Cookie', serializeClearedRefreshTokenCookie());
+
+    request.log.info({
+      event: 'auth_logout_completed',
+      requestId: request.id,
+      method: request.method,
+      path: request.url,
+      status: 200,
+      sessionId: revocationResult.sessionId,
+      reason: revocationResult.reason ?? (refreshToken ? 'logout_noop' : 'missing_refresh_token'),
+    }, 'Logout completed');
 
     return reply.status(200).send({ message: 'Sessão encerrada.' });
   });

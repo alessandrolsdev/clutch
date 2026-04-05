@@ -114,7 +114,7 @@ describe('auth me route', () => {
     });
   });
 
-  it('clears the session when the refresh token is invalid', async () => {
+  it('clears the session when the refresh session was revoked', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
 

@@ -47,6 +47,8 @@ services:
     environment:
       NODE_ENV: development
       WATCHPACK_POLLING: "true"
+      WATCHPACK_POLLING_INTERVAL: "1000"
+      CHOKIDAR_USEPOLLING: "true"
       INTERNAL_API_URL: http://backend:3344
       NEXT_PUBLIC_API_URL: http://localhost/api
       NEXT_PUBLIC_WS_URL: ws://localhost
