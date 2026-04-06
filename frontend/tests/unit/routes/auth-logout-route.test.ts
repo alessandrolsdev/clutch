@@ -5,6 +5,24 @@ import { POST } from '@/app/api/auth/logout/route';
 const originalApiUrl = process.env.NEXT_PUBLIC_API_URL;
 const originalInternalApiUrl = process.env.INTERNAL_API_URL;
 
+function captureServerLogs() {
+  const entries: Array<Record<string, unknown>> = [];
+  const collect = (chunk: string | Uint8Array): boolean => {
+    const serialized = typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8');
+    for (const line of serialized.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('{')) {
+        continue;
+      }
+      entries.push(JSON.parse(trimmed) as Record<string, unknown>);
+    }
+    return true;
+  };
+  const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(((chunk: string | Uint8Array) => collect(chunk)) as typeof process.stdout.write);
+  const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(((chunk: string | Uint8Array) => collect(chunk)) as typeof process.stderr.write);
+  return { entries, restore() { stdoutSpy.mockRestore(); stderrSpy.mockRestore(); } };
+}
+
 describe('auth logout route', () => {
   beforeEach(() => {
     process.env.INTERNAL_API_URL = 'http://backend.test';
@@ -13,6 +31,7 @@ describe('auth logout route', () => {
   });
 
   it('clears the local session cookie and forwards the backend refresh revocation request', async () => {
+    const capturedLogs = captureServerLogs();
     const fetchHandler = vi.fn(async () => new Response(
       JSON.stringify({ message: 'Sessão encerrada.' }),
       {
@@ -33,10 +52,13 @@ describe('auth logout route', () => {
       new NextRequest('http://localhost/api/auth/logout', {
         method: 'POST',
         headers: {
+          'x-request-id': 'req-logout-123',
           cookie: 'clutch_session=jwt-token; clutch_refresh=refresh-token',
         },
       }),
     );
+
+    capturedLogs.restore();
 
     expect(response.status).toBe(200);
     expect(fetchHandler).toHaveBeenCalledTimes(1);
@@ -47,6 +69,12 @@ describe('auth logout route', () => {
     expect(new Headers(requestInit?.headers).get('cookie')).toContain('clutch_refresh=refresh-token');
     expect(response.headers.get('set-cookie')).toContain('clutch_session=');
     expect(response.headers.get('set-cookie')).toContain('clutch_refresh=');
+    expect(capturedLogs.entries.find((entry) => entry.event === 'frontend_auth_logout_completed')).toMatchObject({
+      event: 'frontend_auth_logout_completed',
+      requestId: 'req-logout-123',
+      status: 200,
+    });
+    expect(JSON.stringify(capturedLogs.entries)).not.toContain('refresh-token');
   });
 });
 

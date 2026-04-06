@@ -3,6 +3,8 @@ import {
   FRONTEND_SERVICE_NAME,
   createServerLogEntry,
   resolveServerRequestId,
+  sanitizeServerSensitiveText,
+  serializeServerError,
 } from '@/lib/server/logger';
 
 describe('server logger', () => {
@@ -28,5 +30,16 @@ describe('server logger', () => {
     expect(entry.message).toBe('Frontend route request started');
     expect(entry.route).toBe('/api/auth/login');
     expect(typeof entry.timestamp).toBe('string');
+  });
+
+  it('sanitiza urls sensiveis em mensagens de erro', () => {
+    const details = serializeServerError(new Error('dial redis://default:super-secret@redis.internal:6379 failed'));
+
+    expect(sanitizeServerSensitiveText('redis://default:super-secret@redis.internal:6379')).toBe(
+      '[connection scheme=redis host=redis.internal port=6379]',
+    );
+    expect(details.errorMessage).toBe('dial [connection scheme=redis host=redis.internal port=6379] failed');
+    expect(String(details.stack)).not.toContain('super-secret');
+    expect(String(details.stack)).not.toContain('redis://');
   });
 });

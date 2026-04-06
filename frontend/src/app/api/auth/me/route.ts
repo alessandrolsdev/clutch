@@ -70,6 +70,12 @@ export async function GET(request: NextRequest) {
   }
 
   if (backendResponse.status === 401) {
+    logServerEvent('info', 'frontend_auth_refresh_start', 'Frontend auth refresh started from session restore', {
+      requestId,
+      path: request.nextUrl.pathname,
+      status: 401,
+    });
+
     const refreshResult = await refreshAuthSession(
       requestId,
       request.headers.get('cookie'),
@@ -88,6 +94,12 @@ export async function GET(request: NextRequest) {
       logServerEvent('warn', 'frontend_auth_me_refresh_rejected', 'Frontend auth session refresh was rejected', {
         requestId,
         status: refreshResult.status,
+        duration_ms: Date.now() - startedAt,
+      });
+      logServerEvent('warn', 'frontend_auth_session_cleared', 'Frontend auth session cleared after session restore failure', {
+        requestId,
+        status: refreshResult.status,
+        reason: 'refresh_rejected',
         duration_ms: Date.now() - startedAt,
       });
 
@@ -171,6 +183,13 @@ export async function GET(request: NextRequest) {
 
     if (backendResponse.status === 401) {
       clearAccessSessionCookie(response);
+      clearRefreshSessionCookie(response);
+      logServerEvent('warn', 'frontend_auth_session_cleared', 'Frontend auth session cleared after backend rejection', {
+        requestId,
+        status: 401,
+        reason: 'backend_rejected',
+        duration_ms: Date.now() - startedAt,
+      });
     }
 
     return response;
