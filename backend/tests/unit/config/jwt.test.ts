@@ -74,6 +74,9 @@ describe('JWT config', () => {
       keyId: 'legacy',
       tokenKeyId: 'legacy',
       legacyToken: false,
+      issuerPresent: true,
+      audiencePresent: true,
+      notBeforePresent: true,
     });
   });
 
@@ -92,7 +95,13 @@ describe('JWT config', () => {
         kid: 'v2',
         typ: 'JWT',
       },
+      payload: {
+        iss: 'clutch.backend',
+        aud: 'clutch.auth',
+      },
     });
+    const payload = (decoded as jwt.Jwt | null)?.payload;
+    expect(payload && typeof payload !== 'string' ? typeof payload.nbf : 'undefined').toBe('number');
   });
 
   it('assina e valida refresh token com kid, sessionId e jti', () => {
@@ -116,6 +125,9 @@ describe('JWT config', () => {
       keyId: 'v2',
       tokenKeyId: 'v2',
       legacyToken: false,
+      issuerPresent: true,
+      audiencePresent: true,
+      notBeforePresent: true,
     });
   });
 
@@ -140,7 +152,112 @@ describe('JWT config', () => {
       keyId: 'v1',
       tokenKeyId: null,
       legacyToken: true,
+      issuerPresent: false,
+      audiencePresent: false,
+      notBeforePresent: false,
     });
+  });
+
+  it('aceita token com issuer valida', () => {
+    const verifyAccessToken = createJwtVerifier(secret);
+    const token = jwt.sign(
+      {
+        id: 'user-id-1',
+        username: 'clutchplayer',
+      },
+      secret,
+      {
+        algorithm: 'HS256',
+        expiresIn: '10m',
+        issuer: 'clutch.backend',
+        audience: 'clutch.auth',
+        notBefore: 0,
+        header: {
+          alg: 'HS256',
+          kid: 'legacy',
+        },
+      },
+    );
+
+    expect(verifyAccessToken(token)).toMatchObject({
+      id: 'user-id-1',
+      username: 'clutchplayer',
+      issuerPresent: true,
+      audiencePresent: true,
+      notBeforePresent: true,
+    });
+  });
+
+  it('rejeita token com issuer invalida', () => {
+    const verifyAccessToken = createJwtVerifier(secret);
+    const token = jwt.sign(
+      {
+        id: 'user-id-1',
+        username: 'clutchplayer',
+      },
+      secret,
+      {
+        algorithm: 'HS256',
+        expiresIn: '10m',
+        issuer: 'external.backend',
+        audience: 'clutch.auth',
+        notBefore: 0,
+        header: {
+          alg: 'HS256',
+          kid: 'legacy',
+        },
+      },
+    );
+
+    expect(() => verifyAccessToken(token)).toThrow('JWT issuer invalido.');
+  });
+
+  it('rejeita token com audience invalida', () => {
+    const verifyAccessToken = createJwtVerifier(secret);
+    const token = jwt.sign(
+      {
+        id: 'user-id-1',
+        username: 'clutchplayer',
+      },
+      secret,
+      {
+        algorithm: 'HS256',
+        expiresIn: '10m',
+        issuer: 'clutch.backend',
+        audience: 'external-client',
+        notBefore: 0,
+        header: {
+          alg: 'HS256',
+          kid: 'legacy',
+        },
+      },
+    );
+
+    expect(() => verifyAccessToken(token)).toThrow('JWT audience invalida.');
+  });
+
+  it('rejeita token com nbf no futuro', () => {
+    const verifyAccessToken = createJwtVerifier(secret);
+    const token = jwt.sign(
+      {
+        id: 'user-id-1',
+        username: 'clutchplayer',
+      },
+      secret,
+      {
+        algorithm: 'HS256',
+        expiresIn: '10m',
+        issuer: 'clutch.backend',
+        audience: 'clutch.auth',
+        notBefore: '30s',
+        header: {
+          alg: 'HS256',
+          kid: 'legacy',
+        },
+      },
+    );
+
+    expect(() => verifyAccessToken(token)).toThrow();
   });
 
   it('rejeita token com kid desconhecido', () => {
@@ -303,11 +420,15 @@ describe('JWT config', () => {
     const previousSecret = process.env['JWT_SECRET'];
     const previousKeyring = process.env['JWT_KEYS_JSON'];
     const previousActiveKid = process.env['JWT_ACTIVE_KID'];
+    const previousIssuer = process.env['JWT_ISSUER'];
+    const previousAudience = process.env['JWT_AUDIENCE'];
 
     process.env['NODE_ENV'] = 'production';
     delete process.env['JWT_SECRET'];
     delete process.env['JWT_KEYS_JSON'];
     delete process.env['JWT_ACTIVE_KID'];
+    delete process.env['JWT_ISSUER'];
+    delete process.env['JWT_AUDIENCE'];
 
     try {
       expect(() => createJwtSigner()).toThrow('JWT_SECRET deve ser configurado em produção.');
@@ -335,6 +456,98 @@ describe('JWT config', () => {
         process.env['JWT_ACTIVE_KID'] = previousActiveKid;
       } else {
         delete process.env['JWT_ACTIVE_KID'];
+      }
+
+      if (typeof previousIssuer === 'string') {
+        process.env['JWT_ISSUER'] = previousIssuer;
+      } else {
+        delete process.env['JWT_ISSUER'];
+      }
+
+      if (typeof previousAudience === 'string') {
+        process.env['JWT_AUDIENCE'] = previousAudience;
+      } else {
+        delete process.env['JWT_AUDIENCE'];
+      }
+    }
+  });
+
+  it('falha em producao quando JWT_ISSUER nao esta configurado', () => {
+    const previousNodeEnv = process.env['NODE_ENV'];
+    const previousSecret = process.env['JWT_SECRET'];
+    const previousIssuer = process.env['JWT_ISSUER'];
+    const previousAudience = process.env['JWT_AUDIENCE'];
+
+    process.env['NODE_ENV'] = 'production';
+    process.env['JWT_SECRET'] = secret;
+    delete process.env['JWT_ISSUER'];
+    process.env['JWT_AUDIENCE'] = 'clutch.auth';
+
+    try {
+      expect(() => createJwtSigner()).toThrow('JWT_ISSUER deve ser configurado em produção.');
+    } finally {
+      if (typeof previousNodeEnv === 'string') {
+        process.env['NODE_ENV'] = previousNodeEnv;
+      } else {
+        delete process.env['NODE_ENV'];
+      }
+
+      if (typeof previousSecret === 'string') {
+        process.env['JWT_SECRET'] = previousSecret;
+      } else {
+        delete process.env['JWT_SECRET'];
+      }
+
+      if (typeof previousIssuer === 'string') {
+        process.env['JWT_ISSUER'] = previousIssuer;
+      } else {
+        delete process.env['JWT_ISSUER'];
+      }
+
+      if (typeof previousAudience === 'string') {
+        process.env['JWT_AUDIENCE'] = previousAudience;
+      } else {
+        delete process.env['JWT_AUDIENCE'];
+      }
+    }
+  });
+
+  it('falha em producao quando JWT_AUDIENCE nao esta configurado', () => {
+    const previousNodeEnv = process.env['NODE_ENV'];
+    const previousSecret = process.env['JWT_SECRET'];
+    const previousIssuer = process.env['JWT_ISSUER'];
+    const previousAudience = process.env['JWT_AUDIENCE'];
+
+    process.env['NODE_ENV'] = 'production';
+    process.env['JWT_SECRET'] = secret;
+    process.env['JWT_ISSUER'] = 'clutch.backend';
+    delete process.env['JWT_AUDIENCE'];
+
+    try {
+      expect(() => createJwtSigner()).toThrow('JWT_AUDIENCE deve ser configurado em produção.');
+    } finally {
+      if (typeof previousNodeEnv === 'string') {
+        process.env['NODE_ENV'] = previousNodeEnv;
+      } else {
+        delete process.env['NODE_ENV'];
+      }
+
+      if (typeof previousSecret === 'string') {
+        process.env['JWT_SECRET'] = previousSecret;
+      } else {
+        delete process.env['JWT_SECRET'];
+      }
+
+      if (typeof previousIssuer === 'string') {
+        process.env['JWT_ISSUER'] = previousIssuer;
+      } else {
+        delete process.env['JWT_ISSUER'];
+      }
+
+      if (typeof previousAudience === 'string') {
+        process.env['JWT_AUDIENCE'] = previousAudience;
+      } else {
+        delete process.env['JWT_AUDIENCE'];
       }
     }
   });
