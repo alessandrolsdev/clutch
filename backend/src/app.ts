@@ -1,4 +1,5 @@
 import Fastify, { FastifyInstance } from 'fastify';
+import fastifyRateLimit from '@fastify/rate-limit';
 import { authRoutes } from './api/routes/auth.routes';
 import { profileRoutes } from './api/routes/profile.routes';
 import { friendRoutes } from './api/routes/friends.routes';
@@ -22,11 +23,14 @@ import {
   type JwtKeyRotationConfig,
   createJwtVerifier,
 } from './config/jwt';
+import { createAuthRateLimitPluginOptions } from './config/rate-limit';
 import {
   createRefreshTokenService,
   type RefreshSessionStore,
 } from './core/services/refresh-token.service';
 import { createRedisRefreshSessionStore } from './infra/cache/refresh-session.store';
+import { redis as runtimeRedis } from './infra/cache/redis';
+import type Redis from 'ioredis';
 
 export type BuildAppOptions = {
   jwtSecret?: string;
@@ -34,6 +38,7 @@ export type BuildAppOptions = {
   logger?: boolean;
   readinessCheck?: () => Promise<ReadinessReport>;
   refreshSessionStore?: RefreshSessionStore;
+  rateLimitRedis?: Redis | null;
 };
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
@@ -44,6 +49,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     disableRequestLogging: true,
     requestIdHeader: REQUEST_ID_HEADER,
     genReqId: (request) => resolveBackendRequestId(request.headers),
+    trustProxy: 'loopback, linklocal, uniquelocal',
   });
   const jwtConfigInput = options.jwtKeyRotationConfig ?? options.jwtSecret;
   const signAccessToken = createJwtSigner(jwtConfigInput);
@@ -58,6 +64,13 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   app.decorate('signAccessToken', signAccessToken);
   app.decorate('verifyAccessToken', verifyAccessToken);
   app.decorate('refreshTokenService', refreshTokenService);
+
+  await app.register(
+    fastifyRateLimit,
+    createAuthRateLimitPluginOptions(
+      options.rateLimitRedis ?? (process.env['NODE_ENV'] === 'test' ? null : runtimeRedis),
+    ),
+  );
 
   const readinessCheck = options.readinessCheck ?? runReadinessChecks;
 

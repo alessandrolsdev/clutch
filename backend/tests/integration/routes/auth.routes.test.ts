@@ -141,6 +141,36 @@ describe('Auth Routes', () => {
       expect(response.statusCode).toBe(400);
       await app.close();
     });
+
+    it('bloqueia cadastro acima do limite com 429', async () => {
+      vi.mocked(userRepository.existsByEmailOrUsername).mockResolvedValue(true);
+
+      const app = await buildApp();
+
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const response = await app.inject({
+          method: 'POST',
+          url: '/auth/register',
+          payload: { username: `clutchplayer${attempt}`, email: `player${attempt}@clutch.gg`, password: 'password123' },
+        });
+
+        expect(response.statusCode).toBe(409);
+      }
+
+      const blockedResponse = await app.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: { username: 'clutchplayer-overflow', email: 'overflow@clutch.gg', password: 'password123' },
+      });
+
+      expect(blockedResponse.statusCode).toBe(429);
+      expect(blockedResponse.json()).toMatchObject({
+        error: 'Too Many Requests',
+        message: 'Muitas tentativas. Tente novamente em instantes.',
+        statusCode: 429,
+      });
+      await app.close();
+    });
   });
 
   describe('POST /auth/login', () => {
@@ -246,6 +276,52 @@ describe('Auth Routes', () => {
         reason: 'invalid_credentials',
       });
       expect(JSON.stringify(capturedLogs.entries)).not.toContain('password123');
+      await app.close();
+    });
+
+    it('bloqueia login acima do limite com 429 e log estruturado seguro', async () => {
+      vi.mocked(userRepository.findByEmail).mockResolvedValue(null);
+      const capturedLogs = captureJsonLogs();
+
+      const app = await buildApp({ logger: true });
+
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const response = await app.inject({
+          method: 'POST',
+          url: '/auth/login',
+          headers: { 'x-request-id': `req-login-limit-${attempt}` },
+          payload: { email: 'player@clutch.gg', password: 'wrong-password' },
+        });
+
+        expect(response.statusCode).toBe(401);
+      }
+
+      const blockedResponse = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        headers: { 'x-request-id': 'req-login-limit-blocked' },
+        payload: { email: 'player@clutch.gg', password: 'wrong-password' },
+      });
+
+      capturedLogs.restore();
+
+      expect(blockedResponse.statusCode).toBe(429);
+      expect(blockedResponse.json()).toMatchObject({
+        error: 'Too Many Requests',
+        message: 'Muitas tentativas. Tente novamente em instantes.',
+        statusCode: 429,
+      });
+      const logEntry = capturedLogs.entries.find((entry) => entry.event === 'auth_rate_limit_exceeded');
+      expect(logEntry).toMatchObject({
+        event: 'auth_rate_limit_exceeded',
+        requestId: 'req-login-limit-blocked',
+        method: 'POST',
+        path: '/auth/login',
+        status: 429,
+        limiter: 'login',
+      });
+      expect(JSON.stringify(logEntry)).not.toContain('wrong-password');
+      expect(JSON.stringify(logEntry)).not.toContain('Authorization');
       await app.close();
     });
   });
@@ -569,6 +645,62 @@ describe('Auth Routes', () => {
         reason: 'logout',
       });
       expect(JSON.stringify(capturedLogs.entries)).not.toContain('clutch_refresh=');
+      await app.close();
+    });
+
+    it('bloqueia refresh acima do limite com 429', async () => {
+      vi.mocked(userRepository.findByEmail).mockResolvedValue(mockUser);
+      vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+
+      const app = await buildApp();
+      const loginResponse = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: { email: 'player@clutch.gg', password: 'password123' },
+      });
+
+      const refreshCookie = extractCookieHeader(loginResponse.headers['set-cookie']);
+
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        const response = await app.inject({
+          method: 'POST',
+          url: '/auth/refresh',
+          headers: { cookie: refreshCookie },
+        });
+
+        expect([200, 401]).toContain(response.statusCode);
+      }
+
+      const blockedResponse = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        headers: { cookie: refreshCookie },
+      });
+
+      expect(blockedResponse.statusCode).toBe(429);
+      await app.close();
+    });
+
+    it('nao afeta rota fora do auth path apos exceder o limite de login', async () => {
+      vi.mocked(userRepository.findByEmail).mockResolvedValue(null);
+
+      const app = await buildApp();
+
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        await app.inject({
+          method: 'POST',
+          url: '/auth/login',
+          payload: { email: 'player@clutch.gg', password: 'wrong-password' },
+        });
+      }
+
+      const healthResponse = await app.inject({
+        method: 'GET',
+        url: '/health',
+      });
+
+      expect(healthResponse.statusCode).toBe(200);
+      expect(healthResponse.json()).toMatchObject({ status: 'ok' });
       await app.close();
     });
   });
