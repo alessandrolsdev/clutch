@@ -51,6 +51,8 @@ cd clutch
 cp .env.example .env
 ```
 
+Se o host público do proxy não for `http://localhost`, defina `NEXT_PUBLIC_APP_URL` com a origem pública correta antes de subir o stack. Exemplos: túnel HTTPS, máquina remota ou cloud dev.
+
 ### 3. Subir todo o ambiente
 ```bash
 docker compose up --build
