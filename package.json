@@ -1,0 +1,11 @@
+{
+  "name": "clutch-dev-tools",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Comandos operacionais locais para o ambiente container-first do CLUTCH.",
+  "scripts": {
+    "env:bootstrap": "node ./scripts/dev/bootstrap.mjs",
+    "env:reset": "node ./scripts/dev/reset.mjs",
+    "env:validate": "node ./scripts/dev/validate.mjs"
+  }
+}
