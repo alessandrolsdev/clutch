@@ -108,7 +108,7 @@ npm run env:reset
 - `env:validate` — verifica serviços em execução, health endpoints e um fluxo mínimo de auth via proxy
 - `env:reset` — derruba o stack e remove volumes nomeados do compose para recomeço limpo
 
-Use `env:reset` quando houver drift local relevante de banco, Redis ou caches de containers. Para o fluxo normal, prefira `env:bootstrap` seguido de `env:validate`.
+`env:reset` e destrutivo para o estado local: ele apaga os volumes nomeados do compose, incluindo banco e Redis. Use esse comando quando quiser recomeçar o ambiente do zero ou eliminar drift local relevante. Para o fluxo normal, prefira `env:bootstrap` seguido de `env:validate`.
 
 ### 6. Conta demo
 
