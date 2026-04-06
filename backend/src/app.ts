@@ -19,6 +19,7 @@ import {
 } from './config/logging';
 import {
   createJwtSigner,
+  type JwtKeyRotationConfig,
   createJwtVerifier,
 } from './config/jwt';
 import {
@@ -29,6 +30,7 @@ import { createRedisRefreshSessionStore } from './infra/cache/refresh-session.st
 
 export type BuildAppOptions = {
   jwtSecret?: string;
+  jwtKeyRotationConfig?: JwtKeyRotationConfig;
   logger?: boolean;
   readinessCheck?: () => Promise<ReadinessReport>;
   refreshSessionStore?: RefreshSessionStore;
@@ -43,10 +45,12 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     requestIdHeader: REQUEST_ID_HEADER,
     genReqId: (request) => resolveBackendRequestId(request.headers),
   });
-  const signAccessToken = createJwtSigner(options.jwtSecret);
-  const verifyAccessToken = createJwtVerifier(options.jwtSecret);
+  const jwtConfigInput = options.jwtKeyRotationConfig ?? options.jwtSecret;
+  const signAccessToken = createJwtSigner(jwtConfigInput);
+  const verifyAccessToken = createJwtVerifier(jwtConfigInput);
   const refreshTokenService = createRefreshTokenService({
     jwtSecret: options.jwtSecret,
+    jwtKeyRotationConfig: options.jwtKeyRotationConfig,
     refreshSessionStore: options.refreshSessionStore ?? createRedisRefreshSessionStore(),
   });
 
