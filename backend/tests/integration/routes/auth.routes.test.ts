@@ -191,7 +191,12 @@ describe('Auth Routes', () => {
         header: {
           kid: 'legacy',
         },
+        payload: {
+          iss: 'clutch.backend',
+          aud: 'clutch.auth',
+        },
       });
+      expect(typeof (jwt.decode(response.json().token as string) as jwt.JwtPayload | null)?.nbf).toBe('number');
       expect(String(response.headers['set-cookie'])).toContain(REFRESH_TOKEN_COOKIE_NAME);
       await app.close();
     });
@@ -378,6 +383,9 @@ describe('Auth Routes', () => {
         {
           algorithm: 'HS256',
           expiresIn: -1,
+          issuer: 'clutch.backend',
+          audience: 'clutch.auth',
+          notBefore: 0,
         },
       );
 
@@ -409,6 +417,9 @@ describe('Auth Routes', () => {
         {
           algorithm: 'HS384',
           expiresIn: '7d',
+          issuer: 'clutch.backend',
+          audience: 'clutch.auth',
+          notBefore: 0,
         },
       );
 
@@ -482,9 +493,105 @@ describe('Auth Routes', () => {
         {
           algorithm: 'HS256',
           expiresIn: '10m',
+          issuer: 'clutch.backend',
+          audience: 'clutch.auth',
+          notBefore: 0,
           header: {
             alg: 'HS256',
             kid: 'v2',
+          },
+        },
+      );
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/me',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      expect(response.statusCode).toBe(401);
+      await app.close();
+    });
+
+    it('rejeita rota protegida com issuer invalido', async () => {
+      const app = await buildApp();
+      const token = jwt.sign(
+        {
+          id: 'user-id-1',
+          username: 'clutchplayer',
+        },
+        TEST_JWT_SECRET,
+        {
+          algorithm: 'HS256',
+          expiresIn: '10m',
+          issuer: 'external.backend',
+          audience: 'clutch.auth',
+          notBefore: 0,
+          header: {
+            alg: 'HS256',
+            kid: 'legacy',
+          },
+        },
+      );
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/me',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      expect(response.statusCode).toBe(401);
+      await app.close();
+    });
+
+    it('rejeita rota protegida com audience invalida', async () => {
+      const app = await buildApp();
+      const token = jwt.sign(
+        {
+          id: 'user-id-1',
+          username: 'clutchplayer',
+        },
+        TEST_JWT_SECRET,
+        {
+          algorithm: 'HS256',
+          expiresIn: '10m',
+          issuer: 'clutch.backend',
+          audience: 'external-client',
+          notBefore: 0,
+          header: {
+            alg: 'HS256',
+            kid: 'legacy',
+          },
+        },
+      );
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/me',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      expect(response.statusCode).toBe(401);
+      await app.close();
+    });
+
+    it('rejeita rota protegida com nbf futuro', async () => {
+      const app = await buildApp();
+      const token = jwt.sign(
+        {
+          id: 'user-id-1',
+          username: 'clutchplayer',
+        },
+        TEST_JWT_SECRET,
+        {
+          algorithm: 'HS256',
+          expiresIn: '10m',
+          issuer: 'clutch.backend',
+          audience: 'clutch.auth',
+          notBefore: '30s',
+          header: {
+            alg: 'HS256',
+            kid: 'legacy',
           },
         },
       );
