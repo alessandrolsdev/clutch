@@ -14,6 +14,7 @@ import {
   RefreshTokenRevokedError,
   RefreshTokenReuseError,
 } from '../../core/services/refresh-token.service';
+import { AUTH_RATE_LIMIT_POLICIES } from '../../config/rate-limit';
 
 // ─────────────────────────────────────────────────────────────
 // Auth Routes
@@ -57,7 +58,11 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   }
 
   // ── POST /auth/register ──────────────────────────────────
-  app.post('/register', async (request, reply) => {
+  app.post('/register', {
+    config: {
+      rateLimit: AUTH_RATE_LIMIT_POLICIES.register,
+    },
+  }, async (request, reply) => {
     const result = registerSchema.safeParse(request.body);
     if (!result.success) {
       return reply.status(400).send({
@@ -91,7 +96,11 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ── POST /auth/login ─────────────────────────────────────
-  app.post('/login', async (request, reply) => {
+  app.post('/login', {
+    config: {
+      rateLimit: AUTH_RATE_LIMIT_POLICIES.login,
+    },
+  }, async (request, reply) => {
     const result = loginSchema.safeParse(request.body);
     if (!result.success) {
       return reply.status(400).send({
@@ -149,7 +158,11 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ── POST /auth/refresh ───────────────────────────────────
-  app.post('/refresh', async (request, reply) => {
+  app.post('/refresh', {
+    config: {
+      rateLimit: AUTH_RATE_LIMIT_POLICIES.refresh,
+    },
+  }, async (request, reply) => {
     const refreshToken = parseCookieValue(request.headers.cookie, REFRESH_TOKEN_COOKIE_NAME);
 
     if (!refreshToken) {
