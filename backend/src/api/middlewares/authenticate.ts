@@ -2,6 +2,8 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import jwt from 'jsonwebtoken';
 import {
   extractBearerToken,
+  JwtAudienceRejectedError,
+  JwtIssuerRejectedError,
   JwtKidRejectedError,
   type VerifiedJwtPayload,
 } from '../../config/jwt';
@@ -63,6 +65,30 @@ export async function authenticate(
       return reply.status(401).send({ message: 'Token inválido ou expirado.' });
     }
 
+    if (error instanceof JwtIssuerRejectedError) {
+      request.log.warn({
+        event: 'auth_jwt_issuer_rejected',
+        requestId: request.id,
+        method: request.method,
+        path: request.url,
+        status: 401,
+        reason: error.reason,
+      }, 'JWT issuer rejected');
+      return reply.status(401).send({ message: 'Token inválido ou expirado.' });
+    }
+
+    if (error instanceof JwtAudienceRejectedError) {
+      request.log.warn({
+        event: 'auth_jwt_audience_rejected',
+        requestId: request.id,
+        method: request.method,
+        path: request.url,
+        status: 401,
+        reason: error.reason,
+      }, 'JWT audience rejected');
+      return reply.status(401).send({ message: 'Token inválido ou expirado.' });
+    }
+
     if (error instanceof jwt.TokenExpiredError) {
       request.log.warn({
         event: 'auth_access_token_expired',
@@ -71,6 +97,15 @@ export async function authenticate(
         path: request.url,
         status: 401,
       }, 'Access token expired');
+    } else if (error instanceof jwt.NotBeforeError) {
+      request.log.warn({
+        event: 'auth_jwt_not_before_rejected',
+        requestId: request.id,
+        method: request.method,
+        path: request.url,
+        status: 401,
+        reason: 'not_before',
+      }, 'JWT rejected before not-before claim');
     } else {
       request.log.warn({
         event: 'auth_access_token_rejected',

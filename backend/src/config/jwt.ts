@@ -15,6 +15,9 @@ export interface VerifiedJwtPayload extends JwtPayload {
   keyId: string;
   tokenKeyId: string | null;
   legacyToken: boolean;
+  issuerPresent: boolean;
+  audiencePresent: boolean;
+  notBeforePresent: boolean;
 }
 
 export interface RefreshTokenPayload extends JwtPayload {
@@ -27,6 +30,9 @@ export interface VerifiedRefreshTokenPayload extends RefreshTokenPayload {
   keyId: string;
   tokenKeyId: string | null;
   legacyToken: boolean;
+  issuerPresent: boolean;
+  audiencePresent: boolean;
+  notBeforePresent: boolean;
 }
 
 export type JwtKeyRotationConfig = {
@@ -50,11 +56,20 @@ type JwtHeaderMetadata = {
   kid: string | null;
 };
 
+type JwtClaimConfig = {
+  issuer: string;
+  audience: string;
+};
+
 const JWT_ALGORITHM = 'HS256';
 const DEFAULT_DEVELOPMENT_JWT_SECRET = 'clutch-dev-secret-change-in-production';
 const DEFAULT_SINGLE_KEY_KID = 'legacy';
 const JWT_KEYRING_ENV = 'JWT_KEYS_JSON';
 const JWT_ACTIVE_KID_ENV = 'JWT_ACTIVE_KID';
+const JWT_ISSUER_ENV = 'JWT_ISSUER';
+const JWT_AUDIENCE_ENV = 'JWT_AUDIENCE';
+const DEFAULT_JWT_ISSUER = 'clutch.backend';
+const DEFAULT_JWT_AUDIENCE = 'clutch.auth';
 const BEARER_TOKEN_PATTERN = /^Bearer (?<token>[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/u;
 // 10 minutos reduz a janela de ataque sem forcar refresh excessivo em navegacao comum.
 const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 60 * 10;
@@ -80,6 +95,26 @@ export class JwtKidRejectedError extends Error {
   }
 }
 
+export class JwtIssuerRejectedError extends Error {
+  readonly reason: 'invalid_issuer';
+
+  constructor() {
+    super('JWT issuer invalido.');
+    this.name = 'JwtIssuerRejectedError';
+    this.reason = 'invalid_issuer';
+  }
+}
+
+export class JwtAudienceRejectedError extends Error {
+  readonly reason: 'invalid_audience';
+
+  constructor() {
+    super('JWT audience invalida.');
+    this.name = 'JwtAudienceRejectedError';
+    this.reason = 'invalid_audience';
+  }
+}
+
 function resolveJwtSecret(secret?: string): Secret {
   if (typeof secret === 'string' && secret.trim().length > 0) {
     return secret;
@@ -96,6 +131,37 @@ function resolveJwtSecret(secret?: string): Secret {
   }
 
   return DEFAULT_DEVELOPMENT_JWT_SECRET;
+}
+
+function resolveJwtClaimConfig(): JwtClaimConfig {
+  const configuredIssuer = process.env[JWT_ISSUER_ENV]?.trim();
+  const configuredAudience = process.env[JWT_AUDIENCE_ENV]?.trim();
+
+  if (process.env['NODE_ENV'] === 'production') {
+    if (!configuredIssuer || configuredIssuer.length === 0) {
+      throw new JwtRotationConfigError('JWT_ISSUER deve ser configurado em produção.');
+    }
+
+    if (!configuredAudience || configuredAudience.length === 0) {
+      throw new JwtRotationConfigError('JWT_AUDIENCE deve ser configurado em produção.');
+    }
+  }
+
+  const issuer = configuredIssuer && configuredIssuer.length > 0
+    ? configuredIssuer
+    : DEFAULT_JWT_ISSUER;
+  const audience = configuredAudience && configuredAudience.length > 0
+    ? configuredAudience
+    : DEFAULT_JWT_AUDIENCE;
+
+  if (issuer.length === 0 || audience.length === 0) {
+    throw new JwtRotationConfigError('JWT_ISSUER e JWT_AUDIENCE devem ser strings não vazias.');
+  }
+
+  return {
+    issuer,
+    audience,
+  };
 }
 
 function isJwtPayload(payload: string | JsonWebTokenPayload): payload is JsonWebTokenPayload {
@@ -348,6 +414,16 @@ function decodeJwtHeader(token: string): JwtHeaderMetadata {
   };
 }
 
+function decodeJwtPayload(token: string): JsonWebTokenPayload {
+  const decoded = jwt.decode(token);
+
+  if (!decoded || !isJwtPayload(decoded)) {
+    throw new Error('Token JWT invalido.');
+  }
+
+  return decoded;
+}
+
 function resolveVerificationCandidates(
   config: ResolvedJwtKeyRotationConfig,
   tokenKeyId: string | null,
@@ -376,13 +452,29 @@ function resolveVerificationCandidates(
 function verifyTokenAgainstCandidates<TPayload>(
   token: string,
   config: ResolvedJwtKeyRotationConfig,
+  claimConfig: JwtClaimConfig,
   // eslint-disable-next-line no-unused-vars
   assertPayload: (_payload: string | JsonWebTokenPayload) => TPayload,
-): TPayload & { keyId: string; tokenKeyId: string | null; legacyToken: boolean } {
+): TPayload & {
+  keyId: string;
+  tokenKeyId: string | null;
+  legacyToken: boolean;
+  issuerPresent: boolean;
+  audiencePresent: boolean;
+  notBeforePresent: boolean;
+} {
   const tokenHeader = decodeJwtHeader(token);
+  const decodedPayload = decodeJwtPayload(token);
+  const issuerPresent = typeof decodedPayload['iss'] === 'string' && decodedPayload['iss'].trim().length > 0;
+  const notBeforePresent = typeof decodedPayload['nbf'] === 'number';
+  const audienceClaim = decodedPayload['aud'];
+  const audiencePresent = typeof audienceClaim === 'string'
+    ? audienceClaim.trim().length > 0
+    : Array.isArray(audienceClaim) && audienceClaim.some((value) => typeof value === 'string' && value.trim().length > 0);
   const verifyOptions: VerifyOptions = {
     algorithms: [JWT_ALGORITHM],
     ignoreExpiration: false,
+    ignoreNotBefore: false,
   };
   const candidates = resolveVerificationCandidates(config, tokenHeader.kid);
   let lastError: unknown = new Error('Token JWT invalido.');
@@ -391,11 +483,26 @@ function verifyTokenAgainstCandidates<TPayload>(
     try {
       const payload = jwt.verify(token, candidate.secret, verifyOptions);
 
+      if (issuerPresent && decodedPayload['iss'] !== claimConfig.issuer) {
+        throw new JwtIssuerRejectedError();
+      }
+
+      const normalizedAudience = Array.isArray(audienceClaim) ? audienceClaim : [audienceClaim];
+      if (
+        audiencePresent &&
+        !normalizedAudience.some((value) => typeof value === 'string' && value === claimConfig.audience)
+      ) {
+        throw new JwtAudienceRejectedError();
+      }
+
       return {
         ...assertPayload(payload),
         keyId: candidate.keyId,
         tokenKeyId: tokenHeader.kid,
         legacyToken: candidate.legacyToken,
+        issuerPresent,
+        audiencePresent,
+        notBeforePresent,
       };
     } catch (error) {
       lastError = error;
@@ -407,11 +514,15 @@ function verifyTokenAgainstCandidates<TPayload>(
 
 export function createJwtSigner(input?: string | JwtKeyRotationConfig) {
   const resolvedConfig = resolveJwtKeyRotationConfig(input);
+  const claimConfig = resolveJwtClaimConfig();
 
   return (payload: JwtPayload): string => {
     const signOptions: SignOptions = {
       algorithm: JWT_ALGORITHM,
       expiresIn: `${getAccessTokenTtlSeconds()}s`,
+      issuer: claimConfig.issuer,
+      audience: claimConfig.audience,
+      notBefore: 0,
       header: {
         alg: JWT_ALGORITHM,
         kid: resolvedConfig.activeKid,
@@ -431,21 +542,27 @@ export function createJwtSigner(input?: string | JwtKeyRotationConfig) {
 
 export function createJwtVerifier(input?: string | JwtKeyRotationConfig) {
   const resolvedConfig = resolveJwtKeyRotationConfig(input);
+  const claimConfig = resolveJwtClaimConfig();
 
   return (token: string): VerifiedJwtPayload => verifyTokenAgainstCandidates(
     token,
     resolvedConfig,
+    claimConfig,
     assertJwtPayload,
   );
 }
 
 export function createRefreshTokenSigner(input?: string | JwtKeyRotationConfig) {
   const resolvedConfig = resolveJwtKeyRotationConfig(input);
+  const claimConfig = resolveJwtClaimConfig();
 
   return (payload: RefreshTokenPayload): string => {
     const signOptions: SignOptions = {
       algorithm: JWT_ALGORITHM,
       expiresIn: `${resolveRefreshTokenTtlSeconds()}s`,
+      issuer: claimConfig.issuer,
+      audience: claimConfig.audience,
+      notBefore: 0,
       header: {
         alg: JWT_ALGORITHM,
         kid: resolvedConfig.activeKid,
@@ -462,10 +579,12 @@ export function createRefreshTokenSigner(input?: string | JwtKeyRotationConfig) 
 
 export function createRefreshTokenVerifier(input?: string | JwtKeyRotationConfig) {
   const resolvedConfig = resolveJwtKeyRotationConfig(input);
+  const claimConfig = resolveJwtClaimConfig();
 
   return (token: string): VerifiedRefreshTokenPayload => verifyTokenAgainstCandidates(
     token,
     resolvedConfig,
+    claimConfig,
     assertRefreshTokenPayload,
   );
 }
