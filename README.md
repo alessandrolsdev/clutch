@@ -94,6 +94,22 @@ Esse comando:
 
 Você pode reexecutá-lo quando quiser restaurar a base demo sem depender do restart do container.
 
+### Comandos operacionais recomendados
+
+O repositório agora expõe uma interface mínima na raiz para operar o ambiente local:
+
+```bash
+npm run env:bootstrap
+npm run env:validate
+npm run env:reset
+```
+
+- `env:bootstrap` — sobe o stack com build e executa o bootstrap do backend
+- `env:validate` — verifica serviços em execução, health endpoints e um fluxo mínimo de auth via proxy
+- `env:reset` — derruba o stack e remove volumes nomeados do compose para recomeço limpo
+
+`env:reset` e destrutivo para o estado local: ele apaga os volumes nomeados do compose, incluindo banco e Redis. Use esse comando quando quiser recomeçar o ambiente do zero ou eliminar drift local relevante. Para o fluxo normal, prefira `env:bootstrap` seguido de `env:validate`.
+
 ### 6. Conta demo
 
 O seed é determinístico e pode ser reexecutado sem depender de Steam, IGDB, Epic ou Discord.
