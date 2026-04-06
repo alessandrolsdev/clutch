@@ -77,6 +77,16 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
     const token = await issueAuthSession(user, reply);
 
+    request.log.info({
+      event: 'auth_register_succeeded',
+      requestId: request.id,
+      method: request.method,
+      path: request.url,
+      status: 201,
+      userId: user.id,
+      username: user.username,
+    }, 'Auth register succeeded');
+
     return reply.status(201).send({ id: user.id, username: user.username, token });
   });
 
@@ -93,15 +103,42 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const user = await userRepository.findByEmail(email);
 
     if (!user) {
+      request.log.warn({
+        event: 'auth_login_failed',
+        requestId: request.id,
+        method: request.method,
+        path: request.url,
+        status: 401,
+        reason: 'invalid_credentials',
+      }, 'Auth login failed');
       return reply.status(401).send({ message: 'Credenciais inválidas.' });
     }
 
     const passwordMatch = await bcrypt.compare(password, user.password_hash);
     if (!passwordMatch) {
+      request.log.warn({
+        event: 'auth_login_failed',
+        requestId: request.id,
+        method: request.method,
+        path: request.url,
+        status: 401,
+        reason: 'invalid_credentials',
+        userId: user.id,
+      }, 'Auth login failed');
       return reply.status(401).send({ message: 'Credenciais inválidas.' });
     }
 
     const token = await issueAuthSession(user, reply);
+
+    request.log.info({
+      event: 'auth_login_succeeded',
+      requestId: request.id,
+      method: request.method,
+      path: request.url,
+      status: 200,
+      userId: user.id,
+      username: user.username,
+    }, 'Auth login succeeded');
 
     return reply.status(200).send({
       id:       user.id,

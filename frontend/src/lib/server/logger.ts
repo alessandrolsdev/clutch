@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 export const FRONTEND_SERVICE_NAME = 'frontend';
 export const REQUEST_ID_HEADER = 'x-request-id';
+const SENSITIVE_URL_PATTERN = /[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s"'<>]+/g;
 
 type LogLevel = 'info' | 'warn' | 'error';
 type LogContext = Record<string, unknown>;
@@ -58,16 +59,45 @@ export function logServerEvent(
   writeLog(level, createServerLogEntry(level, event, message, context));
 }
 
+function formatSanitizedConnectionTarget(rawUrl: string): string {
+  const trimmedUrl = rawUrl.trim();
+
+  if (!trimmedUrl) {
+    return '[connection redacted]';
+  }
+
+  try {
+    const parsedUrl = new URL(trimmedUrl);
+    const parts = [
+      parsedUrl.protocol ? `scheme=${parsedUrl.protocol.replace(/:$/, '')}` : null,
+      parsedUrl.hostname ? `host=${parsedUrl.hostname}` : null,
+      parsedUrl.port ? `port=${parsedUrl.port}` : null,
+    ].filter((value): value is string => Boolean(value));
+
+    return parts.length > 0 ? `[connection ${parts.join(' ')}]` : '[connection redacted]';
+  } catch {
+    return '[connection redacted]';
+  }
+}
+
+export function sanitizeServerSensitiveText(value: string): string {
+  if (!value.trim()) {
+    return value;
+  }
+
+  return value.replace(SENSITIVE_URL_PATTERN, (match) => formatSanitizedConnectionTarget(match));
+}
+
 export function serializeServerError(error: unknown): LogContext {
   if (error instanceof Error) {
     return {
       errorName: error.name,
-      errorMessage: error.message,
-      stack: error.stack,
+      errorMessage: sanitizeServerSensitiveText(error.message),
+      stack: error.stack ? sanitizeServerSensitiveText(error.stack) : undefined,
     };
   }
 
   return {
-    errorMessage: String(error),
+    errorMessage: sanitizeServerSensitiveText(String(error)),
   };
 }

@@ -49,6 +49,43 @@ function extractCookieHeader(setCookieHeader: string | string[] | undefined): st
   return cookie;
 }
 
+type JsonLogEntry = Record<string, unknown>;
+
+function captureJsonLogs() {
+  const entries: JsonLogEntry[] = [];
+
+  const collect = (chunk: string | Uint8Array): boolean => {
+    const serialized = typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8');
+
+    for (const line of serialized.split('\n')) {
+      const trimmed = line.trim();
+
+      if (!trimmed.startsWith('{')) {
+        continue;
+      }
+
+      try {
+        entries.push(JSON.parse(trimmed) as JsonLogEntry);
+      } catch {
+        // Ignora linhas nao-JSON emitidas por bibliotecas.
+      }
+    }
+
+    return true;
+  };
+
+  const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(((chunk: string | Uint8Array) => collect(chunk)) as typeof process.stdout.write);
+  const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(((chunk: string | Uint8Array) => collect(chunk)) as typeof process.stderr.write);
+
+  return {
+    entries,
+    restore() {
+      stdoutSpy.mockRestore();
+      stderrSpy.mockRestore();
+    },
+  };
+}
+
 describe('Auth Routes', () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -143,6 +180,60 @@ describe('Auth Routes', () => {
       expect(response.statusCode).toBe(401);
       await app.close();
     });
+
+    it('emite logs estruturados de sucesso com requestId sem vazar token', async () => {
+      vi.mocked(userRepository.findByEmail).mockResolvedValue(mockUser);
+      vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+      const capturedLogs = captureJsonLogs();
+
+      const app = await buildApp({ logger: true });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        headers: { 'x-request-id': 'req-login-log-1' },
+        payload: { email: 'player@clutch.gg', password: 'password123' },
+      });
+
+      capturedLogs.restore();
+
+      expect(response.statusCode).toBe(200);
+      const logEntry = capturedLogs.entries.find((entry) => entry.event === 'auth_login_succeeded');
+      expect(logEntry).toMatchObject({
+        event: 'auth_login_succeeded',
+        requestId: 'req-login-log-1',
+        status: 200,
+        userId: 'user-id-1',
+      });
+      expect(JSON.stringify(capturedLogs.entries)).not.toContain('jwt-token');
+      expect(JSON.stringify(capturedLogs.entries)).not.toContain('password123');
+      await app.close();
+    });
+
+    it('emite logs estruturados de falha de login com requestId', async () => {
+      vi.mocked(userRepository.findByEmail).mockResolvedValue(null);
+      const capturedLogs = captureJsonLogs();
+
+      const app = await buildApp({ logger: true });
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        headers: { 'x-request-id': 'req-login-log-2' },
+        payload: { email: 'naoexiste@clutch.gg', password: 'password123' },
+      });
+
+      capturedLogs.restore();
+
+      expect(response.statusCode).toBe(401);
+      const logEntry = capturedLogs.entries.find((entry) => entry.event === 'auth_login_failed');
+      expect(logEntry).toMatchObject({
+        event: 'auth_login_failed',
+        requestId: 'req-login-log-2',
+        status: 401,
+        reason: 'invalid_credentials',
+      });
+      expect(JSON.stringify(capturedLogs.entries)).not.toContain('password123');
+      await app.close();
+    });
   });
 
   describe('GET /auth/me', () => {
@@ -186,7 +277,8 @@ describe('Auth Routes', () => {
     });
 
     it('retorna 401 com token expirado', async () => {
-      const app = await buildApp();
+      const capturedLogs = captureJsonLogs();
+      const app = await buildApp({ logger: true });
       const expiredToken = jwt.sign(
         {
           id: 'user-id-1',
@@ -205,7 +297,14 @@ describe('Auth Routes', () => {
         headers: { Authorization: `Bearer ${expiredToken}` },
       });
 
+      capturedLogs.restore();
+
       expect(response.statusCode).toBe(401);
+      const logEntry = capturedLogs.entries.find((entry) => entry.event === 'auth_access_token_expired');
+      expect(logEntry).toMatchObject({
+        event: 'auth_access_token_expired',
+        status: 401,
+      });
       await app.close();
     });
 
@@ -321,6 +420,64 @@ describe('Auth Routes', () => {
       });
 
       expect(refreshAfterLogoutResponse.statusCode).toBe(401);
+      await app.close();
+    });
+
+    it('mantem logs estruturados para revogacao e rejeicao de refresh revogado', async () => {
+      vi.mocked(userRepository.findByEmail).mockResolvedValue(mockUser);
+      vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+      const capturedLogs = captureJsonLogs();
+
+      const app = await buildApp({ logger: true });
+      const loginResponse = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        headers: { 'x-request-id': 'req-login-log-3' },
+        payload: { email: 'player@clutch.gg', password: 'password123' },
+      });
+
+      const refreshCookie = extractCookieHeader(loginResponse.headers['set-cookie']);
+
+      const logoutResponse = await app.inject({
+        method: 'POST',
+        url: '/auth/logout',
+        headers: {
+          cookie: refreshCookie,
+          'x-request-id': 'req-logout-log-1',
+        },
+      });
+
+      const refreshAfterLogoutResponse = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        headers: {
+          cookie: refreshCookie,
+          'x-request-id': 'req-refresh-log-1',
+        },
+      });
+
+      capturedLogs.restore();
+
+      expect(logoutResponse.statusCode).toBe(200);
+      expect(refreshAfterLogoutResponse.statusCode).toBe(401);
+      expect(capturedLogs.entries.find((entry) => entry.event === 'auth_session_revoked')).toMatchObject({
+        event: 'auth_session_revoked',
+        requestId: 'req-logout-log-1',
+        status: 200,
+        reason: 'logout',
+      });
+      expect(capturedLogs.entries.find((entry) => entry.event === 'auth_logout_completed')).toMatchObject({
+        event: 'auth_logout_completed',
+        requestId: 'req-logout-log-1',
+        status: 200,
+      });
+      expect(capturedLogs.entries.find((entry) => entry.event === 'auth_refresh_rejected_revoked_session')).toMatchObject({
+        event: 'auth_refresh_rejected_revoked_session',
+        requestId: 'req-refresh-log-1',
+        status: 401,
+        reason: 'logout',
+      });
+      expect(JSON.stringify(capturedLogs.entries)).not.toContain('clutch_refresh=');
       await app.close();
     });
   });

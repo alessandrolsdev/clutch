@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
   clearRefreshSessionCookie(response);
   appendRefreshSetCookie(response, backendResponse?.headers.get('set-cookie') ?? null);
 
-  logServerEvent('info', 'frontend_auth_logout', 'Frontend auth logout completed', {
+  logServerEvent('info', 'frontend_auth_logout_completed', 'Frontend auth logout completed', {
     requestId,
     method: request.method,
     path: request.nextUrl.pathname,
