@@ -47,6 +47,12 @@ export async function POST(request: NextRequest) {
       status: refreshResult.status,
       duration_ms: Date.now() - startedAt,
     });
+    logServerEvent('warn', 'frontend_auth_session_cleared', 'Frontend auth session cleared after refresh failure', {
+      requestId,
+      status: refreshResult.status,
+      reason: 'refresh_failed',
+      duration_ms: Date.now() - startedAt,
+    });
 
     return response;
   }

@@ -8,7 +8,7 @@ import { createInMemoryRefreshSessionStore } from '../../src/core/services/refre
 export const TEST_JWT_SECRET = 'clutch-test-secret';
 
 export const buildApp = async (
-  options: Omit<BuildAppOptions, 'jwtSecret' | 'logger'> = {},
+  options: Omit<BuildAppOptions, 'jwtSecret'> = {},
 ): Promise<FastifyInstance> => {
   return createApp({
     jwtSecret: TEST_JWT_SECRET,
