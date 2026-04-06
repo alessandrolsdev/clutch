@@ -1,3 +1,5 @@
+import { resolvePublicApiBaseUrl, resolvePublicWsBaseUrl } from '@/services/http/client';
+
 type ClientEnv = {
   apiUrl: string;
   wsUrl: string;
@@ -5,7 +7,7 @@ type ClientEnv = {
 
 export function getClientEnv(): ClientEnv {
   return {
-    apiUrl: process.env.NEXT_PUBLIC_API_URL ?? '',
-    wsUrl: process.env.NEXT_PUBLIC_WS_URL ?? '',
+    apiUrl: resolvePublicApiBaseUrl(),
+    wsUrl: resolvePublicWsBaseUrl(),
   };
 }
