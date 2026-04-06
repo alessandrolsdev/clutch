@@ -4,6 +4,7 @@ import { AUTH_SESSION_COOKIE_NAME } from '@/lib/auth/session';
 
 const originalApiUrl = process.env.NEXT_PUBLIC_API_URL;
 const originalInternalApiUrl = process.env.INTERNAL_API_URL;
+const originalAppUrl = process.env.NEXT_PUBLIC_APP_URL;
 
 function captureServerLogs() {
   const entries: Array<Record<string, unknown>> = [];
@@ -40,6 +41,7 @@ describe('auth login route', () => {
   beforeEach(() => {
     process.env.INTERNAL_API_URL = 'http://backend.test';
     process.env.NEXT_PUBLIC_API_URL = 'http://localhost/api';
+    process.env.NEXT_PUBLIC_APP_URL = 'http://localhost';
     vi.restoreAllMocks();
   });
 
@@ -49,9 +51,10 @@ describe('auth login route', () => {
 
   it('sets an httpOnly access cookie and forwards the refresh cookie when login succeeds', async () => {
     const capturedLogs = captureServerLogs();
-    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const headers = new Headers(init?.headers);
 
+      expect(String(input)).toBe('http://backend.test/auth/login');
       expect(headers.get('x-request-id')).toBe('req-login-123');
 
       return new Response(
@@ -111,6 +114,49 @@ describe('auth login route', () => {
     expect(JSON.stringify(capturedLogs.entries)).not.toContain('refresh-token');
   });
 
+  it('uses the configured public app origin when only a relative public API path is available', async () => {
+    delete process.env.INTERNAL_API_URL;
+    process.env.NEXT_PUBLIC_APP_URL = 'https://preview.clutch.gg';
+    process.env.NEXT_PUBLIC_API_URL = '/api';
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toBe('https://preview.clutch.gg/api/auth/login');
+
+      return new Response(
+        JSON.stringify({
+          id: 'user-1',
+          username: 'clutchplayer',
+          token: 'jwt-token',
+          message: 'Acesso autorizado.',
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+    });
+
+    vi.stubGlobal('fetch', fetchMock as typeof fetch);
+
+    const response = await POST(
+      new Request('https://preview.clutch.gg/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: 'clutchplayer@clutch.gg',
+          password: 'clutch123',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('propagates invalid credentials without setting a session cookie', async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       const headers = new Headers(init?.headers);
@@ -158,8 +204,14 @@ afterAll(() => {
 
   if (typeof originalApiUrl === 'undefined') {
     delete process.env.NEXT_PUBLIC_API_URL;
+  } else {
+    process.env.NEXT_PUBLIC_API_URL = originalApiUrl;
+  }
+
+  if (typeof originalAppUrl === 'undefined') {
+    delete process.env.NEXT_PUBLIC_APP_URL;
     return;
   }
 
-  process.env.NEXT_PUBLIC_API_URL = originalApiUrl;
+  process.env.NEXT_PUBLIC_APP_URL = originalAppUrl;
 });
