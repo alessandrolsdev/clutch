@@ -2,10 +2,12 @@ import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { getRefreshTokenCookieMaxAgeSeconds } from '../../config/auth-session';
 import {
   createJwtSigner,
+  type JwtKeyRotationConfig,
   createRefreshTokenSigner,
   createRefreshTokenVerifier,
   type JwtPayload,
   type RefreshTokenPayload,
+  type VerifiedRefreshTokenPayload,
 } from '../../config/jwt';
 
 export type RefreshSessionRecord = {
@@ -176,15 +178,17 @@ export type RefreshTokenService = {
 export type CreateRefreshTokenServiceOptions = {
   refreshSessionStore: RefreshSessionStore;
   jwtSecret?: string;
+  jwtKeyRotationConfig?: JwtKeyRotationConfig;
 };
 
 export function createRefreshTokenService(
   options: CreateRefreshTokenServiceOptions,
 ): RefreshTokenService {
   const refreshSessionStore = options.refreshSessionStore;
-  const signAccessToken = createJwtSigner(options.jwtSecret);
-  const signRefreshToken = createRefreshTokenSigner(options.jwtSecret);
-  const verifyRefreshToken = createRefreshTokenVerifier(options.jwtSecret);
+  const jwtConfigInput = options.jwtKeyRotationConfig ?? options.jwtSecret;
+  const signAccessToken = createJwtSigner(jwtConfigInput);
+  const signRefreshToken = createRefreshTokenSigner(jwtConfigInput);
+  const verifyRefreshToken = createRefreshTokenVerifier(jwtConfigInput);
   const refreshTokenTtlSeconds = getRefreshTokenCookieMaxAgeSeconds();
   const sessionLocks = new Map<string, { tail: Promise<void>; pending: number }>();
 
@@ -242,7 +246,7 @@ export function createRefreshTokenService(
     },
 
     async rotateSession(refreshToken: string): Promise<RefreshSessionResult> {
-      let payload: RefreshTokenPayload;
+      let payload: VerifiedRefreshTokenPayload;
 
       try {
         payload = verifyRefreshToken(refreshToken);
@@ -282,8 +286,10 @@ export function createRefreshTokenService(
         assertRefreshSessionPayload(payload, existingSession);
 
         const nextPayload: RefreshTokenPayload = {
-          ...payload,
+          id: payload.id,
+          username: payload.username,
           tokenType: 'refresh',
+          sessionId: payload.sessionId,
           jti: randomUUID(),
         };
 
@@ -306,7 +312,7 @@ export function createRefreshTokenService(
       refreshToken: string,
       reason: RefreshTokenRevokeReason = 'logout',
     ): Promise<RefreshSessionRevokeResult> {
-      let payload: RefreshTokenPayload;
+      let payload: VerifiedRefreshTokenPayload;
 
       try {
         payload = verifyRefreshToken(refreshToken);
