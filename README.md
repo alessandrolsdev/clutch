@@ -1,247 +1,208 @@
-# CLUTCH ⚡
+# CLUTCH
 
-> **The ultimate gaming & geek social ecosystem.**
+CLUTCH e um projeto web com frontend Next.js, backend Fastify, service de presence em Go e stack local container-first com proxy reverso por porta unica.
 
-[![CI](https://github.com/alessandrolsdev/clutch/actions/workflows/ci.yml/badge.svg)](https://github.com/alessandrolsdev/clutch/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-![Node.js](https://img.shields.io/badge/Node.js-20-green)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.6-blue)
-![Prisma](https://img.shields.io/badge/Prisma-5-black)
+Este README descreve apenas o que esta confirmado no codigo atual.
 
-CLUTCH é uma rede social para gamers, otakus e geeks. Perfil unificado, Rich Presence em tempo real, biblioteca de jogos integrada com Steam e Epic, sistema de amizades e feed social — tudo em um único lugar.
+## Estado atual
 
----
+### Implementado
+- Stack local container-first com `traefik`, `frontend`, `backend`, `presence`, `postgres` e `redis`
+- Fluxo de autenticacao com login, registro, access token curto, refresh token em cookie httpOnly e logout
+- Renovacao de sessao server-side no frontend
+- Revogacao de sessao baseada em refresh token
+- JWT com `HS256`, `kid`, key rotation, `iss`, `aud`, `nbf` e validacao estrita
+- Rate limit nos endpoints de autenticacao
+- Logging estruturado e gate de seguranca para logs no CI
+- Rich presence via WebSocket autenticado por token
+- Rotas de frontend para feed, notificacoes, perfil publico e settings/integrations
+- Comandos operacionais locais `env:bootstrap`, `env:reset` e `env:validate`
 
-## 🛠️ Stack
+### Parcial
+- Frontend do produto: existe shell autenticado e paginas principais, mas nem todas as issues de UX e cobertura de paginas foram entregues
+- Integracoes no frontend: Steam, Epic e busca IGDB estao conectadas ao contrato real; Discord aparece como limitacao real no proprio frontend
+- Documentacao secundaria do repositorio pode ainda ter drift fora deste arquivo
 
-| Camada | Tecnologia | Função |
+### Ausente
+- Rota/pagina `/<username>/library`
+- Arquivos globais `error.tsx`, `loading.tsx` e `not-found.tsx` no App Router
+- Fluxo de Discord OAuth no frontend e no backend
+- Qualquer garantia de que `python-service` faca parte do runtime local atual; ele nao participa do `docker-compose.yml`
+
+## Arquitetura atual
+
+| Camada | Tecnologia | Papel no runtime atual |
 |---|---|---|
-| **API** | Node.js 20 + Fastify + TypeScript | Backend principal |
-| **Presença** | Go + goroutines | WebSockets de alta escala |
-| **Integração** | Python + FastAPI | Auth Epic Games |
-| **Banco** | PostgreSQL 15 | Dados relacionais |
-| **Cache** | Redis 7 | Sessões, presença, pub/sub |
-| **ORM** | Prisma 5 | Queries type-safe |
-| **Frontend** | Next.js 15 + Tailwind | Interface |
+| Proxy | Traefik v3 | Porta externa unica `:80` |
+| Frontend | Next.js 15 | UI, API routes internas e proxy server-side |
+| Backend | Fastify 5 + TypeScript | API principal, auth, feed, perfil, notificacoes e integracoes |
+| Presence | Go + Gorilla WebSocket | WebSocket de presence autenticado |
+| Banco | PostgreSQL 15 | Persistencia principal |
+| Cache | Redis 7 | Sessao de refresh, presence e rate limiting |
 
----
+### Topologia local
+- Host publico local: `http://localhost`
+- API via proxy: `http://localhost/api/*`
+- Presence health via proxy: `http://localhost/presence/health`
+- WebSocket de presence via host publico: `ws://localhost/ws/presence?token=<jwt>`
 
-## 📋 Pré-requisitos
+## Como rodar localmente
 
-- [Docker + Docker Compose](https://www.docker.com)
-- [Git](https://git-scm.com)
-- Node.js 20+ apenas se você quiser rodar serviços fora dos containers
-- Go 1.24+ apenas se você quiser rodar o `presence-service` fora dos containers
+### Pre-requisitos
+- Docker Desktop ou Docker Engine com Compose
+- Git
+- Node.js 20+ apenas se voce quiser executar os comandos de raiz fora dos containers
 
----
+### Variaveis do compose
+Crie `.env` na raiz a partir do exemplo:
 
-## 🚀 Como rodar localmente
-
-O ambiente local agora é **container-first** e sobe por **porta única externa** via proxy reverso.  
-Você não precisa mais expor `3000`, `3344`, `5432`, `6379` ou `8080` no host.
-
-### 1. Clonar o repositório
-```bash
-git clone https://github.com/alessandrolsdev/clutch.git
-cd clutch
-```
-
-### 2. Configurar variáveis do compose
 ```bash
 cp .env.example .env
 ```
 
-Se o host público do proxy não for `http://localhost`, defina `NEXT_PUBLIC_APP_URL` com a origem pública correta antes de subir o stack. Exemplos: túnel HTTPS, máquina remota ou cloud dev.
+Valores usados hoje:
 
-### 3. Subir todo o ambiente
-```bash
-docker compose up --build
+```env
+POSTGRES_PASSWORD=clutch_dev_pass
+JWT_SECRET=clutch-dev-secret-change-in-production
 ```
 
-O backend agora reaproveita o volume de `node_modules` e só sincroniza dependências ou Prisma quando detecta drift real no runtime.
-O seed demo deixou de rodar em todo restart para reduzir custo operacional e evitar efeitos colaterais desnecessários.
-
-O compose sobe:
-- `traefik` na porta `80`
-- `frontend` internamente na `3000`
-- `backend` internamente na `3344`
-- `presence` internamente na `8080`
-- `postgres` internamente na `5432`
-- `redis` internamente na `6379`
-
-Todos os serviços se comunicam por nome Docker (`frontend`, `backend`, `presence`, `postgres`, `redis`).
-
-### 4. Acessar o app
-
-- Frontend: `http://localhost`
-- Login: `http://localhost/login`
-- Backend health via frontend proxy: `http://localhost/api/health`
-- Backend liveness via frontend proxy: `http://localhost/api/health/live`
-- Backend readiness via frontend proxy: `http://localhost/api/health/ready`
-- Presence health via proxy: `http://localhost/presence/health`
-
-### 5. Bootstrap dos dados demo
-
-Depois da primeira subida, carregue a base demo explicitamente:
-
-```bash
-docker compose exec backend sh ./scripts/container-bootstrap.sh
-```
-
-Esse comando:
-- aplica migrations pendentes
-- popula a conta demo e os dados sociais determinísticos
-
-Você pode reexecutá-lo quando quiser restaurar a base demo sem depender do restart do container.
-
-### Comandos operacionais recomendados
-
-O repositório agora expõe uma interface mínima na raiz para operar o ambiente local:
+### Fluxo recomendado
+O fluxo operacional recomendado hoje e:
 
 ```bash
 npm run env:bootstrap
 npm run env:validate
-npm run env:reset
 ```
 
-- `env:bootstrap` — sobe o stack com build e executa o bootstrap do backend
-- `env:validate` — verifica serviços em execução, health endpoints e um fluxo mínimo de auth via proxy
-- `env:reset` — derruba o stack e remove volumes nomeados do compose para recomeço limpo
+#### `npm run env:bootstrap`
+- sobe o stack com `docker compose up -d --build`
+- executa `backend/scripts/container-bootstrap.sh`
+- aplica migrations e seed demo no backend
 
-`env:reset` e destrutivo para o estado local: ele apaga os volumes nomeados do compose, incluindo banco e Redis. Use esse comando quando quiser recomeçar o ambiente do zero ou eliminar drift local relevante. Para o fluxo normal, prefira `env:bootstrap` seguido de `env:validate`.
+#### `npm run env:validate`
+- verifica se os servicos essenciais estao em execucao
+- valida `GET /api/health`
+- valida `GET /presence/health`
+- executa um fluxo minimo de auth via proxy:
+  - login
+  - `GET /api/auth/me`
+  - `GET /api/auth/presence-token`
+  - logout
 
-### 6. Conta demo
+#### `npm run env:reset`
+- derruba o stack
+- remove volumes nomeados do compose
 
-O seed é determinístico e pode ser reexecutado sem depender de Steam, IGDB, Epic ou Discord.
+`env:reset` e destrutivo para o estado local. Ele apaga o estado de banco e Redis e deve ser usado quando voce quiser recomeçar o ambiente do zero ou eliminar drift local relevante.
+
+## URLs e health checks
+
+- App: `http://localhost`
+- Login: `http://localhost/login`
+- API health: `http://localhost/api/health`
+- API liveness: `http://localhost/api/health/live`
+- API readiness: `http://localhost/api/health/ready`
+- Presence health: `http://localhost/presence/health`
+
+## Conta demo
+
+Depois do bootstrap:
 
 ```txt
 Email: clutchplayer@clutch.gg
 Senha: clutch123
 ```
 
----
+## Auth, sessao e realtime
 
-## Validação rápida do ambiente
+### Auth atual
+- `POST /api/auth/login` autentica via frontend server-side
+- `POST /api/auth/register` registra e inicia sessao
+- `POST /api/auth/refresh` renova a sessao via refresh token
+- `POST /api/auth/logout` encerra sessao e revoga o refresh atual
+- `GET /api/auth/me` restaura a sessao do usuario autenticado
 
-### Health do backend
-```bash
-curl http://localhost/api/health
+### Cookies atuais
+- `clutch_session`: access token em cookie httpOnly gerenciado pelo frontend server-side
+- `clutch_refresh`: refresh token em cookie httpOnly emitido pelo backend
+
+### Realtime atual
+- o browser nao usa o refresh token diretamente
+- o frontend chama `GET /api/auth/presence-token`
+- a rota server-side valida/renova a sessao, devolve um JWT e o browser abre o WebSocket com `?token=...`
+
+## Superficie funcional atual
+
+### Backend
+Rotas principais confirmadas no codigo:
+- `/auth`
+- `/profiles`
+- `/friends`
+- `/presence`
+- `/integrations`
+- `/posts`
+- `/notifications`
+
+### Frontend
+Rotas App Router confirmadas no codigo:
+- `/`
+- `/login`
+- `/register`
+- `/feed`
+- `/notifications`
+- `/settings`
+- `/settings/integrations`
+- `/:username`
+
+Rotas server-side internas confirmadas no codigo:
+- `/api/auth/login`
+- `/api/auth/register`
+- `/api/auth/refresh`
+- `/api/auth/logout`
+- `/api/auth/me`
+- `/api/auth/presence-token`
+- `/api/[...path]` para proxy ao backend
+
+## Configuracao de host publico
+
+O frontend separa URL interna do backend e origem publica do proxy:
+
+```env
+INTERNAL_API_URL=http://backend:3344
+NEXT_PUBLIC_APP_URL=http://localhost
+NEXT_PUBLIC_API_URL=/api
 ```
 
-### Liveness e readiness do backend
-```bash
-curl http://localhost/api/health/live
-curl http://localhost/api/health/ready
-```
+Regras atuais:
+- `INTERNAL_API_URL` e usada no server-side para falar com o backend dentro do compose
+- `NEXT_PUBLIC_APP_URL` define a origem publica do app/proxy
+- `NEXT_PUBLIC_API_URL=/api` mantem o browser preso ao mesmo host publico
 
-### Health do presence
-```bash
-curl http://localhost/presence/health
-```
+Se o host publico nao for `http://localhost`, ajuste `NEXT_PUBLIC_APP_URL` para a origem real antes de subir o stack.
 
-### Login via frontend proxy
-```bash
-docker compose exec backend sh ./scripts/container-bootstrap.sh
-
-curl -X POST http://localhost/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"clutchplayer@clutch.gg","password":"clutch123"}'
-```
-
-### Presença em tempo real
-O browser conecta o WebSocket pelo mesmo host público:
+## Estrutura relevante do repositorio
 
 ```txt
-ws://localhost/ws/presence?token=<jwt>
-```
-
-O token continua vindo da rota local autenticada do frontend.
-
-### Readiness do stack
-- `backend` fica saudável quando banco e Redis respondem em `/health/ready`
-- `frontend` fica saudável quando `http://127.0.0.1:3000/login` responde no container
-- `traefik` só sobe como healthy depois do ping interno e das dependências saudáveis
-
-### Desenvolvimento manual fora de containers
-Ainda é possível rodar serviços manualmente, mas esse fluxo deixou de ser o padrão.  
-O caminho recomendado para DX local agora é sempre `docker compose up --build`.
-
----
-
-## 🧪 Testes
-
-```bash
-# Rodar todos os testes
-npm test
-
-# Modo watch
-npm run test:watch
-
-# Com relatório de cobertura
-npm run test:coverage
-```
-
-**Threshold mínimo:** 80% de cobertura em linhas, funções e statements.
-
-### Seed do banco
-
-```bash
-cd backend
-npm run db:seed
-```
-
-O seed cria uma conta demo e dados suficientes para validar:
-- perfil público
-- feed social
-- amizades aceitas e pendentes
-- comentários
-- notificações
-- presença
-
----
-
-## 📁 Estrutura de pastas
-
-```
 clutch/
-├── .github/
-│   ├── workflows/ci.yml          ← GitHub Actions CI
-│   └── ISSUE_TEMPLATE/           ← Templates de issues
 ├── backend/
-│   ├── presence-service/         ← Go (Rich Presence WebSocket)
-│   ├── python-service/           ← Python (Epic Games auth)
-│   ├── prisma/schema.prisma      ← Schema do banco de dados
+│   ├── src/
+│   ├── presence-service/
+│   └── python-service/
+├── frontend/
 │   └── src/
-│       ├── api/routes/           ← Rotas HTTP
-│       ├── api/middlewares/      ← Middlewares
-│       ├── core/domain/          ← Types e interfaces
-│       ├── core/repositories/    ← Acesso a dados
-│       ├── core/services/        ← Regras de negócio
-│       └── infra/                ← Database, Redis, integrações
-├── frontend/                     ← Next.js 15
-└── docker-compose.yml            ← Traefik + frontend + backend + presence + postgres + redis
+├── scripts/dev/
+├── infra/traefik/
+├── docker-compose.yml
+└── .codex/PROJECT.md
 ```
 
----
+## Limites conhecidos
 
-## 🤝 Contribuindo
+- O frontend ainda nao cobre todas as telas previstas no backlog.
+- O runtime local padrao e container-first; fluxos fora de container nao sao a referencia principal da documentacao.
+- `python-service` existe no repositorio, mas nao faz parte do stack do `docker-compose.yml` atual.
 
-Leia o [CONTRIBUTING.md](CONTRIBUTING.md) para entender o fluxo de branches, padrão de commits e como abrir PRs.
+## Licenca
 
----
-
-## 🗺️ Roadmap
-
-| Versão | Nome | Status |
-|---|---|---|
-| v1.0 | Identidade | 🚧 Em desenvolvimento |
-| v1.5 | Comunidade | 📋 Planejado |
-| v2.0 | Universo Otaku | 📋 Planejado |
-| v2.5 | Criação | 📋 Planejado |
-| v3.0 | Ecossistema | 📋 Planejado |
-
----
-
-## 📄 Licença
-
-MIT © [Alessandro](https://github.com/alessandrolsdev)
+MIT. Consulte [LICENSE](LICENSE).
