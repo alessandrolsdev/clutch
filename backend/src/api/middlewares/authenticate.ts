@@ -1,6 +1,10 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import jwt from 'jsonwebtoken';
-import { extractBearerToken, type JwtPayload } from '../../config/jwt';
+import {
+  extractBearerToken,
+  JwtKidRejectedError,
+  type VerifiedJwtPayload,
+} from '../../config/jwt';
 
 // ─────────────────────────────────────────────────────────────
 // Authenticate Middleware
@@ -33,10 +37,32 @@ export async function authenticate(
       return reply.status(401).send({ message: 'Token inválido ou expirado.' });
     }
 
-    const payload = request.server.verifyAccessToken(token) as JwtPayload;
+    const payload = request.server.verifyAccessToken(token) as VerifiedJwtPayload;
+    request.log.info({
+      event: 'auth_jwt_key_selected',
+      requestId: request.id,
+      method: request.method,
+      path: request.url,
+      kid: payload.keyId,
+      tokenKid: payload.tokenKeyId,
+      legacyToken: payload.legacyToken,
+    }, 'JWT key selected for access token verification');
     request.userId   = payload.id;
     request.username = payload.username;
   } catch (error) {
+    if (error instanceof JwtKidRejectedError) {
+      request.log.warn({
+        event: 'auth_jwt_kid_rejected',
+        requestId: request.id,
+        method: request.method,
+        path: request.url,
+        status: 401,
+        kid: error.kid,
+        reason: error.reason,
+      }, 'JWT kid rejected');
+      return reply.status(401).send({ message: 'Token inválido ou expirado.' });
+    }
+
     if (error instanceof jwt.TokenExpiredError) {
       request.log.warn({
         event: 'auth_access_token_expired',

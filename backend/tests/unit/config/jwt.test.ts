@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import jwt from 'jsonwebtoken';
 import {
   createRefreshTokenSigner,
@@ -7,10 +7,57 @@ import {
   createJwtSigner,
   createJwtVerifier,
   extractBearerToken,
+  JwtKidRejectedError,
+  JwtRotationConfigError,
+  type JwtKeyRotationConfig,
 } from '@/config/jwt';
+
+type JsonLogEntry = Record<string, unknown>;
+
+function captureJsonLogs() {
+  const entries: JsonLogEntry[] = [];
+
+  const collect = (chunk: string | Uint8Array): boolean => {
+    const serialized = typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8');
+
+    for (const line of serialized.split('\n')) {
+      const trimmed = line.trim();
+
+      if (!trimmed.startsWith('{')) {
+        continue;
+      }
+
+      try {
+        entries.push(JSON.parse(trimmed) as JsonLogEntry);
+      } catch {
+        // Ignora linhas nao-JSON emitidas por bibliotecas.
+      }
+    }
+
+    return true;
+  };
+
+  const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(((chunk: string | Uint8Array) => collect(chunk)) as typeof process.stdout.write);
+  const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(((chunk: string | Uint8Array) => collect(chunk)) as typeof process.stderr.write);
+
+  return {
+    entries,
+    restore() {
+      stdoutSpy.mockRestore();
+      stderrSpy.mockRestore();
+    },
+  };
+}
 
 describe('JWT config', () => {
   const secret = 'clutch-test-secret';
+  const keyRotationConfig: JwtKeyRotationConfig = {
+    activeKid: 'v2',
+    keys: {
+      v1: 'clutch-legacy-secret',
+      v2: secret,
+    },
+  };
 
   it('assina e valida um token com payload esperado', () => {
     const signAccessToken = createJwtSigner(secret);
@@ -21,35 +68,17 @@ describe('JWT config', () => {
       username: 'clutchplayer',
     });
 
-    expect(verifyAccessToken(token)).toEqual({
+    expect(verifyAccessToken(token)).toMatchObject({
       id: 'user-id-1',
       username: 'clutchplayer',
+      keyId: 'legacy',
+      tokenKeyId: 'legacy',
+      legacyToken: false,
     });
   });
 
-  it('assina e valida refresh token com sessionId e jti', () => {
-    const signRefreshToken = createRefreshTokenSigner(secret);
-    const verifyRefreshToken = createRefreshTokenVerifier(secret);
-
-    const token = signRefreshToken({
-      id: 'user-id-1',
-      username: 'clutchplayer',
-      tokenType: 'refresh',
-      sessionId: 'session-1',
-      jti: 'refresh-1',
-    });
-
-    expect(verifyRefreshToken(token)).toEqual({
-      id: 'user-id-1',
-      username: 'clutchplayer',
-      tokenType: 'refresh',
-      sessionId: 'session-1',
-      jti: 'refresh-1',
-    });
-  });
-
-  it('fixa o algoritmo HS256 na assinatura', () => {
-    const signAccessToken = createJwtSigner(secret);
+  it('assina access token com kid da chave ativa', () => {
+    const signAccessToken = createJwtSigner(keyRotationConfig);
     const token = signAccessToken({
       id: 'user-id-1',
       username: 'clutchplayer',
@@ -60,9 +89,102 @@ describe('JWT config', () => {
     expect(decoded).toMatchObject({
       header: {
         alg: 'HS256',
+        kid: 'v2',
         typ: 'JWT',
       },
     });
+  });
+
+  it('assina e valida refresh token com kid, sessionId e jti', () => {
+    const signRefreshToken = createRefreshTokenSigner(keyRotationConfig);
+    const verifyRefreshToken = createRefreshTokenVerifier(keyRotationConfig);
+
+    const token = signRefreshToken({
+      id: 'user-id-1',
+      username: 'clutchplayer',
+      tokenType: 'refresh',
+      sessionId: 'session-1',
+      jti: 'refresh-1',
+    });
+
+    expect(verifyRefreshToken(token)).toMatchObject({
+      id: 'user-id-1',
+      username: 'clutchplayer',
+      tokenType: 'refresh',
+      sessionId: 'session-1',
+      jti: 'refresh-1',
+      keyId: 'v2',
+      tokenKeyId: 'v2',
+      legacyToken: false,
+    });
+  });
+
+  it('aceita token legado sem kid usando uma chave valida configurada', () => {
+    const verifyAccessToken = createJwtVerifier(keyRotationConfig);
+    const legacyToken = jwt.sign(
+      {
+        id: 'user-id-1',
+        username: 'clutchplayer',
+        tokenType: 'access',
+      },
+      keyRotationConfig.keys.v1!,
+      {
+        algorithm: 'HS256',
+        expiresIn: '10m',
+      },
+    );
+
+    expect(verifyAccessToken(legacyToken)).toMatchObject({
+      id: 'user-id-1',
+      username: 'clutchplayer',
+      keyId: 'v1',
+      tokenKeyId: null,
+      legacyToken: true,
+    });
+  });
+
+  it('rejeita token com kid desconhecido', () => {
+    const verifyAccessToken = createJwtVerifier(keyRotationConfig);
+    const token = jwt.sign(
+      {
+        id: 'user-id-1',
+        username: 'clutchplayer',
+        tokenType: 'access',
+      },
+      'kid-unknown-secret',
+      {
+        algorithm: 'HS256',
+        expiresIn: '10m',
+        header: {
+          alg: 'HS256',
+          kid: 'v999',
+        },
+      },
+    );
+
+    expect(() => verifyAccessToken(token)).toThrow(JwtKidRejectedError);
+  });
+
+  it('rejeita token com assinatura feita por chave nao reconhecida', () => {
+    const verifyAccessToken = createJwtVerifier(keyRotationConfig);
+    const token = jwt.sign(
+      {
+        id: 'user-id-1',
+        username: 'clutchplayer',
+        tokenType: 'access',
+      },
+      'wrong-active-secret',
+      {
+        algorithm: 'HS256',
+        expiresIn: '10m',
+        header: {
+          alg: 'HS256',
+          kid: 'v2',
+        },
+      },
+    );
+
+    expect(() => verifyAccessToken(token)).toThrow();
   });
 
   it('usa um TTL curto de 10 minutos para o access token', () => {
@@ -97,6 +219,10 @@ describe('JWT config', () => {
       {
         algorithm: 'HS256',
         expiresIn: -1,
+        header: {
+          alg: 'HS256',
+          kid: 'legacy',
+        },
       },
     );
 
@@ -114,6 +240,10 @@ describe('JWT config', () => {
       {
         algorithm: 'HS384',
         expiresIn: '7d',
+        header: {
+          alg: 'HS384',
+          kid: 'legacy',
+        },
       },
     );
 
@@ -124,6 +254,10 @@ describe('JWT config', () => {
     const verifyAccessToken = createJwtVerifier(secret);
     const token = jwt.sign('plain-string-payload', secret, {
       algorithm: 'HS256',
+      header: {
+        alg: 'HS256',
+        kid: 'legacy',
+      },
     });
 
     expect(() => verifyAccessToken(token)).toThrow();
@@ -140,6 +274,10 @@ describe('JWT config', () => {
       {
         algorithm: 'HS256',
         expiresIn: '7d',
+        header: {
+          alg: 'HS256',
+          kid: 'legacy',
+        },
       },
     );
 
@@ -160,12 +298,16 @@ describe('JWT config', () => {
     expect(extractBearerToken(undefined)).toBeNull();
   });
 
-  it('falha em produção quando JWT_SECRET não está configurado', () => {
+  it('falha em producao quando JWT_SECRET nao esta configurado', () => {
     const previousNodeEnv = process.env['NODE_ENV'];
     const previousSecret = process.env['JWT_SECRET'];
+    const previousKeyring = process.env['JWT_KEYS_JSON'];
+    const previousActiveKid = process.env['JWT_ACTIVE_KID'];
 
     process.env['NODE_ENV'] = 'production';
     delete process.env['JWT_SECRET'];
+    delete process.env['JWT_KEYS_JSON'];
+    delete process.env['JWT_ACTIVE_KID'];
 
     try {
       expect(() => createJwtSigner()).toThrow('JWT_SECRET deve ser configurado em produção.');
@@ -182,6 +324,102 @@ describe('JWT config', () => {
       } else {
         delete process.env['JWT_SECRET'];
       }
+
+      if (typeof previousKeyring === 'string') {
+        process.env['JWT_KEYS_JSON'] = previousKeyring;
+      } else {
+        delete process.env['JWT_KEYS_JSON'];
+      }
+
+      if (typeof previousActiveKid === 'string') {
+        process.env['JWT_ACTIVE_KID'] = previousActiveKid;
+      } else {
+        delete process.env['JWT_ACTIVE_KID'];
+      }
     }
+  });
+
+  it('falha quando a configuracao de rotacao aponta para active kid inexistente', () => {
+    expect(() => createJwtSigner({
+      activeKid: 'v2',
+      keys: { v1: 'legacy-secret' },
+    })).toThrow(JwtRotationConfigError);
+  });
+
+  it('falha quando multiplas chaves existem em ambiente e JWT_ACTIVE_KID nao esta configurado', () => {
+    const previousNodeEnv = process.env['NODE_ENV'];
+    const previousSecret = process.env['JWT_SECRET'];
+    const previousKeyring = process.env['JWT_KEYS_JSON'];
+    const previousActiveKid = process.env['JWT_ACTIVE_KID'];
+
+    delete process.env['JWT_SECRET'];
+    process.env['JWT_KEYS_JSON'] = JSON.stringify({
+      v1: 'legacy-secret',
+      v2: 'active-secret',
+    });
+    delete process.env['JWT_ACTIVE_KID'];
+
+    try {
+      expect(() => createJwtSigner()).toThrow(JwtRotationConfigError);
+    } finally {
+      if (typeof previousNodeEnv === 'string') {
+        process.env['NODE_ENV'] = previousNodeEnv;
+      } else {
+        delete process.env['NODE_ENV'];
+      }
+
+      if (typeof previousSecret === 'string') {
+        process.env['JWT_SECRET'] = previousSecret;
+      } else {
+        delete process.env['JWT_SECRET'];
+      }
+
+      if (typeof previousKeyring === 'string') {
+        process.env['JWT_KEYS_JSON'] = previousKeyring;
+      } else {
+        delete process.env['JWT_KEYS_JSON'];
+      }
+
+      if (typeof previousActiveKid === 'string') {
+        process.env['JWT_ACTIVE_KID'] = previousActiveKid;
+      } else {
+        delete process.env['JWT_ACTIVE_KID'];
+      }
+    }
+  });
+
+  it('loga a configuracao de rotacao sem expor o keyring nem segredos', () => {
+    const previousNodeEnv = process.env['NODE_ENV'];
+    process.env['NODE_ENV'] = 'development';
+    const capturedLogs = captureJsonLogs();
+
+    try {
+      createJwtSigner({
+        activeKid: 'audit-v2',
+        keys: {
+          'audit-v1': 'legacy-secret-audit',
+          'audit-v2': 'active-secret-audit',
+        },
+      });
+    } finally {
+      capturedLogs.restore();
+
+      if (typeof previousNodeEnv === 'string') {
+        process.env['NODE_ENV'] = previousNodeEnv;
+      } else {
+        delete process.env['NODE_ENV'];
+      }
+    }
+
+    const logEntry = capturedLogs.entries.find((entry) => entry.event === 'auth_jwt_rotation_config_loaded');
+
+    expect(logEntry).toMatchObject({
+      event: 'auth_jwt_rotation_config_loaded',
+      activeKid: 'audit-v2',
+      configuredKeyCount: 2,
+    });
+    expect(logEntry).not.toHaveProperty('configuredKids');
+    expect(JSON.stringify(logEntry)).not.toContain('legacy-secret-audit');
+    expect(JSON.stringify(logEntry)).not.toContain('active-secret-audit');
   });
 });

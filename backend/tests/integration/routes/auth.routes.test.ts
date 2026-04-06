@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { buildApp, generateTestToken, TEST_JWT_SECRET } from '../../helpers/build-app';
 import jwt from 'jsonwebtoken';
 import { REFRESH_TOKEN_COOKIE_NAME } from '@/config/auth-session';
+import type { JwtKeyRotationConfig } from '@/config/jwt';
 
 vi.mock('@/core/repositories/user.repository', () => ({
   userRepository: {
@@ -31,6 +32,14 @@ const mockUser = {
   isActive:      true,
   createdAt:     new Date(),
   updatedAt:     new Date(),
+};
+
+const jwtKeyRotationConfig: JwtKeyRotationConfig = {
+  activeKid: 'v2',
+  keys: {
+    v1: 'clutch-legacy-secret',
+    v2: TEST_JWT_SECRET,
+  },
 };
 
 function extractCookieHeader(setCookieHeader: string | string[] | undefined): string {
@@ -148,6 +157,11 @@ describe('Auth Routes', () => {
 
       expect(response.statusCode).toBe(200);
       expect(response.json()).toHaveProperty('token');
+      expect(jwt.decode(response.json().token as string, { complete: true })).toMatchObject({
+        header: {
+          kid: 'legacy',
+        },
+      });
       expect(String(response.headers['set-cookie'])).toContain(REFRESH_TOKEN_COOKIE_NAME);
       await app.close();
     });
@@ -319,6 +333,83 @@ describe('Auth Routes', () => {
         {
           algorithm: 'HS384',
           expiresIn: '7d',
+        },
+      );
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/me',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      expect(response.statusCode).toBe(401);
+      await app.close();
+    });
+
+    it('aceita rota protegida com token assinado por chave valida configurada', async () => {
+      vi.mocked(userRepository.findById).mockResolvedValue(mockUser);
+
+      const app = await buildApp({ jwtKeyRotationConfig });
+      const token = app.signAccessToken({
+        id: 'user-id-1',
+        username: 'clutchplayer',
+      });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/me',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      expect(response.statusCode).toBe(200);
+      await app.close();
+    });
+
+    it('rejeita rota protegida com kid invalido', async () => {
+      const app = await buildApp({ jwtKeyRotationConfig });
+      const token = jwt.sign(
+        {
+          id: 'user-id-1',
+          username: 'clutchplayer',
+          tokenType: 'access',
+        },
+        'unknown-secret',
+        {
+          algorithm: 'HS256',
+          expiresIn: '10m',
+          header: {
+            alg: 'HS256',
+            kid: 'v999',
+          },
+        },
+      );
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/me',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      expect(response.statusCode).toBe(401);
+      await app.close();
+    });
+
+    it('rejeita rota protegida com token assinado por chave nao reconhecida', async () => {
+      const app = await buildApp({ jwtKeyRotationConfig });
+      const token = jwt.sign(
+        {
+          id: 'user-id-1',
+          username: 'clutchplayer',
+          tokenType: 'access',
+        },
+        'wrong-key',
+        {
+          algorithm: 'HS256',
+          expiresIn: '10m',
+          header: {
+            alg: 'HS256',
+            kid: 'v2',
+          },
         },
       );
 
