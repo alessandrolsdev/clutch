@@ -66,6 +66,12 @@ export async function GET(request: NextRequest) {
   }
 
   if (backendResponse.status === 401) {
+    logServerEvent('info', 'frontend_auth_refresh_start', 'Frontend auth refresh started from presence token flow', {
+      requestId,
+      path: request.nextUrl.pathname,
+      status: 401,
+    });
+
     const refreshResult = await refreshAuthSession(
       requestId,
       request.headers.get('cookie'),
@@ -80,6 +86,18 @@ export async function GET(request: NextRequest) {
       clearAccessSessionCookie(response);
       clearRefreshSessionCookie(response);
       appendRefreshSetCookie(response, refreshResult.refreshSetCookie);
+
+      logServerEvent('warn', 'frontend_auth_refresh_failed', 'Frontend auth refresh failed during presence token flow', {
+        requestId,
+        status: refreshResult.status,
+        duration_ms: Date.now() - startedAt,
+      });
+      logServerEvent('warn', 'frontend_auth_session_cleared', 'Frontend auth session cleared after presence token refresh failure', {
+        requestId,
+        status: refreshResult.status,
+        reason: 'refresh_rejected',
+        duration_ms: Date.now() - startedAt,
+      });
 
       return response;
     }
@@ -114,6 +132,13 @@ export async function GET(request: NextRequest) {
       clearAccessSessionCookie(response);
       clearRefreshSessionCookie(response);
       appendRefreshSetCookie(response, refreshResult.refreshSetCookie);
+
+      logServerEvent('warn', 'frontend_auth_session_cleared', 'Frontend auth session cleared after presence token validation failure', {
+        requestId,
+        status: backendResponse.status,
+        reason: 'backend_rejected',
+        duration_ms: Date.now() - startedAt,
+      });
 
       return response;
     }
@@ -152,6 +177,13 @@ export async function GET(request: NextRequest) {
 
     if (backendResponse.status === 401) {
       clearAccessSessionCookie(response);
+      clearRefreshSessionCookie(response);
+      logServerEvent('warn', 'frontend_auth_session_cleared', 'Frontend auth session cleared after presence token rejection', {
+        requestId,
+        status: 401,
+        reason: 'backend_rejected',
+        duration_ms: Date.now() - startedAt,
+      });
     }
 
     return response;

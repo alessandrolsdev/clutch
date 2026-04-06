@@ -5,6 +5,37 @@ import { AUTH_SESSION_COOKIE_NAME } from '@/lib/auth/session';
 const originalApiUrl = process.env.NEXT_PUBLIC_API_URL;
 const originalInternalApiUrl = process.env.INTERNAL_API_URL;
 
+function captureServerLogs() {
+  const entries: Array<Record<string, unknown>> = [];
+
+  const collect = (chunk: string | Uint8Array): boolean => {
+    const serialized = typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8');
+
+    for (const line of serialized.split('\n')) {
+      const trimmed = line.trim();
+
+      if (!trimmed.startsWith('{')) {
+        continue;
+      }
+
+      entries.push(JSON.parse(trimmed) as Record<string, unknown>);
+    }
+
+    return true;
+  };
+
+  const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(((chunk: string | Uint8Array) => collect(chunk)) as typeof process.stdout.write);
+  const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(((chunk: string | Uint8Array) => collect(chunk)) as typeof process.stderr.write);
+
+  return {
+    entries,
+    restore() {
+      stdoutSpy.mockRestore();
+      stderrSpy.mockRestore();
+    },
+  };
+}
+
 describe('auth login route', () => {
   beforeEach(() => {
     process.env.INTERNAL_API_URL = 'http://backend.test';
@@ -17,6 +48,7 @@ describe('auth login route', () => {
   });
 
   it('sets an httpOnly access cookie and forwards the refresh cookie when login succeeds', async () => {
+    const capturedLogs = captureServerLogs();
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       const headers = new Headers(init?.headers);
 
@@ -55,6 +87,8 @@ describe('auth login route', () => {
       }),
     );
 
+    capturedLogs.restore();
+
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const setCookieHeader = response.headers.get('set-cookie');
@@ -62,6 +96,19 @@ describe('auth login route', () => {
     expect(setCookieHeader).toContain('HttpOnly');
     expect(setCookieHeader).toContain('jwt-token');
     expect(setCookieHeader).toContain('clutch_refresh=refresh-token');
+    expect(capturedLogs.entries.find((entry) => entry.event === 'frontend_auth_login_start')).toMatchObject({
+      event: 'frontend_auth_login_start',
+      requestId: 'req-login-123',
+      path: '/api/auth/login',
+    });
+    expect(capturedLogs.entries.find((entry) => entry.event === 'frontend_auth_login_success')).toMatchObject({
+      event: 'frontend_auth_login_success',
+      requestId: 'req-login-123',
+      status: 200,
+      username: 'clutchplayer',
+    });
+    expect(JSON.stringify(capturedLogs.entries)).not.toContain('jwt-token');
+    expect(JSON.stringify(capturedLogs.entries)).not.toContain('refresh-token');
   });
 
   it('propagates invalid credentials without setting a session cookie', async () => {

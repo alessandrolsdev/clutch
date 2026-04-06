@@ -5,6 +5,24 @@ import { GET } from '@/app/api/auth/me/route';
 const originalApiUrl = process.env.NEXT_PUBLIC_API_URL;
 const originalInternalApiUrl = process.env.INTERNAL_API_URL;
 
+function captureServerLogs() {
+  const entries: Array<Record<string, unknown>> = [];
+  const collect = (chunk: string | Uint8Array): boolean => {
+    const serialized = typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8');
+    for (const line of serialized.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('{')) {
+        continue;
+      }
+      entries.push(JSON.parse(trimmed) as Record<string, unknown>);
+    }
+    return true;
+  };
+  const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(((chunk: string | Uint8Array) => collect(chunk)) as typeof process.stdout.write);
+  const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(((chunk: string | Uint8Array) => collect(chunk)) as typeof process.stderr.write);
+  return { entries, restore() { stdoutSpy.mockRestore(); stderrSpy.mockRestore(); } };
+}
+
 describe('auth me route', () => {
   beforeEach(() => {
     process.env.INTERNAL_API_URL = 'http://backend.test';
@@ -115,6 +133,7 @@ describe('auth me route', () => {
   });
 
   it('clears the session when the refresh session was revoked', async () => {
+    const capturedLogs = captureServerLogs();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
 
@@ -143,11 +162,14 @@ describe('auth me route', () => {
 
     const request = new NextRequest('http://localhost/api/auth/me', {
       headers: {
+        'x-request-id': 'req-auth-me-401',
         cookie: 'clutch_session=expired-token; clutch_refresh=invalid-refresh-token',
       },
     });
 
     const response = await GET(request);
+
+    capturedLogs.restore();
 
     expect(response.status).toBe(401);
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -156,6 +178,22 @@ describe('auth me route', () => {
     await expect(response.json()).resolves.toEqual({
       message: 'Token invalido ou expirado.',
     });
+    expect(capturedLogs.entries.find((entry) => entry.event === 'frontend_auth_refresh_start')).toMatchObject({
+      event: 'frontend_auth_refresh_start',
+      requestId: 'req-auth-me-401',
+      path: '/api/auth/me',
+    });
+    expect(capturedLogs.entries.find((entry) => entry.event === 'frontend_auth_me_refresh_rejected')).toMatchObject({
+      event: 'frontend_auth_me_refresh_rejected',
+      requestId: 'req-auth-me-401',
+      status: 401,
+    });
+    expect(capturedLogs.entries.find((entry) => entry.event === 'frontend_auth_session_cleared')).toMatchObject({
+      event: 'frontend_auth_session_cleared',
+      requestId: 'req-auth-me-401',
+      reason: 'refresh_rejected',
+    });
+    expect(JSON.stringify(capturedLogs.entries)).not.toContain('invalid-refresh-token');
   });
 });
 
