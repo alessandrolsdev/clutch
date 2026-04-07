@@ -1,5 +1,7 @@
 import { apiRequest } from '@/lib/api';
 import {
+  discordOAuthCallbackResponseSchema,
+  discordOAuthStartResponseSchema,
   epicConnectRequestSchema,
   epicConnectResponseSchema,
   igdbSearchRequestSchema,
@@ -7,6 +9,8 @@ import {
   steamConnectRequestSchema,
   steamConnectResponseSchema,
   steamSyncResponseSchema,
+  type DiscordOAuthCallbackResponse,
+  type DiscordOAuthStartResponse,
   type EpicConnectResponse,
   type EpicConnectValues,
   type IgdbSearchResponse,
@@ -17,6 +21,13 @@ import {
 
 type ErrorResponse = {
   message?: string;
+};
+
+type DiscordOAuthCallbackInput = {
+  code?: string;
+  state?: string;
+  error?: string;
+  errorDescription?: string;
 };
 
 export class IntegrationsRequestError extends Error {
@@ -109,6 +120,58 @@ export async function connectEpic(
   }
 
   return epicConnectResponseSchema.parse(responsePayload);
+}
+
+export async function startDiscordOAuth(): Promise<DiscordOAuthStartResponse> {
+  const response = await apiRequest('/integrations/discord/auth', {
+    method: 'GET',
+  });
+  const responsePayload = await readJson(response);
+
+  if (!response.ok) {
+    throw new IntegrationsRequestError(
+      response.status,
+      resolveErrorMessage(responsePayload, 'Nao foi possivel iniciar a conexao com o Discord agora.'),
+    );
+  }
+
+  return discordOAuthStartResponseSchema.parse(responsePayload);
+}
+
+export async function completeDiscordOAuth(
+  input: DiscordOAuthCallbackInput,
+): Promise<DiscordOAuthCallbackResponse> {
+  const query = new URLSearchParams();
+
+  if (typeof input.code === 'string' && input.code.length > 0) {
+    query.set('code', input.code);
+  }
+
+  if (typeof input.state === 'string' && input.state.length > 0) {
+    query.set('state', input.state);
+  }
+
+  if (typeof input.error === 'string' && input.error.length > 0) {
+    query.set('error', input.error);
+  }
+
+  if (typeof input.errorDescription === 'string' && input.errorDescription.length > 0) {
+    query.set('error_description', input.errorDescription);
+  }
+
+  const response = await apiRequest(`/integrations/discord/callback?${query.toString()}`, {
+    method: 'GET',
+  });
+  const responsePayload = await readJson(response);
+
+  if (!response.ok) {
+    throw new IntegrationsRequestError(
+      response.status,
+      resolveErrorMessage(responsePayload, 'Nao foi possivel concluir a conexao com o Discord agora.'),
+    );
+  }
+
+  return discordOAuthCallbackResponseSchema.parse(responsePayload);
 }
 
 export async function searchIgdbGame(query: string): Promise<IgdbSearchResponse> {
