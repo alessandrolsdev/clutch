@@ -126,6 +126,10 @@ describe('ProfilePageContent', () => {
     expect(screen.getByText(/jogando valorant/i)).toBeInTheDocument();
     expect(screen.getByTestId('friend-button')).toHaveTextContent('friend-button:user-1');
     expect(screen.getByTestId('friends-list')).toHaveTextContent('friends-list:user-1');
+    expect(screen.getByRole('link', { name: /ver biblioteca completa/i })).toHaveAttribute(
+      'href',
+      '/clutchplayer/library',
+    );
   });
 
   it('renders not found state', async () => {
