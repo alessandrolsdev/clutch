@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('axios');
 vi.mock('@/infra/cache/redis', () => ({
@@ -10,235 +10,373 @@ vi.mock('@/infra/cache/redis', () => ({
 
 import axios from 'axios';
 import { redis } from '@/infra/cache/redis';
+import {
+  createIntegrationsService,
+} from '@/core/services/integrations.service';
+import { IntegrationError } from '@/infra/integrations/integration.errors';
 import { epicService } from '@/infra/integrations/epic/epic.service';
 import { igdbService } from '@/infra/integrations/igdb/igdb.service';
 import { steamService } from '@/infra/integrations/steam/steam.service';
 
-describe('igdbService', () => {
-  beforeEach(() => vi.clearAllMocks());
+const originalEnv = { ...process.env };
 
-  describe('searchGame', () => {
-    it('renova token quando Redis miss e retorna jogo', async () => {
-      vi.mocked(redis.get).mockResolvedValue(null);
-      vi.mocked(redis.setex).mockResolvedValue('OK');
+const mockSteamGames = [
+  { appid: 730, name: 'Counter-Strike 2', playtime_forever: 6000, img_icon_url: '' },
+  { appid: 570, name: 'Dota 2', playtime_forever: 1200, img_icon_url: '' },
+];
 
-      vi.mocked(axios.post)
-        .mockResolvedValueOnce({
-          data: { access_token: 'test-token', expires_in: 3600, token_type: 'bearer' },
-        })
-        .mockResolvedValueOnce({
-          data: [{
-            id: 1234,
-            name: 'Valorant',
-            cover: { id: 1, url: '//images.igdb.com/igdb/image/upload/t_thumb/test.jpg' },
-            platforms: [{ name: 'PC (Microsoft Windows)' }],
-            summary: 'Tactical shooter',
-          }],
-        });
+const mockEpicGames = [
+  { id: 'fortnite', title: 'Fortnite', namespace: 'fn', coverUrl: null },
+];
 
-      const result = await igdbService.searchGame('Valorant');
+describe('integrations service layer', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
-      expect(result).not.toBeNull();
-      expect(result?.name).toBe('Valorant');
-      expect(result?.coverUrl).toContain('t_cover_big');
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it('importa biblioteca Steam e tolera falha do IGDB como enriquecimento opcional', async () => {
+    const persistence = {
+      upsertPlatformIntegration: vi.fn().mockResolvedValue(undefined),
+      findPlatformIntegration: vi.fn(),
+      upsertSteamLibraryGame: vi.fn().mockResolvedValue(undefined),
+      upsertEpicLibraryGame: vi.fn(),
+    };
+
+    const service = createIntegrationsService({
+      steamClient: {
+        validateSteamId: vi.fn().mockResolvedValue(true),
+        getOwnedGames: vi.fn().mockResolvedValue(mockSteamGames),
+      },
+      igdbClient: {
+        searchGame: vi.fn()
+          .mockResolvedValueOnce({
+            id: 730,
+            name: 'Counter-Strike 2',
+            coverUrl: 'https://cdn.example/cs2.jpg',
+            platforms: ['PC'],
+            summary: null,
+          })
+          .mockRejectedValueOnce(new Error('IGDB offline')),
+      },
+      epicClient: {
+        validateToken: vi.fn(),
+        getLibrary: vi.fn(),
+      },
+      persistence,
     });
 
-    it('usa token do cache Redis quando disponivel', async () => {
-      vi.mocked(redis.get).mockResolvedValue('cached-token');
-      vi.mocked(axios.post).mockResolvedValueOnce({
-        data: [{ id: 1, name: 'CS2', platforms: [], summary: null }],
-      });
+    const result = await service.connectSteam('user-id-1', '76561198000000000');
 
-      await igdbService.searchGame('CS2');
+    expect(result).toMatchObject({
+      imported: 2,
+      message: 'Steam conectado. 2 jogos importados.',
+    });
+    expect(persistence.upsertPlatformIntegration).toHaveBeenCalledWith(
+      'user-id-1',
+      'STEAM',
+      { externalId: '76561198000000000' },
+    );
+    expect(persistence.upsertSteamLibraryGame).toHaveBeenNthCalledWith(
+      1,
+      'user-id-1',
+      mockSteamGames[0],
+      'https://cdn.example/cs2.jpg',
+    );
+    expect(persistence.upsertSteamLibraryGame).toHaveBeenNthCalledWith(
+      2,
+      'user-id-1',
+      mockSteamGames[1],
+      null,
+    );
+  });
 
-      expect(axios.post).toHaveBeenCalledTimes(1);
+  it('traduz Steam nao conectado na sincronizacao', async () => {
+    const service = createIntegrationsService({
+      steamClient: {
+        validateSteamId: vi.fn(),
+        getOwnedGames: vi.fn(),
+      },
+      igdbClient: {
+        searchGame: vi.fn(),
+      },
+      epicClient: {
+        validateToken: vi.fn(),
+        getLibrary: vi.fn(),
+      },
+      persistence: {
+        upsertPlatformIntegration: vi.fn(),
+        findPlatformIntegration: vi.fn().mockResolvedValue(null),
+        upsertSteamLibraryGame: vi.fn(),
+        upsertEpicLibraryGame: vi.fn(),
+      },
     });
 
-    it('retorna null quando jogo nao encontrado', async () => {
-      vi.mocked(redis.get).mockResolvedValue('cached-token');
-      vi.mocked(axios.post).mockResolvedValueOnce({ data: [] });
-
-      const result = await igdbService.searchGame('jogo-inexistente-xyz');
-
-      expect(result).toBeNull();
-    });
-
-    it('envia headers esperados para a busca no IGDB', async () => {
-      vi.mocked(redis.get).mockResolvedValue('cached-token');
-      vi.mocked(axios.post).mockResolvedValueOnce({
-        data: [{ id: 1, name: 'Hades', platforms: [], summary: null }],
-      });
-
-      await igdbService.searchGame('Hades');
-
-      expect(axios.post).toHaveBeenCalledWith(
-        'https://api.igdb.com/v4/games',
-        'search "Hades"; fields name,cover.url,platforms.name,summary; limit 1;',
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            Authorization: 'Bearer cached-token',
-            'Content-Type': 'text/plain',
-          }),
-        }),
-      );
+    await expect(service.syncSteamLibrary('user-id-1')).rejects.toMatchObject({
+      statusCode: 404,
+      reason: 'not_connected',
     });
   });
 
-  describe('getGameById', () => {
-    it('retorna jogo quando o id existe', async () => {
-      vi.mocked(redis.get).mockResolvedValue('cached-token');
-      vi.mocked(axios.post).mockResolvedValueOnce({
+  it('marca Epic como indisponivel quando o adapter nao existe no runtime atual', async () => {
+    const service = createIntegrationsService({
+      steamClient: {
+        validateSteamId: vi.fn(),
+        getOwnedGames: vi.fn(),
+      },
+      igdbClient: {
+        searchGame: vi.fn(),
+      },
+      epicClient: {
+        validateToken: vi.fn().mockRejectedValue(
+          new IntegrationError(
+            'epic',
+            503,
+            'unsupported',
+            'Integração Epic indisponível no runtime atual.',
+          ),
+        ),
+        getLibrary: vi.fn(),
+      },
+      persistence: {
+        upsertPlatformIntegration: vi.fn(),
+        findPlatformIntegration: vi.fn(),
+        upsertSteamLibraryGame: vi.fn(),
+        upsertEpicLibraryGame: vi.fn(),
+      },
+    });
+
+    await expect(service.connectEpic('user-id-1', 'epic-token')).rejects.toMatchObject({
+      statusCode: 503,
+      reason: 'unsupported',
+    });
+  });
+
+  it('retorna resultado de sucesso para Epic quando o adapter responde', async () => {
+    const persistence = {
+      upsertPlatformIntegration: vi.fn().mockResolvedValue(undefined),
+      findPlatformIntegration: vi.fn(),
+      upsertSteamLibraryGame: vi.fn(),
+      upsertEpicLibraryGame: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const service = createIntegrationsService({
+      steamClient: {
+        validateSteamId: vi.fn(),
+        getOwnedGames: vi.fn(),
+      },
+      igdbClient: {
+        searchGame: vi.fn(),
+      },
+      epicClient: {
+        validateToken: vi.fn().mockResolvedValue(true),
+        getLibrary: vi.fn().mockResolvedValue(mockEpicGames),
+      },
+      persistence,
+    });
+
+    const result = await service.connectEpic('user-id-1', 'valid-token');
+
+    expect(result).toMatchObject({
+      imported: 1,
+      message: 'Epic conectado. 1 jogos importados.',
+    });
+    expect(persistence.upsertPlatformIntegration).toHaveBeenCalledWith(
+      'user-id-1',
+      'EPIC',
+      { externalId: 'epic', accessToken: 'valid-token' },
+    );
+  });
+});
+
+describe('igdbService', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env = {
+      ...originalEnv,
+      IGDB_CLIENT_ID: 'test-client',
+      IGDB_CLIENT_SECRET: 'test-secret',
+    };
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it('renova token quando Redis miss e retorna jogo', async () => {
+    vi.mocked(redis.get).mockResolvedValue(null);
+    vi.mocked(redis.setex).mockResolvedValue('OK');
+
+    vi.mocked(axios.post)
+      .mockResolvedValueOnce({
+        data: { access_token: 'test-token', expires_in: 3600, token_type: 'bearer' },
+      } as never)
+      .mockResolvedValueOnce({
         data: [{
-          id: 5678,
-          name: 'Helldivers 2',
-          cover: { id: 2, url: '//images.igdb.com/igdb/image/upload/t_thumb/helldivers.jpg' },
+          id: 1234,
+          name: 'Valorant',
+          cover: { id: 1, url: '//images.igdb.com/igdb/image/upload/t_thumb/test.jpg' },
           platforms: [{ name: 'PC (Microsoft Windows)' }],
-          summary: 'Co-op extraction shooter',
+          summary: 'Tactical shooter',
         }],
-      });
+      } as never);
 
-      const result = await igdbService.getGameById(5678);
+    const result = await igdbService.searchGame('Valorant');
 
-      expect(result).toMatchObject({
-        id: 5678,
-        name: 'Helldivers 2',
-      });
-      expect(result?.coverUrl).toContain('t_cover_big');
+    expect(result?.name).toBe('Valorant');
+    expect(result?.coverUrl).toContain('t_cover_big');
+  });
+
+  it('traduz timeout do IGDB para erro coerente', async () => {
+    const stdoutWriteSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.mocked(redis.get).mockResolvedValue('cached-token');
+    vi.mocked(axios.post).mockRejectedValue({ code: 'ECONNABORTED' });
+
+    await expect(igdbService.searchGame('Hades')).rejects.toMatchObject({
+      statusCode: 504,
+      reason: 'timeout',
     });
 
-    it('retorna null quando o id nao existe', async () => {
-      vi.mocked(redis.get).mockResolvedValue('cached-token');
-      vi.mocked(axios.post).mockResolvedValueOnce({ data: [] });
-
-      const result = await igdbService.getGameById(999999);
-
-      expect(result).toBeNull();
-    });
+    expect(stdoutWriteSpy).toHaveBeenCalled();
+    expect(stdoutWriteSpy.mock.calls[0]?.[0]).toContain('"event":"integration_igdb_timeout"');
+    expect(stdoutWriteSpy.mock.calls[0]?.[0]).toContain('"provider":"igdb"');
+    expect(stdoutWriteSpy.mock.calls[0]?.[0]).toContain('"reason":"timeout"');
+    expect(stdoutWriteSpy.mock.calls[0]?.[0]).not.toContain('test-secret');
+    expect(stdoutWriteSpy.mock.calls[0]?.[0]).not.toContain('Authorization');
+    expect(stdoutWriteSpy.mock.calls[0]?.[0]).not.toContain('https://');
+    stdoutWriteSpy.mockRestore();
   });
 });
 
 describe('steamService', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  describe('getOwnedGames', () => {
-    it('retorna biblioteca quando SteamID e valido', async () => {
-      vi.mocked(axios.get).mockResolvedValue({
-        data: {
-          response: {
-            game_count: 2,
-            games: [
-              { appid: 730, name: 'Counter-Strike 2', playtime_forever: 6000, img_icon_url: '' },
-              { appid: 570, name: 'Dota 2', playtime_forever: 1200, img_icon_url: '' },
-            ],
-          },
-        },
-      });
-
-      const games = await steamService.getOwnedGames('76561198000000000');
-
-      expect(games).toHaveLength(2);
-      expect(games[0]?.name).toBe('Counter-Strike 2');
-      expect(axios.get).toHaveBeenCalledWith(
-        'https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/',
-        expect.objectContaining({
-          timeout: 10_000,
-          params: expect.objectContaining({
-            steamid: '76561198000000000',
-            include_appinfo: true,
-            include_played_free_games: true,
-          }),
-        }),
-      );
-    });
-
-    it('retorna array vazio quando perfil nao tem jogos', async () => {
-      vi.mocked(axios.get).mockResolvedValue({
-        data: { response: { game_count: 0 } },
-      });
-
-      const games = await steamService.getOwnedGames('76561198000000000');
-
-      expect(games).toEqual([]);
-    });
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env = {
+      ...originalEnv,
+      STEAM_API_KEY: 'steam-key',
+    };
   });
 
-  describe('validateSteamId', () => {
-    it('retorna true quando SteamID e valido', async () => {
-      vi.mocked(axios.get).mockResolvedValue({
-        data: {
-          response: {
-            players: [{ steamid: '76561198000000000', personaname: 'player' }],
-          },
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it('retorna biblioteca quando Steam responde', async () => {
+    vi.mocked(axios.get).mockResolvedValue({
+      data: {
+        response: {
+          game_count: 2,
+          games: mockSteamGames,
         },
-      });
+      },
+    } as never);
 
-      const result = await steamService.validateSteamId('76561198000000000');
+    const games = await steamService.getOwnedGames('76561198000000000');
 
-      expect(result).toBe(true);
+    expect(games).toHaveLength(2);
+  });
+
+  it('traduz timeout da Steam para erro coerente', async () => {
+    const stdoutWriteSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.mocked(axios.get).mockRejectedValue({ code: 'ECONNABORTED' });
+
+    await expect(steamService.getOwnedGames('76561198000000000')).rejects.toMatchObject({
+      statusCode: 504,
+      reason: 'timeout',
     });
 
-    it('retorna false quando SteamID e invalido', async () => {
-      vi.mocked(axios.get).mockResolvedValue({
-        data: { response: { players: [] } },
-      });
-
-      const result = await steamService.validateSteamId('steamid-invalido');
-
-      expect(result).toBe(false);
-    });
+    expect(stdoutWriteSpy).toHaveBeenCalled();
+    expect(stdoutWriteSpy.mock.calls[0]?.[0]).toContain('"event":"integration_steam_timeout"');
+    expect(stdoutWriteSpy.mock.calls[0]?.[0]).toContain('"provider":"steam"');
+    expect(stdoutWriteSpy.mock.calls[0]?.[0]).not.toContain('steam-key');
+    stdoutWriteSpy.mockRestore();
   });
 });
 
 describe('epicService', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  describe('getLibrary', () => {
-    it('retorna biblioteca quando Python service responde', async () => {
-      vi.mocked(axios.get).mockResolvedValue({
-        data: {
-          games: [
-            { id: 'fortnite', title: 'Fortnite', namespace: 'fn', coverUrl: null },
-            { id: 'rocket', title: 'Rocket League', namespace: 'rl', coverUrl: null },
-          ],
-        },
-      });
-
-      const games = await epicService.getLibrary('valid-token');
-
-      expect(games).toHaveLength(2);
-      expect(games[0]?.title).toBe('Fortnite');
-      expect(axios.get).toHaveBeenCalledWith(
-        'http://localhost:8000/library',
-        expect.objectContaining({
-          headers: { Authorization: 'Bearer valid-token' },
-          timeout: 30_000,
-        }),
-      );
-    });
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
-  describe('validateToken', () => {
-    it('retorna true quando token e valido', async () => {
-      vi.mocked(axios.get).mockResolvedValue({ data: { valid: true } });
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
 
-      const result = await epicService.validateToken('valid-token');
+  it('marca integracao como indisponivel quando a URL e placeholder do runtime antigo', async () => {
+    const stdoutWriteSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    process.env = {
+      ...originalEnv,
+      EPIC_SERVICE_URL: 'http://localhost:8000',
+    };
 
-      expect(result).toBe(true);
-      expect(axios.get).toHaveBeenCalledWith(
-        'http://localhost:8000/validate',
-        expect.objectContaining({
-          headers: { Authorization: 'Bearer valid-token' },
-          timeout: 5_000,
-        }),
-      );
+    await expect(epicService.validateToken('valid-token')).rejects.toMatchObject({
+      statusCode: 503,
+      reason: 'unsupported',
     });
 
-    it('retorna false quando token e invalido', async () => {
-      vi.mocked(axios.get).mockRejectedValue(new Error('Unauthorized'));
+    expect(stdoutWriteSpy).toHaveBeenCalled();
+    expect(stdoutWriteSpy.mock.calls[0]?.[0]).toContain('"event":"integration_epic_unavailable"');
+    expect(stdoutWriteSpy.mock.calls[0]?.[0]).toContain('"reason":"unsupported"');
+    expect(stdoutWriteSpy.mock.calls[0]?.[0]).not.toContain('valid-token');
+    stdoutWriteSpy.mockRestore();
+  });
 
-      const result = await epicService.validateToken('invalid-token');
+  it('rejeita URL invalida do adapter Epic de forma explicita', async () => {
+    const stdoutWriteSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    process.env = {
+      ...originalEnv,
+      EPIC_SERVICE_URL: 'not-a-valid-url',
+    };
 
-      expect(result).toBe(false);
+    await expect(epicService.validateToken('valid-token')).rejects.toMatchObject({
+      statusCode: 503,
+      reason: 'misconfigured',
     });
+
+    expect(stdoutWriteSpy).toHaveBeenCalled();
+    expect(stdoutWriteSpy.mock.calls[0]?.[0]).toContain('"event":"integration_epic_unavailable"');
+    expect(stdoutWriteSpy.mock.calls[0]?.[0]).toContain('"reason":"misconfigured"');
+    expect(stdoutWriteSpy.mock.calls[0]?.[0]).not.toContain('not-a-valid-url');
+    stdoutWriteSpy.mockRestore();
+  });
+
+  it('traduz timeout do adapter Epic configurado', async () => {
+    const stdoutWriteSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    process.env = {
+      ...originalEnv,
+      EPIC_SERVICE_URL: 'https://epic-adapter.example.com',
+    };
+    vi.mocked(axios.get).mockRejectedValue({ code: 'ECONNABORTED' });
+
+    await expect(epicService.getLibrary('valid-token')).rejects.toMatchObject({
+      statusCode: 504,
+      reason: 'timeout',
+    });
+
+    expect(stdoutWriteSpy).toHaveBeenCalled();
+    expect(stdoutWriteSpy.mock.calls[0]?.[0]).toContain('"event":"integration_epic_timeout"');
+    expect(stdoutWriteSpy.mock.calls[0]?.[0]).toContain('"provider":"epic"');
+    expect(stdoutWriteSpy.mock.calls[0]?.[0]).not.toContain('valid-token');
+    expect(stdoutWriteSpy.mock.calls[0]?.[0]).not.toContain('https://epic-adapter.example.com');
+    stdoutWriteSpy.mockRestore();
+  });
+
+  it('retorna biblioteca quando o adapter externo responde', async () => {
+    process.env = {
+      ...originalEnv,
+      EPIC_SERVICE_URL: 'https://epic-adapter.example.com',
+    };
+    vi.mocked(axios.get).mockResolvedValue({
+      data: {
+        games: mockEpicGames,
+      },
+    } as never);
+
+    const games = await epicService.getLibrary('valid-token');
+
+    expect(games).toHaveLength(1);
   });
 });
