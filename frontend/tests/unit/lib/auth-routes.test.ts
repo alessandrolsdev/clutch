@@ -7,6 +7,7 @@ describe('auth route helpers', () => {
     expect(isProtectedPath('/feed/new')).toBe(true);
     expect(isProtectedPath('/settings')).toBe(true);
     expect(isProtectedPath('/clutchplayer')).toBe(true);
+    expect(isProtectedPath('/clutchplayer/library')).toBe(true);
     expect(isProtectedPath('/ab')).toBe(false);
     expect(isProtectedPath('/login')).toBe(false);
   });

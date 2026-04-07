@@ -102,7 +102,10 @@ export function ProfilePageContent({ username }: ProfilePageContentProps) {
         userId={profileQuery.data.id}
         title={`Amigos de @${profileQuery.data.username}`}
       />
-      <GameLibraryPreview games={profileQuery.data.gameLibrary} />
+      <GameLibraryPreview
+        username={profileQuery.data.username}
+        games={profileQuery.data.gameLibrary}
+      />
     </div>
   );
 }
