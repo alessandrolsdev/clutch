@@ -28,6 +28,10 @@ import {
   createRefreshTokenService,
   type RefreshSessionStore,
 } from './core/services/refresh-token.service';
+import {
+  createIntegrationsService,
+  type IntegrationsService,
+} from './core/services/integrations.service';
 import { createRedisRefreshSessionStore } from './infra/cache/refresh-session.store';
 import { redis as runtimeRedis } from './infra/cache/redis';
 import type Redis from 'ioredis';
@@ -39,6 +43,7 @@ export type BuildAppOptions = {
   readinessCheck?: () => Promise<ReadinessReport>;
   refreshSessionStore?: RefreshSessionStore;
   rateLimitRedis?: Redis | null;
+  integrationsService?: IntegrationsService;
 };
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
@@ -59,11 +64,13 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     jwtKeyRotationConfig: options.jwtKeyRotationConfig,
     refreshSessionStore: options.refreshSessionStore ?? createRedisRefreshSessionStore(),
   });
+  const integrationsService = options.integrationsService ?? createIntegrationsService();
 
   app.decorate('authenticate', authenticate);
   app.decorate('signAccessToken', signAccessToken);
   app.decorate('verifyAccessToken', verifyAccessToken);
   app.decorate('refreshTokenService', refreshTokenService);
+  app.decorate('integrationsService', integrationsService);
 
   await app.register(
     fastifyRateLimit,

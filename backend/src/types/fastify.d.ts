@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, no-unused-vars */
 import { FastifyRequest, FastifyReply } from 'fastify';
 import type { JwtPayload, VerifiedJwtPayload } from '../config/jwt';
+import type { IntegrationsService } from '../core/services/integrations.service';
 import type { RefreshTokenService } from '../core/services/refresh-token.service';
 
 // ─────────────────────────────────────────────────────────────
@@ -14,6 +15,7 @@ declare module 'fastify' {
     signAccessToken(payload: JwtPayload): string;
     verifyAccessToken(token: string): VerifiedJwtPayload;
     refreshTokenService: RefreshTokenService;
+    integrationsService: IntegrationsService;
   }
 
   interface FastifyRequest {
