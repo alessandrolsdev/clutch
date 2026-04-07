@@ -1,24 +1,34 @@
 import Image from 'next/image';
+import Link from 'next/link';
 import { Card } from '@/components/ui/card';
 import { type ProfileResponse } from '@/schemas/profile';
 
 type GameLibraryPreviewProps = {
+  username: string;
   games: ProfileResponse['gameLibrary'];
 };
 
-export function GameLibraryPreview({ games }: GameLibraryPreviewProps) {
+export function GameLibraryPreview({ games, username }: GameLibraryPreviewProps) {
   const visibleGames = games.slice(0, 6);
 
   return (
     <Card>
       <div className="space-y-4">
-        <div>
-          <p className="text-xs uppercase tracking-[0.35em] text-secondary">
-            Biblioteca
-          </p>
-          <h3 className="mt-2 font-display text-2xl font-semibold text-primary">
-            Jogos recentes
-          </h3>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-[0.35em] text-secondary">
+              Biblioteca
+            </p>
+            <h3 className="mt-2 font-display text-2xl font-semibold text-primary">
+              Jogos recentes
+            </h3>
+          </div>
+          <Link
+            href={`/${username}/library`}
+            className="text-sm font-medium text-accent-cyan transition hover:text-primary"
+          >
+            Ver biblioteca completa
+          </Link>
         </div>
 
         {visibleGames.length === 0 ? (

@@ -23,6 +23,7 @@ export const config = {
     '/login',
     '/register',
     '/:username',
+    '/:username/:path*',
     '/feed/:path*',
     '/notifications/:path*',
     '/settings/:path*',
