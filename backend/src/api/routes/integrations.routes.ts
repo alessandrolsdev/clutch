@@ -10,20 +10,35 @@ const epicConnectSchema = z.object({
   authToken: z.string().min(1, 'Token Epic é obrigatório'),
 });
 
+const discordCallbackSchema = z.object({
+  code: z.string().min(1).optional(),
+  state: z.string().min(1).optional(),
+  error: z.string().min(1).optional(),
+  error_description: z.string().optional(),
+}).refine(
+  (input) => Boolean(input.error) || (Boolean(input.code) && Boolean(input.state)),
+  {
+    message: 'Callback Discord inválido.',
+  },
+);
+
 function replyWithIntegrationError(
   request: { id: string; method: string; url: string; log: FastifyInstance['log'] },
   error: unknown,
+  options: { logFailure?: boolean } = {},
 ): { statusCode: number; payload: { message: string } } {
   if (isIntegrationError(error)) {
-    request.log.warn({
-      event: 'integration_request_failed',
-      requestId: request.id,
-      method: request.method,
-      path: request.url,
-      provider: error.integration,
-      reason: error.reason,
-      status: error.statusCode,
-    }, 'Integration request failed');
+    if (options.logFailure !== false) {
+      request.log.warn({
+        event: 'integration_request_failed',
+        requestId: request.id,
+        method: request.method,
+        path: request.url,
+        provider: error.integration,
+        reason: error.reason,
+        status: error.statusCode,
+      }, 'Integration request failed');
+    }
 
     return {
       statusCode: error.statusCode,
@@ -89,6 +104,50 @@ export async function integrationRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(200).send(game);
       } catch (error) {
         const integrationError = replyWithIntegrationError(request, error);
+        return reply.status(integrationError.statusCode).send(integrationError.payload);
+      }
+    },
+  );
+
+  // ── GET /integrations/discord/auth ──────────────────────
+  app.get(
+    '/discord/auth',
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      try {
+        const resultPayload = await app.discordOAuthService.getAuthorizationUrl({
+          userId: request.userId,
+          requestId: request.id,
+        });
+
+        return reply.status(200).send(resultPayload);
+      } catch (error) {
+        const integrationError = replyWithIntegrationError(request, error, { logFailure: false });
+        return reply.status(integrationError.statusCode).send(integrationError.payload);
+      }
+    },
+  );
+
+  // ── GET /integrations/discord/callback ──────────────────
+  app.get<{ Querystring: { code?: string; state?: string; error?: string; error_description?: string } }>(
+    '/discord/callback',
+    async (request, reply) => {
+      const result = discordCallbackSchema.safeParse(request.query);
+      if (!result.success) {
+        return reply.status(400).send({ message: 'Callback Discord inválido.' });
+      }
+
+      try {
+        const resultPayload = await app.discordOAuthService.completeCallback({
+          code: result.data.code,
+          state: result.data.state,
+          providerError: result.data.error,
+          requestId: request.id,
+        });
+
+        return reply.status(200).send(resultPayload);
+      } catch (error) {
+        const integrationError = replyWithIntegrationError(request, error, { logFailure: false });
         return reply.status(integrationError.statusCode).send(integrationError.payload);
       }
     },

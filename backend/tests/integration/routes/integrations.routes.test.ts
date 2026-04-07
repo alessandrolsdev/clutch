@@ -12,6 +12,11 @@ const createMockIntegrationsService = () => ({
   connectEpic: vi.fn(),
 });
 
+const createMockDiscordOAuthService = () => ({
+  getAuthorizationUrl: vi.fn(),
+  completeCallback: vi.fn(),
+});
+
 describe('Integrations Routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -232,6 +237,120 @@ describe('Integrations Routes', () => {
 
       expect(response.statusCode).toBe(200);
       expect(integrationsService.connectEpic).toHaveBeenCalledWith('user-id-1', 'valid-token');
+      await app.close();
+    });
+  });
+
+  describe('GET /integrations/discord/auth', () => {
+    it('retorna 401 sem token', async () => {
+      const integrationsService = createMockIntegrationsService();
+      const discordOAuthService = createMockDiscordOAuthService();
+      const app = await buildApp({ integrationsService, discordOAuthService });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/integrations/discord/auth',
+      });
+
+      expect(response.statusCode).toBe(401);
+      expect(discordOAuthService.getAuthorizationUrl).not.toHaveBeenCalled();
+      await app.close();
+    });
+
+    it('retorna URL coerente quando o service inicia o OAuth', async () => {
+      const integrationsService = createMockIntegrationsService();
+      const discordOAuthService = createMockDiscordOAuthService();
+      discordOAuthService.getAuthorizationUrl.mockResolvedValue({
+        authorizationUrl: 'https://discord.com/oauth2/authorize?client_id=test-client&state=signed-state',
+      });
+
+      const app = await buildApp({ integrationsService, discordOAuthService });
+      const token = generateTestToken(app, 'user-id-1');
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/integrations/discord/auth',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(discordOAuthService.getAuthorizationUrl).toHaveBeenCalledWith({
+        userId: 'user-id-1',
+        requestId: expect.any(String),
+      });
+      expect(response.json()).toMatchObject({
+        authorizationUrl: expect.stringContaining('https://discord.com/oauth2/authorize'),
+      });
+      await app.close();
+    });
+  });
+
+  describe('GET /integrations/discord/callback', () => {
+    it('retorna 400 quando callback nao traz dados minimos', async () => {
+      const integrationsService = createMockIntegrationsService();
+      const discordOAuthService = createMockDiscordOAuthService();
+      const app = await buildApp({ integrationsService, discordOAuthService });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/integrations/discord/callback',
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(discordOAuthService.completeCallback).not.toHaveBeenCalled();
+      await app.close();
+    });
+
+    it('persiste com sucesso no callback quando o service conclui o OAuth', async () => {
+      const integrationsService = createMockIntegrationsService();
+      const discordOAuthService = createMockDiscordOAuthService();
+      discordOAuthService.completeCallback.mockResolvedValue({
+        message: 'Discord conectado com sucesso.',
+        platform: 'DISCORD',
+        externalId: 'discord-user-id',
+        username: 'clutchdiscord',
+        globalName: 'Clutch Discord',
+      });
+
+      const app = await buildApp({ integrationsService, discordOAuthService });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/integrations/discord/callback?code=oauth-code&state=signed-state',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(discordOAuthService.completeCallback).toHaveBeenCalledWith({
+        code: 'oauth-code',
+        state: 'signed-state',
+        providerError: undefined,
+        requestId: expect.any(String),
+      });
+      expect(response.json()).toMatchObject({
+        platform: 'DISCORD',
+        externalId: 'discord-user-id',
+      });
+      await app.close();
+    });
+
+    it('traduz falha do provedor de forma coerente', async () => {
+      const integrationsService = createMockIntegrationsService();
+      const discordOAuthService = createMockDiscordOAuthService();
+      discordOAuthService.completeCallback.mockRejectedValue(
+        createIntegrationError('discord', 400, 'invalid_request', 'Autorização Discord inválida ou expirada.'),
+      );
+
+      const app = await buildApp({ integrationsService, discordOAuthService });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/integrations/discord/callback?code=oauth-code&state=signed-state',
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({
+        message: 'Autorização Discord inválida ou expirada.',
+      });
       await app.close();
     });
   });
