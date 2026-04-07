@@ -49,7 +49,7 @@ describe('IntegrationsPageContent', () => {
     mockedFetchProfileByUsername.mockReset();
   });
 
-  it('renders integrations status and contract limitation', async () => {
+  it('renders integrations status including discord oauth state', async () => {
     mockedUseAuth.mockReturnValue({
       status: 'authenticated',
       user: {
@@ -88,6 +88,13 @@ describe('IntegrationsPageContent', () => {
       platformIntegrations: [
         { platform: 'STEAM', metadata: null },
         { platform: 'EPIC', metadata: null },
+        {
+          platform: 'DISCORD',
+          metadata: {
+            username: 'clutchplayer',
+            globalName: 'CLUTCH Guild',
+          },
+        },
       ],
       gameLibrary: [
         {
@@ -109,6 +116,8 @@ describe('IntegrationsPageContent', () => {
     expect(screen.getByText(/biblioteca steam/i)).toBeInTheDocument();
     expect(screen.getByText(/biblioteca epic games/i)).toBeInTheDocument();
     expect(screen.getByText(/^discord$/i)).toBeInTheDocument();
-    expect(screen.getByText(/ainda fora do contrato frontend atual/i)).toBeInTheDocument();
+    expect(screen.getByText(/vinculo oauth do discord/i)).toBeInTheDocument();
+    expect(screen.getByText(/conta vinculada: clutch guild/i)).toBeInTheDocument();
+    expect(screen.queryByText(/ainda fora do contrato frontend atual/i)).not.toBeInTheDocument();
   });
 });

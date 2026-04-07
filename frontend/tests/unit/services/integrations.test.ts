@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiRequest } from '@/lib/api';
 import {
+  completeDiscordOAuth,
   connectEpic,
   connectSteam,
   searchIgdbGame,
+  startDiscordOAuth,
   syncSteamLibrary,
 } from '@/services/integrations';
 
@@ -75,6 +77,53 @@ describe('integrations service', () => {
       method: 'POST',
       body: { authToken: 'valid-token' },
     });
+  });
+
+  it('starts discord oauth with the real contract', async () => {
+    mockedApiRequest.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          authorizationUrl: 'https://discord.com/oauth2/authorize?client_id=123',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    const response = await startDiscordOAuth();
+
+    expect(response.authorizationUrl).toBe(
+      'https://discord.com/oauth2/authorize?client_id=123',
+    );
+    expect(mockedApiRequest).toHaveBeenCalledWith('/integrations/discord/auth', {
+      method: 'GET',
+    });
+  });
+
+  it('completes discord oauth with callback query params', async () => {
+    mockedApiRequest.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          message: 'Discord conectado com sucesso.',
+          platform: 'DISCORD',
+          externalId: 'discord-user-1',
+          username: 'clutchplayer',
+          globalName: 'CLUTCH Player',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    const response = await completeDiscordOAuth({
+      code: 'oauth-code',
+      state: 'signed-state',
+      errorDescription: 'User denied access',
+    });
+
+    expect(response.platform).toBe('DISCORD');
+    expect(mockedApiRequest).toHaveBeenCalledWith(
+      '/integrations/discord/callback?code=oauth-code&state=signed-state&error_description=User+denied+access',
+      { method: 'GET' },
+    );
   });
 
   it('searches the igdb endpoint with the real contract', async () => {

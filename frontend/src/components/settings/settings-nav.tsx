@@ -15,7 +15,7 @@ const navItems = [
   {
     href: '/settings/integrations',
     label: 'Integracoes',
-    description: 'Steam, Epic e busca IGDB.',
+    description: 'Steam, Epic, Discord e busca IGDB.',
   },
 ] as const;
 
