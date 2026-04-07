@@ -3,7 +3,7 @@ import {
   writeBackendRuntimeLog,
 } from '../../config/logging';
 
-export type IntegrationName = 'steam' | 'igdb' | 'epic';
+export type IntegrationName = 'steam' | 'igdb' | 'epic' | 'discord';
 
 export type IntegrationErrorReason =
   | 'invalid_request'
