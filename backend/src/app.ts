@@ -32,6 +32,10 @@ import {
   createIntegrationsService,
   type IntegrationsService,
 } from './core/services/integrations.service';
+import {
+  createDiscordOAuthService,
+  type DiscordOAuthService,
+} from './core/services/discord-oauth.service';
 import { createRedisRefreshSessionStore } from './infra/cache/refresh-session.store';
 import { redis as runtimeRedis } from './infra/cache/redis';
 import type Redis from 'ioredis';
@@ -44,6 +48,7 @@ export type BuildAppOptions = {
   refreshSessionStore?: RefreshSessionStore;
   rateLimitRedis?: Redis | null;
   integrationsService?: IntegrationsService;
+  discordOAuthService?: DiscordOAuthService;
 };
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
@@ -65,12 +70,14 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     refreshSessionStore: options.refreshSessionStore ?? createRedisRefreshSessionStore(),
   });
   const integrationsService = options.integrationsService ?? createIntegrationsService();
+  const discordOAuthService = options.discordOAuthService ?? createDiscordOAuthService();
 
   app.decorate('authenticate', authenticate);
   app.decorate('signAccessToken', signAccessToken);
   app.decorate('verifyAccessToken', verifyAccessToken);
   app.decorate('refreshTokenService', refreshTokenService);
   app.decorate('integrationsService', integrationsService);
+  app.decorate('discordOAuthService', discordOAuthService);
 
   await app.register(
     fastifyRateLimit,
