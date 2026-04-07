@@ -25,10 +25,12 @@ export {
   NotificationsRequestError,
 } from './notifications';
 export {
+  completeDiscordOAuth,
   connectEpic,
   connectSteam,
   IntegrationsRequestError,
   searchIgdbGame,
+  startDiscordOAuth,
   syncSteamLibrary,
 } from './integrations';
 export {

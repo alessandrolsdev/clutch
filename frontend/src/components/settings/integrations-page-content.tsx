@@ -1,15 +1,32 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { DiscordIntegrationCard } from '@/components/settings/discord-integration-card';
 import { EpicIntegrationCard } from '@/components/settings/epic-integration-card';
 import { IgdbSearchCard } from '@/components/settings/igdb-search-card';
 import { SettingsNav } from '@/components/settings/settings-nav';
 import { SteamIntegrationCard } from '@/components/settings/steam-integration-card';
-import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { SectionHeading } from '@/components/ui/section-heading';
 import { useAuth } from '@/hooks/use-auth';
 import { fetchProfileByUsername, ProfileRequestError } from '@/services/profile';
+
+function resolveDiscordLinkedAccountLabel(metadata: Record<string, unknown> | null): string | null {
+  if (!metadata) {
+    return null;
+  }
+
+  const globalName =
+    typeof metadata.globalName === 'string' && metadata.globalName.length > 0
+      ? metadata.globalName
+      : null;
+  const username =
+    typeof metadata.username === 'string' && metadata.username.length > 0
+      ? metadata.username
+      : null;
+
+  return globalName ?? username;
+}
 
 function IntegrationsLoadingState() {
   return (
@@ -67,13 +84,19 @@ export function IntegrationsPageContent() {
   const connectedPlatforms = new Set(
     profileQuery.data.platformIntegrations.map((integration) => integration.platform),
   );
+  const discordIntegration =
+    profileQuery.data.platformIntegrations.find((integration) => integration.platform === 'DISCORD') ??
+    null;
+  const discordLinkedAccountLabel = resolveDiscordLinkedAccountLabel(
+    discordIntegration?.metadata ?? null,
+  );
 
   return (
     <div className="space-y-section" data-testid="settings-integrations-success">
       <SectionHeading
         eyebrow="Settings"
         title="Integracoes de plataformas"
-        description="Cards conectados apenas aos contratos reais de Steam, Epic e busca IGDB."
+        description="Cards conectados apenas aos contratos reais de Steam, Epic, Discord e busca IGDB."
         level="h1"
       />
 
@@ -95,24 +118,14 @@ export function IntegrationsPageContent() {
             await profileQuery.refetch();
           }}
         />
+
+        <DiscordIntegrationCard
+          isConnected={connectedPlatforms.has('DISCORD')}
+          linkedAccountLabel={discordLinkedAccountLabel}
+        />
       </div>
 
       <IgdbSearchCard />
-
-      <Card className="space-y-4" tone="neutral">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-2">
-            <p className="text-xs uppercase tracking-[0.35em] text-secondary">Discord</p>
-            <h2 className="font-display text-2xl font-semibold text-primary">
-              Ainda fora do contrato frontend atual
-            </h2>
-            <p className="text-sm leading-6 text-secondary">
-              A issue original menciona Discord, mas o backend atual nao expoe rota de connect para essa integracao.
-            </p>
-          </div>
-          <Badge tone="warning">Limitacao real</Badge>
-        </div>
-      </Card>
     </div>
   );
 }

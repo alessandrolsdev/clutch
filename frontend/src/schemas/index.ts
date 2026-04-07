@@ -41,6 +41,8 @@ export {
   postLikeNotificationPayloadSchema,
 } from './notifications';
 export {
+  discordOAuthCallbackResponseSchema,
+  discordOAuthStartResponseSchema,
   epicConnectRequestSchema,
   epicConnectResponseSchema,
   igdbSearchRequestSchema,
