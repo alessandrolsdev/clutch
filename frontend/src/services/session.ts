@@ -19,6 +19,7 @@ async function readJson(response: Response): Promise<unknown> {
 export async function fetchAuthSession(): Promise<AuthSession | null> {
   const response = await apiRequest('/auth/me', {
     method: 'GET',
+    clearSessionOnUnauthorized: false,
   });
 
   if (!response.ok) {

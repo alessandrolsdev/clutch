@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { SectionHeading } from '@/components/ui/section-heading';
 import { loginRequestSchema, type LoginRequestValues } from '@/schemas/auth';
 import { AuthRequestError, login } from '@/services/auth';
+import { useAuthStore } from '@/store/auth-store';
 
 const demoCredentials: LoginRequestValues = {
   email: 'clutchplayer@clutch.gg',
@@ -23,6 +24,7 @@ const fieldClassName = 'space-y-2';
 export function LoginForm() {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
+  const setSession = useAuthStore((state) => state.setSession);
 
   const {
     register,
@@ -56,7 +58,12 @@ export function LoginForm() {
     setServerError(null);
 
     try {
-      await login(values);
+      const session = await login(values);
+      setSession({
+        id: session.id,
+        username: session.username,
+        email: values.email,
+      });
       router.replace('/feed');
       router.refresh();
     } catch (error) {
