@@ -8,7 +8,6 @@ import { FriendRequestsBadge } from '@/components/friends/friend-requests-badge'
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { NotificationsBell } from '@/components/notifications/notifications-bell';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils/cn';
@@ -97,12 +96,12 @@ export function Navbar({
 
         {variant === 'app' ? (
           <div className="hidden min-w-0 flex-1 items-center justify-center md:flex">
-            <div className="w-full max-w-xl">
-              <Input
-                readOnly
-                aria-label="Search placeholder"
-                placeholder="Search profiles, posts and games"
-              />
+            <div
+              aria-label="Busca global ainda nao disponivel"
+              className="flex w-full max-w-xl items-center justify-between rounded-control border border-border bg-background-secondary px-control-x py-control-y text-sm"
+            >
+              <span className="text-secondary">Busca global ainda nao disponivel</span>
+              <Badge tone="neutral">Em breve</Badge>
             </div>
           </div>
         ) : null}

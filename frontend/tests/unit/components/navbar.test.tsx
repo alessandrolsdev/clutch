@@ -84,4 +84,15 @@ describe('Navbar', () => {
       /pixelsamurai/i,
     );
   });
+
+  it('signals that global search is not available yet instead of rendering an input', () => {
+    mockedFetchPendingFriendRequests.mockResolvedValue([]);
+
+    renderNavbar();
+
+    expect(
+      screen.getByLabelText(/busca global ainda nao disponivel/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  });
 });
