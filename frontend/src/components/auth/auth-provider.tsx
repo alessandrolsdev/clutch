@@ -36,6 +36,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
         return;
       }
 
+      if (useAuthStore.getState().status !== 'loading') {
+        return;
+      }
+
       if (session) {
         setSession(session);
         return;

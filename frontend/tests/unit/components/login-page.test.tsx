@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import LoginPage from '@/app/(auth)/login/page';
 import { AuthRequestError, login as mockedLogin } from '@/services/auth';
+import { resetAuthStore, useAuthStore } from '@/store/auth-store';
 
 const pushMock = vi.fn();
 const replaceMock = vi.fn();
@@ -33,6 +34,7 @@ const mockedLoginFn = vi.mocked(mockedLogin);
 
 describe('LoginPage', () => {
   beforeEach(() => {
+    resetAuthStore();
     pushMock.mockReset();
     replaceMock.mockReset();
     refreshMock.mockReset();
@@ -87,6 +89,13 @@ describe('LoginPage', () => {
         email: 'clutchplayer@clutch.gg',
         password: 'clutch123',
       });
+    });
+
+    expect(useAuthStore.getState().status).toBe('authenticated');
+    expect(useAuthStore.getState().user).toEqual({
+      id: 'user-1',
+      username: 'clutchplayer',
+      email: 'clutchplayer@clutch.gg',
     });
 
     expect(replaceMock).toHaveBeenCalledWith('/feed');

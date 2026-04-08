@@ -38,6 +38,30 @@ describe('session service', () => {
       username: 'clutchplayer',
       email: 'clutchplayer@clutch.gg',
     });
+
+    expect(apiRequestMock).toHaveBeenCalledWith('/auth/me', {
+      method: 'GET',
+      clearSessionOnUnauthorized: false,
+    });
+  });
+
+  it('does not clear an existing session when bootstrap auth me returns 401', async () => {
+    useAuthStore.getState().setSession({
+      id: 'user-1',
+      username: 'clutchplayer',
+      email: 'clutchplayer@clutch.gg',
+    });
+
+    apiRequestMock.mockResolvedValue(new Response(null, { status: 401 }));
+
+    await expect(fetchAuthSession()).resolves.toBeNull();
+
+    expect(useAuthStore.getState().status).toBe('authenticated');
+    expect(useAuthStore.getState().user).toEqual({
+      id: 'user-1',
+      username: 'clutchplayer',
+      email: 'clutchplayer@clutch.gg',
+    });
   });
 
   it('clears the local session on logout', async () => {

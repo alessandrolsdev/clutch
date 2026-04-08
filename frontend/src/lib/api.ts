@@ -4,6 +4,7 @@ type JsonBody = Record<string, unknown>;
 
 type ApiRequestInit = Omit<RequestInit, 'body'> & {
   body?: BodyInit | JsonBody;
+  clearSessionOnUnauthorized?: boolean;
 };
 
 function isJsonBody(value: ApiRequestInit['body']): value is JsonBody {
@@ -14,7 +15,12 @@ export async function apiRequest(
   pathname: string,
   init: ApiRequestInit = {},
 ): Promise<Response> {
-  const { body, headers, ...rest } = init;
+  const {
+    body,
+    clearSessionOnUnauthorized = true,
+    headers,
+    ...rest
+  } = init;
   const normalizedPath = pathname.startsWith('/') ? pathname : `/${pathname}`;
 
   const requestHeaders = new Headers(headers);
@@ -34,7 +40,7 @@ export async function apiRequest(
     body: requestBody,
   });
 
-  if (response.status === 401) {
+  if (clearSessionOnUnauthorized && response.status === 401) {
     useAuthStore.getState().clearSession();
   }
 
