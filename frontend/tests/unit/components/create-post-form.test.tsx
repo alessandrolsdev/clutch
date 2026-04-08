@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CreatePostForm } from '@/components/feed/create-post-form';
+import { ToastProvider } from '@/components/ui/toaster';
 import { createPost, FeedRequestError } from '@/services/feed';
 
 vi.mock('@/services/feed', () => ({
@@ -35,9 +36,11 @@ function renderCreatePostForm() {
   const invalidateQueriesSpy = vi.spyOn(queryClient, 'invalidateQueries');
 
   render(
-    <QueryClientProvider client={queryClient}>
-      <CreatePostForm userId="user-1" />
-    </QueryClientProvider>,
+    <ToastProvider>
+      <QueryClientProvider client={queryClient}>
+        <CreatePostForm userId="user-1" />
+      </QueryClientProvider>
+    </ToastProvider>,
   );
 
   return { invalidateQueriesSpy };
@@ -101,7 +104,8 @@ describe('CreatePostForm', () => {
       });
     });
 
-    expect(await screen.findByRole('status')).toHaveTextContent(
+    expect(await screen.findByText(/post publicado com sucesso\./i)).toBeInTheDocument();
+    expect(await screen.findByTestId('toast-item')).toHaveTextContent(
       /post publicado com sucesso/i,
     );
   });
@@ -120,6 +124,9 @@ describe('CreatePostForm', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       /post precisa ter texto ou midia/i,
+    );
+    expect(await screen.findByTestId('toast-item')).toHaveTextContent(
+      /nao foi possivel publicar o post/i,
     );
   });
 });
