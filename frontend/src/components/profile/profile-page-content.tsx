@@ -6,6 +6,7 @@ import { FriendsList } from '@/components/friends/friends-list';
 import { Card } from '@/components/ui/card';
 import { GamerCard } from '@/components/profile/gamer-card';
 import { GameLibraryPreview } from '@/components/profile/game-library-preview';
+import { ProfileSkeleton } from '@/components/profile/profile-skeleton';
 import { ProfileStats } from '@/components/profile/profile-stats';
 import {
   fetchProfileByUsername,
@@ -15,24 +16,6 @@ import {
 type ProfilePageContentProps = {
   username: string;
 };
-
-function ProfileLoadingState() {
-  return (
-    <div className="space-y-section" data-testid="profile-loading">
-      <Card className="p-0">
-        <div className="h-40 w-full animate-pulse bg-background-tertiary" />
-        <div className="space-y-4 p-card">
-          <div className="h-8 w-56 animate-pulse rounded-control bg-background-tertiary" />
-          <div className="h-5 w-72 animate-pulse rounded-control bg-background-tertiary" />
-          <div className="h-5 w-44 animate-pulse rounded-control bg-background-tertiary" />
-        </div>
-      </Card>
-      <Card>
-        <div className="h-28 animate-pulse rounded-control bg-background-tertiary" />
-      </Card>
-    </div>
-  );
-}
 
 function ProfileNotFoundState() {
   return (
@@ -77,7 +60,7 @@ export function ProfilePageContent({ username }: ProfilePageContentProps) {
   });
 
   if (profileQuery.isPending) {
-    return <ProfileLoadingState />;
+    return <ProfileSkeleton />;
   }
 
   if (profileQuery.isError) {

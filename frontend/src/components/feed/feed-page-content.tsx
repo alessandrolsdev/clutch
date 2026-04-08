@@ -2,27 +2,12 @@
 
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { CreatePostForm } from '@/components/feed/create-post-form';
+import { FeedSkeleton } from '@/components/feed/feed-skeleton';
 import { InfiniteScroll } from '@/components/feed/infinite-scroll';
 import { PostCard } from '@/components/feed/post-card';
 import { Card } from '@/components/ui/card';
 import { useAuth } from '@/hooks/use-auth';
 import { fetchFeed } from '@/services/feed';
-
-function FeedLoadingState() {
-  return (
-    <div className="space-y-4" data-testid="feed-loading">
-      <Card>
-        <div className="h-8 w-48 animate-pulse rounded-control bg-background-tertiary" />
-        <div className="mt-4 h-6 w-full animate-pulse rounded-control bg-background-tertiary" />
-        <div className="mt-2 h-6 w-2/3 animate-pulse rounded-control bg-background-tertiary" />
-      </Card>
-      <Card>
-        <div className="h-8 w-40 animate-pulse rounded-control bg-background-tertiary" />
-        <div className="mt-4 h-6 w-full animate-pulse rounded-control bg-background-tertiary" />
-      </Card>
-    </div>
-  );
-}
 
 function FeedEmptyState() {
   return (
@@ -83,7 +68,7 @@ export function FeedPageContent() {
   });
 
   if (status === 'loading') {
-    return <FeedLoadingState />;
+    return <FeedSkeleton />;
   }
 
   if (!userId || status !== 'authenticated') {
@@ -109,7 +94,7 @@ export function FeedPageContent() {
 
       <CreatePostForm userId={userId} />
 
-      {showInitialLoading ? <FeedLoadingState /> : null}
+      {showInitialLoading ? <FeedSkeleton /> : null}
       {showInitialError ? <FeedErrorState /> : null}
       {!showInitialLoading && !showInitialError && posts.length === 0 ? (
         <FeedEmptyState />
