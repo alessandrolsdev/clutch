@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,59 +17,52 @@ type SidebarProps = {
 
 type SidebarItem = {
   label: string;
-  tone?: 'accent' | 'neutral';
   description: string;
+  href?: string;
+  tone?: 'accent' | 'neutral';
+  unavailableReason?: string;
 };
 
-const sidebarItems: SidebarItem[] = [
-  {
-    label: 'Feed',
-    tone: 'accent',
-    description: 'Timeline and creator activity',
-  },
-  {
-    label: 'Profile',
-    tone: 'neutral',
-    description: 'GamerCard and public stats',
-  },
-  {
-    label: 'Friends',
-    tone: 'neutral',
-    description: 'Requests and presence ordering',
-  },
-  {
-    label: 'Notifications',
-    tone: 'neutral',
-    description: 'Unread activity and alerts',
-  },
-  {
-    label: 'Settings',
-    tone: 'neutral',
-    description: 'Profile, integrations and library',
-  },
-];
+function SidebarNavItem({ item, onNavigate }: { item: SidebarItem; onNavigate: () => void }) {
+  if (!item.href) {
+    return (
+      <div
+        aria-disabled="true"
+        className="flex w-full items-start justify-between gap-4 rounded-control border border-dashed border-border px-control-x py-control-y text-left text-secondary opacity-80"
+      >
+        <span className="flex flex-col gap-1">
+          <span className="font-medium text-inherit">{item.label}</span>
+          <span className="text-xs leading-5 text-secondary">
+            {item.unavailableReason ?? item.description}
+          </span>
+        </span>
+        <Badge tone="neutral">Em breve</Badge>
+      </div>
+    );
+  }
 
-function SidebarNavItem({ item }: { item: SidebarItem }) {
   return (
-    <button
-      type="button"
+    <Link
+      href={item.href}
+      onClick={onNavigate}
       className={cn(
-        'flex w-full items-start justify-between gap-4 rounded-control border border-border px-control-x py-control-y text-left transition',
+        'flex w-full items-start justify-between gap-4 rounded-control border px-control-x py-control-y text-left transition',
         item.tone === 'accent'
-          ? 'bg-[rgba(124,58,237,0.14)] text-primary'
-          : 'bg-[rgba(26,26,39,0.74)] text-secondary hover:text-primary',
+          ? 'border-accent-cyan/40 bg-[rgba(124,58,237,0.14)] text-primary'
+          : 'border-border bg-[rgba(26,26,39,0.74)] text-secondary hover:text-primary',
       )}
     >
       <span className="flex flex-col gap-1">
         <span className="font-medium text-inherit">{item.label}</span>
         <span className="text-xs leading-5 text-secondary">{item.description}</span>
       </span>
-      {item.tone === 'accent' ? <Badge tone="accent">Active</Badge> : null}
-    </button>
+      {item.tone === 'accent' ? <Badge tone="accent">Ativa</Badge> : null}
+    </Link>
   );
 }
 
 export function Sidebar({ isOpen, onClose, className }: SidebarProps) {
+  const pathname = usePathname();
   const { user, status, logout } = useAuth();
 
   const displayUser = user ?? {
@@ -75,6 +70,43 @@ export function Sidebar({ isOpen, onClose, className }: SidebarProps) {
     username: 'clutchplayer',
     email: 'clutchplayer@clutch.gg',
   };
+
+  const sidebarItems: SidebarItem[] = [
+    {
+      label: 'Feed',
+      href: '/feed',
+      tone: pathname === '/feed' ? 'accent' : 'neutral',
+      description: 'Timeline and creator activity',
+    },
+    {
+      label: 'Profile',
+      href: status === 'authenticated' ? `/${displayUser.username}` : undefined,
+      tone:
+        status === 'authenticated' && pathname === `/${displayUser.username}`
+          ? 'accent'
+          : 'neutral',
+      description: 'GamerCard and public stats',
+      unavailableReason:
+        status === 'authenticated' ? undefined : 'Disponivel apos a sessao ser restaurada.',
+    },
+    {
+      label: 'Friends',
+      description: 'Requests and presence ordering',
+      unavailableReason: 'Ainda nao existe uma pagina dedicada de amigos nesta superficie.',
+    },
+    {
+      label: 'Notifications',
+      href: '/notifications',
+      tone: pathname === '/notifications' ? 'accent' : 'neutral',
+      description: 'Unread activity and alerts',
+    },
+    {
+      label: 'Settings',
+      href: '/settings',
+      tone: pathname.startsWith('/settings') ? 'accent' : 'neutral',
+      description: 'Profile, integrations and library',
+    },
+  ];
 
   const sessionLabel =
     status === 'authenticated'
@@ -124,7 +156,7 @@ export function Sidebar({ isOpen, onClose, className }: SidebarProps) {
 
           <div className="flex flex-col gap-3">
             {sidebarItems.map((item) => (
-              <SidebarNavItem key={item.label} item={item} />
+              <SidebarNavItem key={item.label} item={item} onNavigate={onClose} />
             ))}
           </div>
 
