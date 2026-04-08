@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, waitFor } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthProvider } from '@/components/auth/auth-provider';
 import { resetAuthStore, useAuthStore } from '@/store/auth-store';
@@ -68,5 +68,42 @@ describe('AuthProvider', () => {
       expect(replaceMock).toHaveBeenCalledWith('/login');
       expect(refreshMock).toHaveBeenCalled();
     });
+  });
+
+  it('does not overwrite an authenticated session with a stale bootstrap result', async () => {
+    let resolveSession: (value: null) => void;
+
+    fetchAuthSessionMock.mockReturnValue(
+      new Promise<null>((resolve) => {
+        resolveSession = resolve;
+      }),
+    );
+
+    render(
+      <AuthProvider>
+        <div>content</div>
+      </AuthProvider>,
+    );
+
+    await act(async () => {
+      useAuthStore.getState().setSession({
+        id: 'user-1',
+        username: 'clutchplayer',
+        email: 'clutchplayer@clutch.gg',
+      });
+
+      resolveSession!(null);
+    });
+
+    await waitFor(() => {
+      expect(useAuthStore.getState().status).toBe('authenticated');
+      expect(useAuthStore.getState().user).toEqual({
+        id: 'user-1',
+        username: 'clutchplayer',
+        email: 'clutchplayer@clutch.gg',
+      });
+    });
+
+    expect(replaceMock).not.toHaveBeenCalledWith('/login');
   });
 });
