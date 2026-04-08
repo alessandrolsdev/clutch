@@ -7,6 +7,7 @@ import { useForm } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { useToast } from '@/components/ui/toaster';
 import {
   createPostRequestSchema,
   type CreatePostRequest,
@@ -29,6 +30,7 @@ const postTypeOptions: Array<{
 
 export function CreatePostForm({ userId }: CreatePostFormProps) {
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
 
@@ -52,6 +54,11 @@ export function CreatePostForm({ userId }: CreatePostFormProps) {
     onSuccess: async () => {
       setServerError(null);
       setFeedbackMessage('Post publicado com sucesso.');
+      showToast({
+        title: 'Post publicado com sucesso',
+        description: 'Seu post ja apareceu no fluxo atual do feed.',
+        tone: 'success',
+      });
       reset({
         contentText: '',
         mediaUrl: '',
@@ -66,10 +73,20 @@ export function CreatePostForm({ userId }: CreatePostFormProps) {
 
       if (error instanceof FeedRequestError) {
         setServerError(error.message);
+        showToast({
+          title: 'Nao foi possivel publicar o post',
+          description: error.message,
+          tone: 'error',
+        });
         return;
       }
 
       setServerError('Nao foi possivel publicar agora. Tente novamente.');
+      showToast({
+        title: 'Nao foi possivel publicar o post',
+        description: 'Tente novamente em alguns instantes.',
+        tone: 'error',
+      });
     },
   });
 
