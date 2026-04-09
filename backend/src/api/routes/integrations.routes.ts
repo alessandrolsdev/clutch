@@ -98,10 +98,8 @@ export async function integrationRoutes(app: FastifyInstance): Promise<void> {
       if (!q || q.trim().length < 2) return reply.status(400).send({ message: 'Query deve ter pelo menos 2 caracteres.' });
 
       try {
-        const game = await app.integrationsService.searchIgdbGame(q.trim());
-        if (!game) return reply.status(404).send({ message: 'Jogo não encontrado.' });
-
-        return reply.status(200).send(game);
+        const games = await app.integrationsService.searchIgdbGames(q.trim());
+        return reply.status(200).send({ games });
       } catch (error) {
         const integrationError = replyWithIntegrationError(request, error);
         return reply.status(integrationError.statusCode).send(integrationError.payload);
