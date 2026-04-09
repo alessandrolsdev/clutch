@@ -5,15 +5,23 @@ import { resetAuthStore, useAuthStore } from '@/store/auth-store';
 const { apiRequestMock } = vi.hoisted(() => ({
   apiRequestMock: vi.fn(),
 }));
+const { publishPresenceStateMock } = vi.hoisted(() => ({
+  publishPresenceStateMock: vi.fn(),
+}));
 
 vi.mock('@/lib/api', () => ({
   apiRequest: apiRequestMock,
+}));
+
+vi.mock('@/services/presence', () => ({
+  publishPresenceState: publishPresenceStateMock,
 }));
 
 describe('session service', () => {
   beforeEach(() => {
     resetAuthStore();
     apiRequestMock.mockReset();
+    publishPresenceStateMock.mockReset();
   });
 
   it('hydrates the session from the auth me contract', async () => {
@@ -72,9 +80,17 @@ describe('session service', () => {
     });
 
     apiRequestMock.mockResolvedValue(new Response(null, { status: 200 }));
+    publishPresenceStateMock.mockResolvedValue(undefined);
 
     await logoutAuthSession();
 
+    expect(publishPresenceStateMock).toHaveBeenCalledWith(
+      {
+        status: 'OFFLINE',
+        platform: null,
+      },
+      { keepalive: true },
+    );
     expect(apiRequestMock).toHaveBeenCalledWith('/auth/logout', {
       method: 'POST',
     });

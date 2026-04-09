@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { Avatar } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { PresenceBadge } from '@/components/profile/presence-badge';
 import { type FriendSummary, type FriendPresenceStatus } from '@/schemas/friends';
@@ -52,6 +53,47 @@ export function sortFriendsByEffectivePresence(
   });
 }
 
+function describeRealtimeState(connectionStatus: string, errorMessage: string | null) {
+  switch (connectionStatus) {
+    case 'connected':
+      return {
+        tone: 'success' as const,
+        label: 'Realtime ativo',
+        detail: 'A ordenacao usa atualizacoes em tempo real.',
+      };
+    case 'connecting':
+      return {
+        tone: 'neutral' as const,
+        label: 'Conectando realtime',
+        detail: 'A lista usa o snapshot do backend ate a conexao estabilizar.',
+      };
+    case 'reconnecting':
+      return {
+        tone: 'warning' as const,
+        label: 'Reconectando realtime',
+        detail: 'A lista voltou temporariamente para o snapshot do backend.',
+      };
+    case 'auth_error':
+      return {
+        tone: 'warning' as const,
+        label: 'Sessao do realtime expirou',
+        detail: errorMessage ?? 'A sessao sera restaurada antes de reabrir o realtime.',
+      };
+    case 'error':
+      return {
+        tone: 'warning' as const,
+        label: 'Realtime indisponivel',
+        detail: errorMessage ?? 'Exibindo o snapshot mais recente do backend.',
+      };
+    default:
+      return {
+        tone: 'neutral' as const,
+        label: 'Realtime inativo',
+        detail: 'Exibindo o snapshot mais recente do backend.',
+      };
+  }
+}
+
 function FriendsListLoadingState() {
   return (
     <Card data-testid="friends-list-loading">
@@ -69,6 +111,8 @@ export function FriendsList({
   title = 'Amigos',
 }: FriendsListProps) {
   const presenceEntries = usePresenceStore((state) => state.entries);
+  const connectionStatus = usePresenceStore((state) => state.connectionStatus);
+  const errorMessage = usePresenceStore((state) => state.errorMessage);
   const friendsQuery = useQuery({
     queryKey: ['friends', userId],
     queryFn: () => fetchFriends(userId),
@@ -93,7 +137,9 @@ export function FriendsList({
     );
   }
 
-  const friends = sortFriendsByEffectivePresence(friendsQuery.data, presenceEntries);
+  const realtimeEntries = connectionStatus === 'connected' ? presenceEntries : {};
+  const friends = sortFriendsByEffectivePresence(friendsQuery.data, realtimeEntries);
+  const realtimeState = describeRealtimeState(connectionStatus, errorMessage);
 
   if (friends.length === 0) {
     return (
@@ -117,7 +163,11 @@ export function FriendsList({
           <p className="text-xs uppercase tracking-[0.35em] text-secondary">
             Amizades
           </p>
-          <h2 className="font-display text-2xl font-semibold text-primary">{title}</h2>
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="font-display text-2xl font-semibold text-primary">{title}</h2>
+            <Badge tone={realtimeState.tone}>{realtimeState.label}</Badge>
+          </div>
+          <p className="text-sm text-secondary">{realtimeState.detail}</p>
         </div>
 
         <div className="space-y-3">

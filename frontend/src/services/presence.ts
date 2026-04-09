@@ -3,10 +3,13 @@
 import {
   friendPresenceSocketEventSchema,
   presenceCredentialResponseSchema,
+  presenceUpdateRequestSchema,
   presenceSocketEventSchema,
+  type PresenceStatus,
   type FriendPresenceEventPayload,
 } from '@/schemas/presence';
 import { getClientEnv } from '@/lib/config/env';
+import { apiRequest } from '@/lib/api';
 
 type ErrorResponse = {
   message?: string;
@@ -50,6 +53,7 @@ export class PresenceRequestError extends Error {
 const initialReconnectDelayMs = 1_000;
 const maxReconnectDelayMs = 30_000;
 const appPingIntervalMs = 25_000;
+export const frontendPresencePlatform = 'WEB';
 
 function readJson(response: Response): Promise<unknown> {
   return response.text().then((text) => {
@@ -93,6 +97,40 @@ export async function fetchPresenceCredential(): Promise<string> {
   }
 
   return presenceCredentialResponseSchema.parse(payload).token;
+}
+
+type PublishPresenceOptions = {
+  keepalive?: boolean;
+};
+
+export async function publishPresenceState(
+  input: {
+    status: PresenceStatus;
+    currentGame?: string | null;
+    platform?: string | null;
+  },
+  options: PublishPresenceOptions = {},
+): Promise<void> {
+  const payload = presenceUpdateRequestSchema.parse({
+    status: input.status,
+    currentGame: input.currentGame ?? null,
+    platform: input.platform ?? frontendPresencePlatform,
+  });
+
+  const response = await apiRequest('/presence', {
+    method: 'POST',
+    body: payload,
+    keepalive: options.keepalive,
+    clearSessionOnUnauthorized: false,
+  });
+  const responsePayload = await readJson(response);
+
+  if (!response.ok) {
+    throw new PresenceRequestError(
+      response.status,
+      resolveErrorMessage(responsePayload, 'Nao foi possivel atualizar sua presenca agora.'),
+    );
+  }
 }
 
 function buildPresenceSocketUrl(token: string): string {
