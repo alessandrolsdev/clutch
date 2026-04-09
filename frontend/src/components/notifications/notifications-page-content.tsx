@@ -5,11 +5,13 @@ import { NotificationItem } from '@/components/notifications/notification-item';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { SectionHeading } from '@/components/ui/section-heading';
+import { useToast } from '@/components/ui/toaster';
 import { useAuth } from '@/hooks/use-auth';
 import {
   fetchNotifications,
   markAllNotificationsAsRead,
   markNotificationAsRead,
+  NotificationsRequestError,
 } from '@/services/notifications';
 
 function NotificationsLoadingState() {
@@ -61,6 +63,7 @@ function NotificationsEmptyState() {
 
 export function NotificationsPageContent() {
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const { status, user } = useAuth();
   const userId = user?.id;
 
@@ -81,14 +84,46 @@ export function NotificationsPageContent() {
   const markOneMutation = useMutation({
     mutationFn: markNotificationAsRead,
     onSuccess: async () => {
+      showToast({
+        title: 'Notificacao atualizada',
+        description: 'A notificacao foi marcada como lida.',
+        tone: 'success',
+      });
       await invalidateNotifications();
+    },
+    onError: (error) => {
+      const description = error instanceof NotificationsRequestError
+        ? error.message
+        : 'Tente novamente em alguns instantes.';
+
+      showToast({
+        title: 'Nao foi possivel atualizar a notificacao',
+        description,
+        tone: 'error',
+      });
     },
   });
 
   const markAllMutation = useMutation({
     mutationFn: markAllNotificationsAsRead,
     onSuccess: async () => {
+      showToast({
+        title: 'Inbox atualizado',
+        description: 'Todas as notificacoes foram marcadas como lidas.',
+        tone: 'success',
+      });
       await invalidateNotifications();
+    },
+    onError: (error) => {
+      const description = error instanceof NotificationsRequestError
+        ? error.message
+        : 'Tente novamente em alguns instantes.';
+
+      showToast({
+        title: 'Nao foi possivel limpar o inbox',
+        description,
+        tone: 'error',
+      });
     },
   });
 

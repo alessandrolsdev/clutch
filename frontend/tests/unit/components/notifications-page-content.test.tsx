@@ -3,9 +3,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotificationsPageContent } from '@/components/notifications/notifications-page-content';
+import { ToastProvider } from '@/components/ui/toaster';
 import { useAuth } from '@/hooks/use-auth';
 import {
   fetchNotifications,
+  NotificationsRequestError,
   markAllNotificationsAsRead,
   markNotificationAsRead,
 } from '@/services/notifications';
@@ -18,6 +20,15 @@ vi.mock('@/services/notifications', () => ({
   fetchNotifications: vi.fn(),
   markNotificationAsRead: vi.fn(),
   markAllNotificationsAsRead: vi.fn(),
+  NotificationsRequestError: class NotificationsRequestError extends Error {
+    public readonly status: number;
+
+    constructor(status: number, message: string) {
+      super(message);
+      this.name = 'NotificationsRequestError';
+      this.status = status;
+    }
+  },
 }));
 
 const mockedUseAuth = vi.mocked(useAuth);
@@ -34,7 +45,9 @@ function renderWithQuery(ui: ReactElement) {
   });
 
   return render(
-    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
+    <ToastProvider>
+      <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+    </ToastProvider>,
   );
 }
 
@@ -96,6 +109,8 @@ describe('NotificationsPageContent', () => {
     await waitFor(() => {
       expect(mockedMarkAllNotificationsAsRead).toHaveBeenCalled();
     });
+
+    expect(await screen.findByTestId('toast-item')).toHaveTextContent(/inbox atualizado/i);
   });
 
   it('marks a single notification as read from the list', async () => {
@@ -147,6 +162,47 @@ describe('NotificationsPageContent', () => {
     });
 
     expect(mockedMarkNotificationAsRead.mock.calls[0]?.[0]).toBe('notification-1');
+    expect(await screen.findByTestId('toast-item')).toHaveTextContent(/notificacao atualizada/i);
+  });
+
+  it('renders toast feedback when marking all as read fails', async () => {
+    mockedUseAuth.mockReturnValue({
+      status: 'authenticated',
+      user: {
+        id: 'user-1',
+        username: 'clutchplayer',
+        email: 'clutchplayer@clutch.gg',
+      },
+      logout: vi.fn(),
+    });
+    mockedFetchNotifications.mockResolvedValue({
+      notifications: [
+        {
+          id: 'notification-1',
+          userId: 'user-1',
+          actorId: 'user-2',
+          type: 'POST_LIKE',
+          payload: {
+            postId: 'post-1',
+            interactionType: 'GG',
+          },
+          isRead: false,
+          createdAt: '2026-03-31T10:00:00.000Z',
+        },
+      ],
+      unreadCount: 1,
+    });
+    mockedMarkAllNotificationsAsRead.mockRejectedValue(
+      new NotificationsRequestError(503, 'Inbox temporariamente indisponivel.'),
+    );
+
+    renderWithQuery(<NotificationsPageContent />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /marcar todas como lidas/i }));
+
+    expect(await screen.findByTestId('toast-item')).toHaveTextContent(
+      /nao foi possivel limpar o inbox/i,
+    );
   });
 
   it('renders empty state when there are no notifications', async () => {

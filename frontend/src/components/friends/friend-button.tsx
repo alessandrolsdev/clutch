@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/toaster';
 import { useAuth } from '@/hooks/use-auth';
 import {
   acceptFriendRequest,
@@ -19,6 +20,7 @@ type FriendButtonProps = {
 
 export function FriendButton({ targetUserId }: FriendButtonProps) {
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const { user, status } = useAuth();
   const currentUserId = user?.id ?? null;
   const [localPending, setLocalPending] = useState(false);
@@ -72,12 +74,31 @@ export function FriendButton({ targetUserId }: FriendButtonProps) {
     mutationFn: sendFriendRequest,
     onSuccess: async () => {
       setLocalPending(true);
+      showToast({
+        title: 'Pedido enviado',
+        description: 'O usuario foi notificado sobre o convite de amizade.',
+        tone: 'success',
+      });
       await commonSuccessHandler();
     },
     onError: (error) => {
       if (error instanceof FriendsRequestError && error.status === 409) {
         setLocalPending(true);
+        showToast({
+          title: 'Pedido ja existente',
+          description: error.message,
+          tone: 'info',
+        });
+        return;
       }
+
+      showToast({
+        title: 'Nao foi possivel enviar o pedido',
+        description: error instanceof FriendsRequestError
+          ? error.message
+          : 'Tente novamente em alguns instantes.',
+        tone: 'error',
+      });
     },
   });
 
@@ -85,7 +106,21 @@ export function FriendButton({ targetUserId }: FriendButtonProps) {
     mutationFn: acceptFriendRequest,
     onSuccess: async () => {
       setLocalPending(false);
+      showToast({
+        title: 'Amizade confirmada',
+        description: 'A amizade foi aceita com sucesso.',
+        tone: 'success',
+      });
       await commonSuccessHandler();
+    },
+    onError: (error) => {
+      showToast({
+        title: 'Nao foi possivel aceitar o pedido',
+        description: error instanceof FriendsRequestError
+          ? error.message
+          : 'Tente novamente em alguns instantes.',
+        tone: 'error',
+      });
     },
   });
 
@@ -93,7 +128,21 @@ export function FriendButton({ targetUserId }: FriendButtonProps) {
     mutationFn: removeFriend,
     onSuccess: async () => {
       setLocalPending(false);
+      showToast({
+        title: 'Amizade removida',
+        description: 'O perfil voltou a ficar fora da sua lista de amigos.',
+        tone: 'success',
+      });
       await commonSuccessHandler();
+    },
+    onError: (error) => {
+      showToast({
+        title: 'Nao foi possivel remover a amizade',
+        description: error instanceof FriendsRequestError
+          ? error.message
+          : 'Tente novamente em alguns instantes.',
+        tone: 'error',
+      });
     },
   });
 
