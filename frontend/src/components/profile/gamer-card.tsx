@@ -18,7 +18,9 @@ export function GamerCard({ profile, actions }: GamerCardProps) {
   const displayName = profile.profile.displayName || profile.username;
   const badgeList = profile.profile.badges.slice(0, 4);
   const initials = profile.username.slice(0, 2).toUpperCase();
-  const realtimePresence = usePresenceStore((state) => state.entries[profile.id]);
+  const realtimePresence = usePresenceStore((state) =>
+    state.connectionStatus === 'connected' ? state.entries[profile.id] : undefined,
+  );
   const effectivePresence = {
     status: realtimePresence?.status ?? profile.presence.status,
     currentGame: realtimePresence?.currentGame ?? profile.presence.currentGame,

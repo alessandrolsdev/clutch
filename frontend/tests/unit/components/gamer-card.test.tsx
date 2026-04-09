@@ -41,6 +41,7 @@ describe('GamerCard', () => {
   });
 
   it('overrides static profile presence with realtime store data', () => {
+    usePresenceStore.getState().setConnectionStatus('connected');
     usePresenceStore.getState().upsertPresence(
       {
         userId: 'user-1',
@@ -55,5 +56,23 @@ describe('GamerCard', () => {
 
     expect(screen.getByText(/in game/i)).toBeInTheDocument();
     expect(screen.getByText(/jogando valorant/i)).toBeInTheDocument();
+  });
+
+  it('falls back to the backend snapshot when realtime is not connected', () => {
+    usePresenceStore.getState().setConnectionStatus('error', 'Realtime indisponivel');
+    usePresenceStore.getState().upsertPresence(
+      {
+        userId: 'user-1',
+        status: 'IN_GAME',
+        currentGame: 'Valorant',
+        platform: 'PC',
+      },
+      123,
+    );
+
+    render(<GamerCard profile={profileFixture} />);
+
+    expect(screen.getByText(/offline/i)).toBeInTheDocument();
+    expect(screen.getByText(/sem atividade ativa/i)).toBeInTheDocument();
   });
 });

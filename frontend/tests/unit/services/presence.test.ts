@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   fetchPresenceCredential,
+  frontendPresencePlatform,
+  publishPresenceState,
   PresenceConnection,
   PresenceRequestError,
 } from '@/services/presence';
@@ -54,10 +56,19 @@ class FakeWebSocket {
   }
 }
 
+const { apiRequestMock } = vi.hoisted(() => ({
+  apiRequestMock: vi.fn(),
+}));
+
+vi.mock('@/lib/api', () => ({
+  apiRequest: apiRequestMock,
+}));
+
 describe('presence service', () => {
   beforeEach(() => {
     process.env.NEXT_PUBLIC_WS_URL = 'ws://localhost:8080';
     vi.restoreAllMocks();
+    apiRequestMock.mockReset();
     vi.stubGlobal('WebSocket', { OPEN: FakeWebSocket.OPEN });
   });
 
@@ -80,6 +91,25 @@ describe('presence service', () => {
     );
 
     await expect(fetchPresenceCredential()).resolves.toBe('jwt-token');
+  });
+
+  it('publishes the authenticated presence state through the existing backend contract', async () => {
+    apiRequestMock.mockResolvedValue(new Response(null, { status: 200 }));
+
+    await publishPresenceState({
+      status: 'ONLINE',
+    });
+
+    expect(apiRequestMock).toHaveBeenCalledWith('/presence', {
+      method: 'POST',
+      body: {
+        status: 'ONLINE',
+        currentGame: null,
+        platform: frontendPresencePlatform,
+      },
+      keepalive: undefined,
+      clearSessionOnUnauthorized: false,
+    });
   });
 
   it('opens the websocket with the authenticated token and parses presence events', async () => {
