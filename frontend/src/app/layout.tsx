@@ -25,8 +25,11 @@ type RootLayoutProps = Readonly<{
 
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
-    <html lang="en" className="dark">
-      <body className={`${bodyFont.variable} ${displayFont.variable}`}>
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <body
+        className={`${bodyFont.variable} ${displayFont.variable}`}
+        suppressHydrationWarning
+      >
         <Providers>{children}</Providers>
       </body>
     </html>

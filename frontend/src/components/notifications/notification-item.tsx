@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { HydrationSafeTime } from '@/components/ui/hydration-safe-time';
 import {
   friendAcceptedNotificationPayloadSchema,
   friendRequestNotificationPayloadSchema,
@@ -28,13 +29,6 @@ type NotificationPresentation = {
   ctaHref?: string;
   ctaLabel?: string;
 };
-
-function formatNotificationDate(createdAt: string): string {
-  return new Intl.DateTimeFormat('pt-BR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(new Date(createdAt));
-}
 
 function getNotificationPresentation(
   notification: NotificationRecord,
@@ -146,9 +140,12 @@ export function NotificationItem({
         </div>
 
         <div className="flex flex-col items-end gap-2">
-          <span className="text-xs uppercase tracking-[0.24em] text-secondary">
-            {formatNotificationDate(notification.createdAt)}
-          </span>
+          <HydrationSafeTime
+            value={notification.createdAt}
+            options={{ dateStyle: 'short', timeStyle: 'short' }}
+            fallback={notification.createdAt}
+            className="text-xs uppercase tracking-[0.24em] text-secondary"
+          />
           <Badge tone={notification.isRead ? 'neutral' : 'accent'}>
             {notification.isRead ? 'Lida' : 'Nao lida'}
           </Badge>

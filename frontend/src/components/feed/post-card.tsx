@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/card';
 import { CommentSection } from '@/components/feed/comment-section';
 import { GameContextBadge } from '@/components/feed/game-context-badge';
 import { ReactionBar } from '@/components/feed/reaction-bar';
+import { HydrationSafeTime } from '@/components/ui/hydration-safe-time';
 import { useAuth } from '@/hooks/use-auth';
 import { type FeedPost } from '@/schemas/feed';
 import { deletePost, FeedRequestError } from '@/services/feed';
@@ -15,19 +16,6 @@ import { deletePost, FeedRequestError } from '@/services/feed';
 type PostCardProps = {
   post: FeedPost;
 };
-
-function formatPostDate(value: string): string {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat('pt-BR', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(date);
-}
 
 export function PostCard({ post }: PostCardProps) {
   const queryClient = useQueryClient();
@@ -104,7 +92,11 @@ export function PostCard({ post }: PostCardProps) {
 
         <footer className="space-y-3 border-t border-border/70 pt-4">
           <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-secondary">
-            <span>{formatPostDate(post.createdAt)}</span>
+            <HydrationSafeTime
+              value={post.createdAt}
+              options={{ dateStyle: 'medium', timeStyle: 'short' }}
+              fallback={post.createdAt}
+            />
             {isOwnPost ? (
               <Button
                 size="sm"
