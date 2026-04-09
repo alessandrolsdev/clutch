@@ -35,6 +35,8 @@ export {
 } from './integrations';
 export {
   fetchPresenceCredential,
+  frontendPresencePlatform,
+  publishPresenceState,
   PresenceConnection,
   PresenceRequestError,
 } from './presence';
