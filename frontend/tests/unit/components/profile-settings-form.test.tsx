@@ -115,9 +115,11 @@ describe('ProfileSettingsForm', () => {
       target: { value: 'Bio atualizada' },
     });
 
-    expect(screen.getByTestId('profile-preview')).toHaveTextContent(
-      'Novo nome::Bio atualizada',
-    );
+    await waitFor(() => {
+      expect(screen.getByTestId('profile-preview')).toHaveTextContent(
+        'Novo nome::Bio atualizada',
+      );
+    });
   });
 
   it('submits the real profile patch payload', async () => {
