@@ -23,7 +23,7 @@ type PersistIntegrationInput = {
 };
 
 type SteamIntegrationClient = Pick<typeof steamService, 'validateSteamId' | 'getOwnedGames'>;
-type IgdbIntegrationClient = Pick<typeof igdbService, 'searchGame'>;
+type IgdbIntegrationClient = Pick<typeof igdbService, 'searchGame' | 'searchGames'>;
 type EpicIntegrationClient = Pick<typeof epicService, 'validateToken' | 'getLibrary'>;
 
 type IntegrationsPersistence = {
@@ -177,7 +177,7 @@ export function createIntegrationsService(dependencies?: {
 }): {
   connectSteam: (userId: string, steamId: string) => Promise<{ imported: number; message: string }>;
   syncSteamLibrary: (userId: string) => Promise<{ synced: number; message: string }>;
-  searchIgdbGame: (query: string) => Promise<IgdbGame | null>;
+  searchIgdbGames: (query: string) => Promise<IgdbGame[]>;
   connectEpic: (userId: string, authToken: string) => Promise<{ imported: number; message: string }>;
 } {
   const steamClient = dependencies?.steamClient ?? steamService;
@@ -237,8 +237,8 @@ export function createIntegrationsService(dependencies?: {
       };
     },
 
-    async searchIgdbGame(query: string): Promise<IgdbGame | null> {
-      return igdbClient.searchGame(query);
+    async searchIgdbGames(query: string): Promise<IgdbGame[]> {
+      return igdbClient.searchGames(query, 5);
     },
 
     async connectEpic(userId: string, authToken: string): Promise<{ imported: number; message: string }> {

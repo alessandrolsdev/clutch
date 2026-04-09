@@ -52,6 +52,7 @@ describe('integrations service layer', () => {
         getOwnedGames: vi.fn().mockResolvedValue(mockSteamGames),
       },
       igdbClient: {
+        searchGames: vi.fn(),
         searchGame: vi.fn()
           .mockResolvedValueOnce({
             id: 730,
@@ -101,6 +102,7 @@ describe('integrations service layer', () => {
         getOwnedGames: vi.fn(),
       },
       igdbClient: {
+        searchGames: vi.fn(),
         searchGame: vi.fn(),
       },
       epicClient: {
@@ -128,6 +130,7 @@ describe('integrations service layer', () => {
         getOwnedGames: vi.fn(),
       },
       igdbClient: {
+        searchGames: vi.fn(),
         searchGame: vi.fn(),
       },
       epicClient: {
@@ -169,6 +172,7 @@ describe('integrations service layer', () => {
         getOwnedGames: vi.fn(),
       },
       igdbClient: {
+        searchGames: vi.fn(),
         searchGame: vi.fn(),
       },
       epicClient: {
@@ -228,6 +232,34 @@ describe('igdbService', () => {
 
     expect(result?.name).toBe('Valorant');
     expect(result?.coverUrl).toContain('t_cover_big');
+  });
+
+  it('retorna multiplos candidatos quando a consulta e ambigua', async () => {
+    vi.mocked(redis.get).mockResolvedValue('cached-token');
+    vi.mocked(axios.post).mockResolvedValue({
+      data: [
+        {
+          id: 1,
+          name: 'DOOM',
+          cover: { id: 1, url: '//images.igdb.com/igdb/image/upload/t_thumb/doom.jpg' },
+          platforms: [{ name: 'PC' }],
+          summary: 'Classic shooter',
+        },
+        {
+          id: 2,
+          name: 'DOOM Eternal',
+          cover: { id: 2, url: '//images.igdb.com/igdb/image/upload/t_thumb/doom-eternal.jpg' },
+          platforms: [{ name: 'PC' }, { name: 'PlayStation 5' }],
+          summary: 'Modern shooter',
+        },
+      ],
+    } as never);
+
+    const result = await igdbService.searchGames('DOOM', 5);
+
+    expect(result).toHaveLength(2);
+    expect(result[0]?.name).toBe('DOOM');
+    expect(result[1]?.name).toBe('DOOM Eternal');
   });
 
   it('traduz timeout do IGDB para erro coerente', async () => {
