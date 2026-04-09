@@ -47,6 +47,14 @@ export interface IgdbGame {
   summary:  string | null;
 }
 
+type IgdbApiGame = {
+  id: number;
+  name: string;
+  cover?: { id: number; url: string };
+  platforms?: Array<{ name: string }>;
+  summary?: string;
+};
+
 async function getAccessToken(): Promise<string> {
   const cached = await redis.get(TOKEN_REDIS_KEY);
   if (cached) return cached;
@@ -80,29 +88,16 @@ async function getAccessToken(): Promise<string> {
 }
 
 export const igdbService = {
-
-  async searchGame(name: string): Promise<IgdbGame | null> {
+  async searchGames(name: string, limit = 5): Promise<IgdbGame[]> {
     const token = await getAccessToken();
     const credentials = resolveIgdbCredentials();
 
-    let response: { data: Array<{
-      id: number;
-      name: string;
-      cover?: { id: number; url: string };
-      platforms?: Array<{ name: string }>;
-      summary?: string;
-    }> };
+    let response: { data: IgdbApiGame[] };
 
     try {
-      response = await axios.post<Array<{
-        id: number;
-        name: string;
-        cover?: { id: number; url: string };
-        platforms?: Array<{ name: string }>;
-        summary?: string;
-      }>>(
+      response = await axios.post<IgdbApiGame[]>(
         `${IGDB_BASE_URL}/games`,
-        `search "${name}"; fields name,cover.url,platforms.name,summary; limit 1;`,
+        `search "${name}"; fields name,cover.url,platforms.name,summary; limit ${limit};`,
         {
           headers: {
             'Client-ID': credentials.clientId,
@@ -121,18 +116,20 @@ export const igdbService = {
       );
     }
 
-    const game = response.data[0];
-    if (!game) return null;
-
-    return {
-      id:        game.id,
-      name:      game.name,
-      coverUrl:  game.cover?.url
+    return response.data.map((game) => ({
+      id: game.id,
+      name: game.name,
+      coverUrl: game.cover?.url
         ? `https:${game.cover.url.replace('t_thumb', 't_cover_big')}`
         : null,
-      platforms: game.platforms?.map((p) => p.name) ?? [],
-      summary:   game.summary ?? null,
-    };
+      platforms: game.platforms?.map((platform) => platform.name) ?? [],
+      summary: game.summary ?? null,
+    }));
+  },
+
+  async searchGame(name: string): Promise<IgdbGame | null> {
+    const games = await this.searchGames(name, 1);
+    return games[0] ?? null;
   },
 
   async getGameById(igdbId: number): Promise<IgdbGame | null> {

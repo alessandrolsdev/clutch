@@ -42,12 +42,16 @@ export const igdbSearchRequestSchema = z.object({
     .min(2, 'Digite pelo menos 2 caracteres para buscar no IGDB.'),
 });
 
-export const igdbSearchResponseSchema = z.object({
+export const igdbSearchGameSchema = z.object({
   id: z.number().int(),
   name: z.string().min(1),
   coverUrl: z.string().nullable(),
   platforms: z.array(z.string()),
   summary: z.string().nullable(),
+});
+
+export const igdbSearchResponseSchema = z.object({
+  games: z.array(igdbSearchGameSchema),
 });
 
 export type SteamConnectValues = z.infer<typeof steamConnectRequestSchema>;
@@ -58,4 +62,5 @@ export type EpicConnectResponse = z.infer<typeof epicConnectResponseSchema>;
 export type DiscordOAuthStartResponse = z.infer<typeof discordOAuthStartResponseSchema>;
 export type DiscordOAuthCallbackResponse = z.infer<typeof discordOAuthCallbackResponseSchema>;
 export type IgdbSearchValues = z.infer<typeof igdbSearchRequestSchema>;
+export type IgdbSearchGame = z.infer<typeof igdbSearchGameSchema>;
 export type IgdbSearchResponse = z.infer<typeof igdbSearchResponseSchema>;

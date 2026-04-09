@@ -8,7 +8,7 @@ import {
 const createMockIntegrationsService = () => ({
   connectSteam: vi.fn(),
   syncSteamLibrary: vi.fn(),
-  searchIgdbGame: vi.fn(),
+  searchIgdbGames: vi.fn(),
   connectEpic: vi.fn(),
 });
 
@@ -117,13 +117,13 @@ describe('Integrations Routes', () => {
       });
 
       expect(response.statusCode).toBe(400);
-      expect(integrationsService.searchIgdbGame).not.toHaveBeenCalled();
+      expect(integrationsService.searchIgdbGames).not.toHaveBeenCalled();
       await app.close();
     });
 
-    it('retorna 404 quando jogo nao e encontrado', async () => {
+    it('retorna lista vazia quando nenhum candidato e encontrado', async () => {
       const integrationsService = createMockIntegrationsService();
-      integrationsService.searchIgdbGame.mockResolvedValue(null);
+      integrationsService.searchIgdbGames.mockResolvedValue([]);
       const app = await buildApp({ integrationsService });
 
       const response = await app.inject({
@@ -131,14 +131,50 @@ describe('Integrations Routes', () => {
         url: '/integrations/igdb/search?q=unknown-game',
       });
 
-      expect(response.statusCode).toBe(404);
-      expect(integrationsService.searchIgdbGame).toHaveBeenCalledWith('unknown-game');
+      expect(response.statusCode).toBe(200);
+      expect(integrationsService.searchIgdbGames).toHaveBeenCalledWith('unknown-game');
+      expect(response.json()).toEqual({ games: [] });
+      await app.close();
+    });
+
+    it('retorna multiplos candidatos quando o service encontra correspondencias ambiguas', async () => {
+      const integrationsService = createMockIntegrationsService();
+      integrationsService.searchIgdbGames.mockResolvedValue([
+        {
+          id: 1,
+          name: 'DOOM',
+          coverUrl: null,
+          platforms: ['PC'],
+          summary: 'Classic shooter',
+        },
+        {
+          id: 2,
+          name: 'DOOM Eternal',
+          coverUrl: null,
+          platforms: ['PC', 'PlayStation 5'],
+          summary: 'Modern shooter',
+        },
+      ]);
+      const app = await buildApp({ integrationsService });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/integrations/igdb/search?q=DOOM',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        games: [
+          { name: 'DOOM' },
+          { name: 'DOOM Eternal' },
+        ],
+      });
       await app.close();
     });
 
     it('traduz timeout de IGDB para 504', async () => {
       const integrationsService = createMockIntegrationsService();
-      integrationsService.searchIgdbGame.mockRejectedValue(
+      integrationsService.searchIgdbGames.mockRejectedValue(
         createIntegrationError('igdb', 504, 'timeout', 'Integração IGDB indisponível no momento.'),
       );
       const app = await buildApp({ integrationsService });

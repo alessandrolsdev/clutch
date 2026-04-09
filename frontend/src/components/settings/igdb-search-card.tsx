@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import {
   igdbSearchRequestSchema,
+  type IgdbSearchGame,
   type IgdbSearchResponse,
   type IgdbSearchValues,
 } from '@/schemas/integrations';
@@ -17,6 +18,7 @@ import { IntegrationsRequestError, searchIgdbGame } from '@/services/integration
 
 export function IgdbSearchCard() {
   const [result, setResult] = useState<IgdbSearchResponse | null>(null);
+  const [selectedGameId, setSelectedGameId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const {
@@ -36,9 +38,11 @@ export function IgdbSearchCard() {
     onSuccess: (response) => {
       setErrorMessage(null);
       setResult(response);
+      setSelectedGameId(response.games.length === 1 ? response.games[0]?.id ?? null : null);
     },
     onError: (error) => {
       setResult(null);
+      setSelectedGameId(null);
       setErrorMessage(
         error instanceof IntegrationsRequestError
           ? error.message
@@ -51,6 +55,44 @@ export function IgdbSearchCard() {
     await searchMutation.mutateAsync(values);
   });
 
+  const games = result?.games ?? [];
+  const selectedGame = selectedGameId === null
+    ? null
+    : games.find((game) => game.id === selectedGameId) ?? null;
+
+  const renderGamePreview = (game: IgdbSearchGame) => (
+    <Card className="space-y-4" tone="neutral">
+      <div className="flex items-start gap-4">
+        <Avatar
+          src={game.coverUrl}
+          alt={game.name}
+          fallback={game.name.slice(0, 2).toUpperCase()}
+          size="lg"
+          className="rounded-control"
+        />
+        <div className="space-y-2">
+          <h3 className="font-display text-xl font-semibold text-primary">
+            {game.name}
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            {game.platforms.map((platform) => (
+              <Badge key={platform} tone="neutral">
+                {platform}
+              </Badge>
+            ))}
+            {game.platforms.length === 0 ? (
+              <Badge tone="neutral">Plataforma indisponivel</Badge>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      <p className="text-sm leading-6 text-secondary">
+        {game.summary || 'O backend nao retornou resumo para este candidato.'}
+      </p>
+    </Card>
+  );
+
   return (
     <Card className="space-y-5">
       <div className="space-y-2">
@@ -59,7 +101,7 @@ export function IgdbSearchCard() {
           Busca de jogos
         </h2>
         <p className="text-sm leading-6 text-secondary">
-          O contrato atual retorna um jogo por consulta, com capa e plataformas quando disponiveis.
+          Quando a consulta for ambigua, o contrato atual devolve uma lista curta de candidatos para selecao.
         </p>
       </div>
 
@@ -92,34 +134,78 @@ export function IgdbSearchCard() {
         </div>
       ) : null}
 
-      {result ? (
-        <Card className="space-y-4" tone="neutral">
-          <div className="flex items-start gap-4">
-            <Avatar
-              src={result.coverUrl}
-              alt={result.name}
-              fallback={result.name.slice(0, 2).toUpperCase()}
-              size="lg"
-              className="rounded-control"
-            />
-            <div className="space-y-2">
-              <h3 className="font-display text-xl font-semibold text-primary">
-                {result.name}
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {result.platforms.map((platform) => (
-                  <Badge key={platform} tone="neutral">
-                    {platform}
-                  </Badge>
-                ))}
-              </div>
+      {result && games.length === 0 ? (
+        <Card tone="neutral" data-testid="igdb-search-empty">
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-primary">Nenhum candidato encontrado</p>
+            <p className="text-sm leading-6 text-secondary">
+              Tente refinar o nome do jogo para encontrar um resultado mais preciso.
+            </p>
+          </div>
+        </Card>
+      ) : null}
+
+      {result && games.length > 1 ? (
+        <Card tone="neutral" data-testid="igdb-search-results">
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-primary">Possiveis resultados</p>
+              <p className="text-sm leading-6 text-secondary">
+                Escolha o candidato que melhor corresponde ao jogo que voce procura.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              {games.map((game) => {
+                const isSelected = selectedGameId === game.id;
+
+                return (
+                  <button
+                    key={game.id}
+                    type="button"
+                    className={`w-full rounded-control border px-control-x py-control-y text-left transition ${
+                      isSelected
+                        ? 'border-accent-cyan bg-accent-cyan/10'
+                        : 'border-border bg-background-secondary hover:border-accent-cyan/60'
+                    }`}
+                    onClick={() => {
+                      setSelectedGameId(game.id);
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-primary">{game.name}</p>
+                        <p className="text-xs text-secondary">
+                          {game.platforms.length > 0
+                            ? game.platforms.join(' • ')
+                            : 'Plataforma indisponivel'}
+                        </p>
+                      </div>
+                      <Badge tone={isSelected ? 'accent' : 'neutral'}>
+                        {isSelected ? 'Selecionado' : 'Selecionar'}
+                      </Badge>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
-
-          <p className="text-sm leading-6 text-secondary">
-            {result.summary || 'O backend nao retornou resumo para esta busca.'}
-          </p>
         </Card>
+      ) : null}
+
+      {selectedGame ? (
+        <div data-testid="igdb-search-selected">
+          <p className="mb-3 text-sm font-medium text-primary">
+            Resultado selecionado
+          </p>
+          {renderGamePreview(selectedGame)}
+        </div>
+      ) : null}
+
+      {result && games.length === 1 && selectedGame ? (
+        <div className="rounded-control border border-status-online/25 bg-[rgba(16,185,129,0.08)] px-control-x py-control-y text-sm text-primary">
+          Busca direta concluida com um candidato unico.
+        </div>
       ) : null}
     </Card>
   );
