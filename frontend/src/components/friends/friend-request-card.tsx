@@ -5,6 +5,7 @@ import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { HydrationSafeTime } from '@/components/ui/hydration-safe-time';
+import { useToast } from '@/components/ui/toaster';
 import { type PendingFriendRequest } from '@/schemas/friends';
 import {
   acceptFriendRequest,
@@ -21,6 +22,7 @@ export function FriendRequestCard({
   receiverUserId,
 }: FriendRequestCardProps) {
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const senderName =
     request.sender.profile?.displayName && request.sender.profile.displayName.length > 0
       ? request.sender.profile.displayName
@@ -30,6 +32,11 @@ export function FriendRequestCard({
   const acceptMutation = useMutation({
     mutationFn: acceptFriendRequest,
     onSuccess: async () => {
+      showToast({
+        title: 'Pedido aceito',
+        description: 'A amizade ja pode aparecer nas superfices sociais do app.',
+        tone: 'success',
+      });
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: ['friend-requests', receiverUserId],
@@ -41,6 +48,15 @@ export function FriendRequestCard({
           queryKey: ['profile'],
         }),
       ]);
+    },
+    onError: (error) => {
+      showToast({
+        title: 'Nao foi possivel aceitar o pedido',
+        description: error instanceof FriendsRequestError
+          ? error.message
+          : 'Tente novamente em alguns instantes.',
+        tone: 'error',
+      });
     },
   });
 
