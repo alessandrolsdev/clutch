@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import { HydrationSafeTime } from '@/components/ui/hydration-safe-time';
 
 export type LibraryGameRecord = {
   gameName: string;
@@ -22,24 +23,6 @@ function formatHoursPlayed(hoursPlayed: number | null): string {
   const roundedHours = Math.max(0, Math.round(hoursPlayed));
 
   return `${roundedHours}h jogadas`;
-}
-
-function formatLastPlayedAt(lastPlayedAt: string | null): string {
-  if (!lastPlayedAt) {
-    return 'Sem atividade recente';
-  }
-
-  const parsedDate = new Date(lastPlayedAt);
-
-  if (Number.isNaN(parsedDate.getTime())) {
-    return 'Sem atividade recente';
-  }
-
-  return new Intl.DateTimeFormat('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(parsedDate);
 }
 
 export function GameCard({ game }: GameCardProps) {
@@ -72,7 +55,16 @@ export function GameCard({ game }: GameCardProps) {
         </div>
 
         <p className="text-xs uppercase tracking-[0.24em] text-secondary">
-          Ultima atividade: {formatLastPlayedAt(game.lastPlayedAt)}
+          Ultima atividade:{' '}
+          {game.lastPlayedAt ? (
+            <HydrationSafeTime
+              value={game.lastPlayedAt}
+              options={{ day: '2-digit', month: '2-digit', year: 'numeric' }}
+              fallback="Sem atividade recente"
+            />
+          ) : (
+            'Sem atividade recente'
+          )}
         </p>
       </div>
     </Card>

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { HydrationSafeTime } from '@/components/ui/hydration-safe-time';
 import { commentContentSchema, type PostComment } from '@/schemas/feed';
 import {
   createPostComment,
@@ -22,19 +23,6 @@ type CommentComposerProps = {
   disabled: boolean;
   onSubmit: (content: string) => Promise<void>;
 };
-
-function formatCommentDate(value: string): string {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat('pt-BR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(date);
-}
 
 function resolveCommentAuthorName(comment: PostComment | PostComment['replies'][number]) {
   return comment.author.profile?.displayName && comment.author.profile.displayName.length > 0
@@ -132,7 +120,12 @@ function CommentItem({
           </div>
         </div>
 
-        <span className="text-xs text-secondary">{formatCommentDate(comment.createdAt)}</span>
+        <HydrationSafeTime
+          value={comment.createdAt}
+          options={{ dateStyle: 'short', timeStyle: 'short' }}
+          fallback={comment.createdAt}
+          className="text-xs text-secondary"
+        />
       </header>
 
       <p className="text-sm leading-6 text-primary">{comment.content}</p>
@@ -193,9 +186,12 @@ function CommentItem({
                     </div>
                   </div>
 
-                  <span className="text-xs text-secondary">
-                    {formatCommentDate(reply.createdAt)}
-                  </span>
+                  <HydrationSafeTime
+                    value={reply.createdAt}
+                    options={{ dateStyle: 'short', timeStyle: 'short' }}
+                    fallback={reply.createdAt}
+                    className="text-xs text-secondary"
+                  />
                 </header>
 
                 <p className="text-sm leading-6 text-primary">{reply.content}</p>
