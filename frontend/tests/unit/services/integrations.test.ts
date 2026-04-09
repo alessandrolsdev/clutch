@@ -130,11 +130,15 @@ describe('integrations service', () => {
     mockedApiRequest.mockResolvedValue(
       new Response(
         JSON.stringify({
-          id: 730,
-          name: 'Counter-Strike 2',
-          coverUrl: 'https://images.ct2.jpg',
-          platforms: ['PC'],
-          summary: 'Competitive FPS',
+          games: [
+            {
+              id: 730,
+              name: 'Counter-Strike 2',
+              coverUrl: 'https://images.ct2.jpg',
+              platforms: ['PC'],
+              summary: 'Competitive FPS',
+            },
+          ],
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       ),
@@ -142,7 +146,7 @@ describe('integrations service', () => {
 
     const response = await searchIgdbGame('Counter-Strike 2');
 
-    expect(response.name).toBe('Counter-Strike 2');
+    expect(response.games[0]?.name).toBe('Counter-Strike 2');
     expect(mockedApiRequest).toHaveBeenCalledWith(
       '/integrations/igdb/search?q=Counter-Strike%202',
       { method: 'GET' },
