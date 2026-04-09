@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FriendButton } from '@/components/friends/friend-button';
+import { ToastProvider } from '@/components/ui/toaster';
 import { useAuth } from '@/hooks/use-auth';
 import {
   acceptFriendRequest,
@@ -49,9 +50,11 @@ function renderFriendButton(targetUserId = 'user-2') {
   });
 
   render(
-    <QueryClientProvider client={queryClient}>
-      <FriendButton targetUserId={targetUserId} />
-    </QueryClientProvider>,
+    <ToastProvider>
+      <QueryClientProvider client={queryClient}>
+        <FriendButton targetUserId={targetUserId} />
+      </QueryClientProvider>
+    </ToastProvider>,
   );
 }
 
@@ -99,6 +102,7 @@ describe('FriendButton', () => {
     expect(mockedSendFriendRequest.mock.calls[0]?.[0]).toBe('user-2');
 
     expect(await screen.findByRole('button', { name: /pedido enviado/i })).toBeDisabled();
+    expect(await screen.findByTestId('toast-item')).toHaveTextContent(/pedido enviado/i);
   });
 
   it('accepts an incoming request state', async () => {
@@ -126,6 +130,7 @@ describe('FriendButton', () => {
       expect(mockedAcceptFriendRequest).toHaveBeenCalled();
     });
     expect(mockedAcceptFriendRequest.mock.calls[0]?.[0]).toBe('request-1');
+    expect(await screen.findByTestId('toast-item')).toHaveTextContent(/amizade confirmada/i);
   });
 
   it('renders the friend state and removes friendship', async () => {
@@ -156,5 +161,6 @@ describe('FriendButton', () => {
       expect(mockedRemoveFriend).toHaveBeenCalled();
     });
     expect(mockedRemoveFriend.mock.calls[0]?.[0]).toBe('user-2');
+    expect(await screen.findByTestId('toast-item')).toHaveTextContent(/amizade removida/i);
   });
 });

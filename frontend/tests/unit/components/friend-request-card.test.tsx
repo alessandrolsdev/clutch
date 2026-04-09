@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FriendRequestCard } from '@/components/friends/friend-request-card';
+import { ToastProvider } from '@/components/ui/toaster';
 import { acceptFriendRequest } from '@/services/friends';
 
 vi.mock('@/services/friends', () => ({
@@ -29,23 +30,25 @@ function renderFriendRequestCard() {
   });
 
   render(
-    <QueryClientProvider client={queryClient}>
-      <FriendRequestCard
-        receiverUserId="user-1"
-        request={{
-          id: 'request-1',
-          createdAt: '2026-03-31T10:00:00.000Z',
-          sender: {
-            id: 'user-2',
-            username: 'pixelsamurai',
-            profile: {
-              displayName: 'Pixel Samurai',
-              avatarUrl: null,
+    <ToastProvider>
+      <QueryClientProvider client={queryClient}>
+        <FriendRequestCard
+          receiverUserId="user-1"
+          request={{
+            id: 'request-1',
+            createdAt: '2026-03-31T10:00:00.000Z',
+            sender: {
+              id: 'user-2',
+              username: 'pixelsamurai',
+              profile: {
+                displayName: 'Pixel Samurai',
+                avatarUrl: null,
+              },
             },
-          },
-        }}
-      />
-    </QueryClientProvider>,
+          }}
+        />
+      </QueryClientProvider>
+    </ToastProvider>,
   );
 }
 
@@ -65,5 +68,6 @@ describe('FriendRequestCard', () => {
       expect(mockedAcceptFriendRequest).toHaveBeenCalled();
     });
     expect(mockedAcceptFriendRequest.mock.calls[0]?.[0]).toBe('request-1');
+    expect(await screen.findByTestId('toast-item')).toHaveTextContent(/pedido aceito/i);
   });
 });
