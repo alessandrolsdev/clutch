@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { HydrationSafeTime } from '@/components/ui/hydration-safe-time';
 import { type PendingFriendRequest } from '@/schemas/friends';
 import {
   acceptFriendRequest,
@@ -14,19 +15,6 @@ type FriendRequestCardProps = {
   request: PendingFriendRequest;
   receiverUserId: string;
 };
-
-function formatCreatedAt(value: string): string {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat('pt-BR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(date);
-}
 
 export function FriendRequestCard({
   request,
@@ -75,7 +63,12 @@ export function FriendRequestCard({
             <p className="truncate text-sm font-semibold text-primary">{senderName}</p>
             <p className="truncate text-xs text-secondary">@{request.sender.username}</p>
             <p className="mt-2 text-xs text-secondary">
-              Pedido enviado em {formatCreatedAt(request.createdAt)}
+              Pedido enviado em{' '}
+              <HydrationSafeTime
+                value={request.createdAt}
+                options={{ dateStyle: 'short', timeStyle: 'short' }}
+                fallback={request.createdAt}
+              />
             </p>
           </div>
         </div>
