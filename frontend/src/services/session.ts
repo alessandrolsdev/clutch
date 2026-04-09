@@ -1,5 +1,6 @@
 import { apiRequest } from '@/lib/api';
 import { authSessionSchema, type AuthSession } from '@/schemas/auth';
+import { publishPresenceState } from '@/services/presence';
 import { useAuthStore } from '@/store/auth-store';
 
 async function readJson(response: Response): Promise<unknown> {
@@ -34,6 +35,14 @@ export async function fetchAuthSession(): Promise<AuthSession | null> {
 
 export async function logoutAuthSession(): Promise<void> {
   try {
+    await publishPresenceState(
+      {
+        status: 'OFFLINE',
+        platform: null,
+      },
+      { keepalive: true },
+    ).catch(() => undefined);
+
     await apiRequest('/auth/logout', {
       method: 'POST',
     });

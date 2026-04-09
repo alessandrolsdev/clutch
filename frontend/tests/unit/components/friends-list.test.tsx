@@ -78,6 +78,7 @@ describe('FriendsList', () => {
       },
     ]);
 
+    usePresenceStore.getState().setConnectionStatus('connected');
     usePresenceStore.getState().upsertPresence(
       {
         userId: 'friend-1',
@@ -94,5 +95,40 @@ describe('FriendsList', () => {
     expect(items[0]).toHaveTextContent(/offline/i);
     expect(items[0]).toHaveTextContent(/jogando marvel rivals/i);
     expect(items[1]).toHaveTextContent(/online/i);
+  });
+
+  it('falls back to the backend snapshot when realtime is disconnected', async () => {
+    mockedFetchFriends.mockResolvedValue([
+      {
+        id: 'friend-1',
+        username: 'offline',
+        profile: { displayName: 'Offline', avatarUrl: null, accentColor: null },
+        presence: { status: 'OFFLINE', currentGame: null, platform: null },
+      },
+      {
+        id: 'friend-2',
+        username: 'online',
+        profile: { displayName: 'Online', avatarUrl: null, accentColor: null },
+        presence: { status: 'ONLINE', currentGame: null, platform: null },
+      },
+    ]);
+
+    usePresenceStore.getState().setConnectionStatus('error', 'Realtime indisponivel');
+    usePresenceStore.getState().upsertPresence(
+      {
+        userId: 'friend-1',
+        status: 'IN_GAME',
+        currentGame: 'Marvel Rivals',
+        platform: 'PC',
+      },
+      123,
+    );
+
+    renderFriendsList();
+
+    expect((await screen.findAllByText(/realtime indisponivel/i)).length).toBeGreaterThan(0);
+    const items = await screen.findAllByTestId('friend-list-item');
+    expect(items[0]).toHaveTextContent(/online/i);
+    expect(items[1]).toHaveTextContent(/offline/i);
   });
 });

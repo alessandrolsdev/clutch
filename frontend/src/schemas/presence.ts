@@ -11,6 +11,12 @@ export const presenceCredentialResponseSchema = z.object({
   token: z.string().min(1),
 });
 
+export const presenceUpdateRequestSchema = z.object({
+  status: presenceStatusSchema,
+  currentGame: z.string().max(100).nullable().optional(),
+  platform: z.string().max(50).nullable().optional(),
+});
+
 export const friendPresenceEventPayloadSchema = z.object({
   userId: z.string().min(1),
   status: presenceStatusSchema,
@@ -39,6 +45,7 @@ export type PresenceStatus = z.infer<typeof presenceStatusSchema>;
 export type PresenceCredentialResponse = z.infer<
   typeof presenceCredentialResponseSchema
 >;
+export type PresenceUpdateRequest = z.infer<typeof presenceUpdateRequestSchema>;
 export type FriendPresenceEventPayload = z.infer<
   typeof friendPresenceEventPayloadSchema
 >;
