@@ -45,28 +45,44 @@ export function GameCard({ game }: GameCardProps) {
       </div>
 
       <div className="space-y-3 p-card">
-        <div className="space-y-2">
+        <div className="space-y-3">
           <div className="flex items-start justify-between gap-3">
-            <h3 className="line-clamp-2 font-display text-xl font-semibold text-primary">
-              {game.gameName}
-            </h3>
+            <div className="space-y-2">
+              <p className="text-[11px] uppercase tracking-[0.3em] text-secondary">
+                Jogo importado
+              </p>
+              <h3 className="line-clamp-2 font-display text-xl font-semibold text-primary">
+                {game.gameName}
+              </h3>
+            </div>
             <Badge tone="neutral">{game.platform}</Badge>
           </div>
-          <p className="text-sm text-secondary">{formatHoursPlayed(game.hoursPlayed)}</p>
+          <div className="rounded-control border border-border bg-background-secondary/70 px-3 py-2">
+            <p className="text-xs uppercase tracking-[0.24em] text-secondary">
+              Tempo registrado
+            </p>
+            <p className="mt-1 text-sm font-medium text-primary">
+              {formatHoursPlayed(game.hoursPlayed)}
+            </p>
+          </div>
         </div>
 
-        <p className="text-xs uppercase tracking-[0.24em] text-secondary">
-          Ultima atividade:{' '}
-          {game.lastPlayedAt ? (
-            <HydrationSafeTime
-              value={game.lastPlayedAt}
-              options={{ day: '2-digit', month: '2-digit', year: 'numeric' }}
-              fallback="Sem atividade recente"
-            />
-          ) : (
-            'Sem atividade recente'
-          )}
-        </p>
+        <div className="border-t border-border pt-3">
+          <p className="text-xs uppercase tracking-[0.24em] text-secondary">
+            Última atividade
+          </p>
+          <p className="mt-1 text-sm text-primary">
+            {game.lastPlayedAt ? (
+              <HydrationSafeTime
+                value={game.lastPlayedAt}
+                options={{ day: '2-digit', month: '2-digit', year: 'numeric' }}
+                fallback="Sem atividade recente"
+              />
+            ) : (
+              'Sem atividade recente'
+            )}
+          </p>
+        </div>
       </div>
     </Card>
   );
