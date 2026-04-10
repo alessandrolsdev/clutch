@@ -49,7 +49,7 @@ type IntegrationsPersistence = {
 
 export type IntegrationsService = ReturnType<typeof createIntegrationsService>;
 
-function createPrismaIntegrationsPersistence(): IntegrationsPersistence {
+export function createPrismaIntegrationsPersistence(): IntegrationsPersistence {
   return {
     async upsertPlatformIntegration(userId, platform, data): Promise<void> {
       await prisma.platformIntegration.upsert({
@@ -114,7 +114,9 @@ function createPrismaIntegrationsPersistence(): IntegrationsPersistence {
         },
         update: {
           hoursPlayed: game.playtime_forever / 60,
-          coverUrl,
+          ...(typeof coverUrl === 'string' && coverUrl.length > 0
+            ? { coverUrl }
+            : {}),
         },
       });
     },
@@ -136,7 +138,9 @@ function createPrismaIntegrationsPersistence(): IntegrationsPersistence {
         },
         update: {
           gameName: game.title,
-          coverUrl: game.coverUrl,
+          ...(typeof game.coverUrl === 'string' && game.coverUrl.length > 0
+            ? { coverUrl: game.coverUrl }
+            : {}),
         },
       });
     },
@@ -228,7 +232,8 @@ export function createIntegrationsService(dependencies?: {
       const games = await steamClient.getOwnedGames(integration.externalId);
 
       for (const game of games) {
-        await persistence.upsertSteamLibraryGame(userId, game, null);
+        const coverUrl = await resolveIgdbCover(game.name, igdbClient);
+        await persistence.upsertSteamLibraryGame(userId, game, coverUrl);
       }
 
       return {
