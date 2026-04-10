@@ -133,6 +133,27 @@ describe('LibraryPageContent', () => {
     expect(screen.getAllByTestId('library-game-card')).toHaveLength(4);
   });
 
+  it('renders every library item returned by the profile contract, including more than 10 games', async () => {
+    mockedFetchProfile.mockResolvedValue({
+      ...profileFixture,
+      gameLibrary: Array.from({ length: 12 }, (_, index) => ({
+        gameName: `Game ${index + 1}`,
+        coverUrl: null,
+        platform: 'STEAM',
+        hoursPlayed: index + 1,
+        lastPlayedAt: `2026-03-${String(index + 1).padStart(2, '0')}T10:00:00.000Z`,
+      })),
+    });
+
+    renderWithQuery(<LibraryPageContent username="clutchplayer" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('library-grid')).toBeInTheDocument();
+    });
+
+    expect(screen.getAllByTestId('library-game-card')).toHaveLength(12);
+  });
+
   it('filters the library by platform', async () => {
     mockedFetchProfile.mockResolvedValue(profileFixture);
 
