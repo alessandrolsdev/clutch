@@ -27,7 +27,6 @@ export const profileRepository = {
         },
         gameLibrary: {
           orderBy: { lastPlayedAt: 'desc' },
-          take: 10,
         },
       },
     });
@@ -76,7 +75,6 @@ export const profileRepository = {
         },
         gameLibrary: {
           orderBy: { lastPlayedAt: 'desc' },
-          take: 10,
           select: {
             gameName: true,
             coverUrl: true,

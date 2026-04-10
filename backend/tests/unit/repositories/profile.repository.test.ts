@@ -87,6 +87,25 @@ describe('profileRepository', () => {
 
       expect(result).toBeNull();
     });
+
+    it('nao trunca silenciosamente a gameLibrary no payload do profile', async () => {
+      vi.mocked(prisma.user.findUnique).mockResolvedValue(mockFullProfile as never);
+
+      await profileRepository.findFullProfileByUsername('clutchplayer');
+
+      expect(prisma.user.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({
+            gameLibrary: expect.objectContaining({
+              orderBy: { lastPlayedAt: 'desc' },
+            }),
+          }),
+        }),
+      );
+
+      const profileQuery = vi.mocked(prisma.user.findUnique).mock.calls[0]?.[0];
+      expect(profileQuery?.select?.gameLibrary).not.toHaveProperty('take');
+    });
   });
 
   // ── updateByUserId ─────────────────────────────────────────
