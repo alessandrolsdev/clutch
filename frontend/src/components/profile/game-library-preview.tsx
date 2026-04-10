@@ -37,7 +37,7 @@ export function GameLibraryPreview({ games, username }: GameLibraryPreviewProps)
           </p>
         ) : (
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {visibleGames.map((game) => (
+            {visibleGames.map((game, index) => (
               <li
                 key={`${game.platform}-${game.gameName}`}
                 className="overflow-hidden rounded-control border border-border bg-background-tertiary/70"
@@ -48,6 +48,8 @@ export function GameLibraryPreview({ games, username }: GameLibraryPreviewProps)
                       src={game.coverUrl}
                       alt={game.gameName}
                       fill
+                      sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                      priority={index === 0}
                       className="object-cover"
                     />
                   ) : (
