@@ -11,12 +11,26 @@ vi.mock('@/infra/cache/redis', () => ({
 import axios from 'axios';
 import { redis } from '@/infra/cache/redis';
 import {
+  createPrismaIntegrationsPersistence,
   createIntegrationsService,
 } from '@/core/services/integrations.service';
 import { IntegrationError } from '@/infra/integrations/integration.errors';
 import { epicService } from '@/infra/integrations/epic/epic.service';
 import { igdbService } from '@/infra/integrations/igdb/igdb.service';
 import { steamService } from '@/infra/integrations/steam/steam.service';
+import { prisma } from '@/infra/database/client';
+
+vi.mock('@/infra/database/client', () => ({
+  prisma: {
+    platformIntegration: {
+      upsert: vi.fn(),
+      findUnique: vi.fn(),
+    },
+    userGameLibrary: {
+      upsert: vi.fn(),
+    },
+  },
+}));
 
 const originalEnv = { ...process.env };
 
@@ -121,6 +135,60 @@ describe('integrations service layer', () => {
       statusCode: 404,
       reason: 'not_connected',
     });
+  });
+
+  it('sincroniza Steam tentando manter capas enriquecidas disponiveis', async () => {
+    const persistence = {
+      upsertPlatformIntegration: vi.fn(),
+      findPlatformIntegration: vi.fn().mockResolvedValue({
+        externalId: '76561198000000000',
+      }),
+      upsertSteamLibraryGame: vi.fn().mockResolvedValue(undefined),
+      upsertEpicLibraryGame: vi.fn(),
+    };
+
+    const service = createIntegrationsService({
+      steamClient: {
+        validateSteamId: vi.fn(),
+        getOwnedGames: vi.fn().mockResolvedValue(mockSteamGames),
+      },
+      igdbClient: {
+        searchGames: vi.fn(),
+        searchGame: vi.fn()
+          .mockResolvedValueOnce({
+            id: 730,
+            name: 'Counter-Strike 2',
+            coverUrl: 'https://cdn.example/cs2.jpg',
+            platforms: ['PC'],
+            summary: null,
+          })
+          .mockResolvedValueOnce(null),
+      },
+      epicClient: {
+        validateToken: vi.fn(),
+        getLibrary: vi.fn(),
+      },
+      persistence,
+    });
+
+    const result = await service.syncSteamLibrary('user-id-1');
+
+    expect(result).toMatchObject({
+      synced: 2,
+      message: '2 jogos sincronizados.',
+    });
+    expect(persistence.upsertSteamLibraryGame).toHaveBeenNthCalledWith(
+      1,
+      'user-id-1',
+      mockSteamGames[0],
+      'https://cdn.example/cs2.jpg',
+    );
+    expect(persistence.upsertSteamLibraryGame).toHaveBeenNthCalledWith(
+      2,
+      'user-id-1',
+      mockSteamGames[1],
+      null,
+    );
   });
 
   it('marca Epic como indisponivel quando o adapter nao existe no runtime atual', async () => {
@@ -280,6 +348,46 @@ describe('igdbService', () => {
     expect(stdoutWriteSpy.mock.calls[0]?.[0]).not.toContain('Authorization');
     expect(stdoutWriteSpy.mock.calls[0]?.[0]).not.toContain('https://');
     stdoutWriteSpy.mockRestore();
+  });
+});
+
+describe('createPrismaIntegrationsPersistence', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('preserva a cover existente da Steam quando a sincronizacao nao encontra imagem confiavel', async () => {
+    vi.mocked(prisma.userGameLibrary.upsert).mockResolvedValue({} as never);
+    const persistence = createPrismaIntegrationsPersistence();
+
+    await persistence.upsertSteamLibraryGame(
+      'user-id-1',
+      mockSteamGames[0]!,
+      null,
+    );
+
+    expect(prisma.userGameLibrary.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: {
+          hoursPlayed: mockSteamGames[0]!.playtime_forever / 60,
+        },
+      }),
+    );
+  });
+
+  it('preserva a cover existente da Epic quando o adapter retorna cover nula', async () => {
+    vi.mocked(prisma.userGameLibrary.upsert).mockResolvedValue({} as never);
+    const persistence = createPrismaIntegrationsPersistence();
+
+    await persistence.upsertEpicLibraryGame('user-id-1', mockEpicGames[0]!);
+
+    expect(prisma.userGameLibrary.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: {
+          gameName: mockEpicGames[0]!.title,
+        },
+      }),
+    );
   });
 });
 
