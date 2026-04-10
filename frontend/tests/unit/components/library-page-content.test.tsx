@@ -130,6 +130,7 @@ describe('LibraryPageContent', () => {
     expect(screen.getByText(/biblioteca de @clutchplayer/i)).toBeInTheDocument();
     expect(screen.getByText('4')).toBeInTheDocument();
     expect(screen.getByText('1157h')).toBeInTheDocument();
+    expect(screen.getByText(/exibindo 4 de 4 jogos/i)).toBeInTheDocument();
     expect(screen.getAllByTestId('library-game-card')).toHaveLength(4);
   });
 
@@ -163,12 +164,13 @@ describe('LibraryPageContent', () => {
       expect(screen.getByTestId('library-grid')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'STEAM' }));
+    fireEvent.click(screen.getByRole('button', { name: /steam \(2\)/i }));
 
     await waitFor(() => {
       expect(screen.getAllByTestId('library-game-card')).toHaveLength(2);
     });
 
+    expect(screen.getByText(/plataforma: steam/i)).toBeInTheDocument();
     expect(screen.getByText('Counter-Strike 2')).toBeInTheDocument();
     expect(screen.getByText('Dota 2')).toBeInTheDocument();
     expect(screen.queryByText('Fortnite')).not.toBeInTheDocument();
@@ -247,6 +249,37 @@ describe('LibraryPageContent', () => {
     expect(
       screen.getByText(/nenhum jogo corresponde aos filtros atuais/i),
     ).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /limpar refinamentos/i })).toHaveLength(2);
+  });
+
+  it('clears active refinements and restores the full library grid', async () => {
+    mockedFetchProfile.mockResolvedValue(profileFixture);
+
+    renderWithQuery(<LibraryPageContent username="clutchplayer" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('library-grid')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText(/counter-strike 2/i), {
+      target: { value: 'fort' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /epic \(1\)/i }));
+    fireEvent.click(screen.getByRole('button', { name: /alfabetica/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/busca: fort/i)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getAllByRole('button', { name: /limpar refinamentos/i })[0] as HTMLElement);
+
+    await waitFor(() => {
+      expect(screen.getByText(/exibindo 4 de 4 jogos/i)).toBeInTheDocument();
+    });
+
+    expect(screen.getAllByTestId('library-game-card')).toHaveLength(4);
+    expect(screen.queryByText(/busca: fort/i)).not.toBeInTheDocument();
   });
 
   it('keeps sorting deterministic when hours and last activity are missing', async () => {

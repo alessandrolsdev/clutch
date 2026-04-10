@@ -10,6 +10,7 @@ import {
 import { LibrarySearch } from '@/components/library/library-search';
 import { LibraryStats } from '@/components/library/library-stats';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { SectionHeading } from '@/components/ui/section-heading';
 import { fetchProfileByUsername, ProfileRequestError } from '@/services/profile';
 
@@ -114,12 +115,16 @@ function LibraryErrorState({ message }: { message: string }) {
 
 function LibraryEmptyState({
   hasGames,
+  hasActiveRefinements,
+  onReset,
 }: {
   hasGames: boolean;
+  hasActiveRefinements: boolean;
+  onReset: () => void;
 }) {
   return (
     <Card data-testid="library-empty">
-      <div className="space-y-3">
+      <div className="space-y-4">
         <p className="text-xs uppercase tracking-[0.35em] text-secondary">Biblioteca</p>
         <h2 className="font-display text-2xl font-semibold text-primary">
           {hasGames ? 'Nenhum jogo corresponde aos filtros atuais' : 'Biblioteca vazia'}
@@ -129,6 +134,13 @@ function LibraryEmptyState({
             ? 'Ajuste a busca, a plataforma ou a ordenacao para ver outros jogos.'
             : 'Este perfil ainda nao possui jogos importados pelas integracoes atuais.'}
         </p>
+        {hasActiveRefinements ? (
+          <div>
+            <Button variant="secondary" size="sm" onClick={onReset}>
+              Limpar refinamentos
+            </Button>
+          </div>
+        ) : null}
       </div>
     </Card>
   );
@@ -149,7 +161,18 @@ export function LibraryPageContent({ username }: LibraryPageContentProps) {
   }, [profileQuery.data?.gameLibrary]);
 
   const platforms = useMemo(() => {
-    return ['ALL', ...Array.from(new Set(allGames.map((game) => game.platform))).sort()];
+    const counts = allGames.reduce<Record<string, number>>((accumulator, game) => {
+      accumulator[game.platform] = (accumulator[game.platform] ?? 0) + 1;
+
+      return accumulator;
+    }, {});
+
+    return [
+      { value: 'ALL', count: allGames.length },
+      ...Object.entries(counts)
+        .sort(([left], [right]) => left.localeCompare(right, 'pt-BR'))
+        .map(([value, count]) => ({ value, count })),
+    ];
   }, [allGames]);
 
   const filteredGames = useMemo(() => {
@@ -167,6 +190,25 @@ export function LibraryPageContent({ username }: LibraryPageContentProps) {
 
     return sortLibraryGames(visibleGames, sortBy);
   }, [allGames, searchValue, selectedPlatform, sortBy]);
+
+  const hasActiveRefinements =
+    searchValue.trim().length > 0 || selectedPlatform !== 'ALL' || sortBy !== 'most-played';
+
+  const activeRefinements = [
+    searchValue.trim().length > 0 ? `Busca: ${searchValue.trim()}` : null,
+    selectedPlatform !== 'ALL' ? `Plataforma: ${selectedPlatform}` : null,
+    sortBy !== 'most-played'
+      ? `Ordenação: ${
+          sortBy === 'recent' ? 'Mais recentes' : 'Alfabética'
+        }`
+      : null,
+  ].filter((value): value is string => value !== null);
+
+  const resetRefinements = () => {
+    setSearchValue('');
+    setSelectedPlatform('ALL');
+    setSortBy('most-played');
+  };
 
   if (profileQuery.isPending) {
     return <LibraryLoadingState />;
@@ -186,18 +228,65 @@ export function LibraryPageContent({ username }: LibraryPageContentProps) {
       <SectionHeading
         eyebrow="Biblioteca"
         title={`Biblioteca de @${profileQuery.data.username}`}
-        description="A biblioteca usa apenas o gameLibrary retornado pelo profile atual, com busca, filtro e ordenacao locais."
+        description="Explore a biblioteca carregada pelo profile atual com busca, filtros e ordenação locais, sem alterar os dados importados."
         level="h1"
+        actions={
+          hasActiveRefinements ? (
+            <Button variant="secondary" size="sm" onClick={resetRefinements}>
+              Limpar refinamentos
+            </Button>
+          ) : undefined
+        }
       />
 
       <LibraryStats games={allGames} />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="space-y-4">
-          <LibrarySearch value={searchValue} onChange={setSearchValue} />
+          <LibrarySearch
+            value={searchValue}
+            onChange={setSearchValue}
+            onClear={() => {
+              setSearchValue('');
+            }}
+          />
+
+          <Card data-testid="library-summary">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="space-y-1">
+                <p className="text-xs uppercase tracking-[0.35em] text-secondary">
+                  Visão atual
+                </p>
+                <p className="font-display text-2xl font-semibold text-primary">
+                  Exibindo {filteredGames.length} de {allGames.length} jogos
+                </p>
+                <p className="text-sm leading-6 text-secondary">
+                  {hasActiveRefinements
+                    ? 'Os resultados abaixo refletem os refinamentos ativos nesta tela.'
+                    : 'A lista abaixo mostra a biblioteca completa disponível no profile atual.'}
+                </p>
+              </div>
+              {activeRefinements.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {activeRefinements.map((refinement) => (
+                    <span
+                      key={refinement}
+                      className="rounded-pill border border-border bg-background-secondary px-3 py-1 text-xs font-medium text-secondary"
+                    >
+                      {refinement}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </Card>
 
           {filteredGames.length === 0 ? (
-            <LibraryEmptyState hasGames={allGames.length > 0} />
+            <LibraryEmptyState
+              hasGames={allGames.length > 0}
+              hasActiveRefinements={hasActiveRefinements}
+              onReset={resetRefinements}
+            />
           ) : (
             <div
               className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
@@ -219,6 +308,8 @@ export function LibraryPageContent({ username }: LibraryPageContentProps) {
           selectedSort={sortBy}
           onPlatformChange={setSelectedPlatform}
           onSortChange={setSortBy}
+          onReset={resetRefinements}
+          hasActiveRefinements={hasActiveRefinements}
         />
       </div>
     </div>
