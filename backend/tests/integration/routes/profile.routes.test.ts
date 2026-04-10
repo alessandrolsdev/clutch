@@ -62,6 +62,26 @@ describe('Profile Routes', () => {
       expect(response.statusCode).toBe(404);
       await app.close();
     });
+
+    it('retorna toda a gameLibrary sem truncar em 10 itens', async () => {
+      vi.mocked(profileRepository.findFullProfileByUsername).mockResolvedValue({
+        ...mockFullProfile,
+        gameLibrary: Array.from({ length: 12 }, (_, index) => ({
+          gameName: `Game ${index + 1}`,
+          coverUrl: null,
+          platform: 'STEAM',
+          hoursPlayed: index,
+          lastPlayedAt: null,
+        })),
+      });
+
+      const app = await buildApp();
+      const response = await app.inject({ method: 'GET', url: '/profiles/clutchplayer' });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().gameLibrary).toHaveLength(12);
+      await app.close();
+    });
   });
 
   describe('PATCH /profiles/:username', () => {
