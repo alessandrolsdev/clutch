@@ -53,7 +53,7 @@ export function Navbar({
   menuOpen = false,
   onMenuToggle,
 }: NavbarProps) {
-  const { user, status } = useAuth();
+  const { user, status, logout } = useAuth();
   const [isRequestsOpen, setIsRequestsOpen] = useState(false);
   const pendingRequestsQuery = useQuery({
     queryKey: ['friend-requests', user?.id],
@@ -110,6 +110,17 @@ export function Navbar({
           {variant === 'app' ? (
             <>
               <NotificationsBell />
+              <ActionButton
+                type="button"
+                aria-label="Encerrar sessao"
+                className="hidden md:inline-flex"
+                onClick={() => {
+                  void logout();
+                }}
+                disabled={status !== 'authenticated'}
+              >
+                Sair
+              </ActionButton>
               <div className="relative">
                 <ActionButton
                   type="button"

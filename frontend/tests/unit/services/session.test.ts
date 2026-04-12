@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchAuthSession, logoutAuthSession } from '@/services/session';
 import { resetAuthStore, useAuthStore } from '@/store/auth-store';
+import { resetPresenceStore, usePresenceStore } from '@/store/presence-store';
 
 const { apiRequestMock } = vi.hoisted(() => ({
   apiRequestMock: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock('@/services/presence', () => ({
 describe('session service', () => {
   beforeEach(() => {
     resetAuthStore();
+    resetPresenceStore();
     apiRequestMock.mockReset();
     publishPresenceStateMock.mockReset();
   });
@@ -50,6 +52,7 @@ describe('session service', () => {
     expect(apiRequestMock).toHaveBeenCalledWith('/auth/me', {
       method: 'GET',
       clearSessionOnUnauthorized: false,
+      retryOnUnauthorized: false,
     });
   });
 
@@ -78,6 +81,16 @@ describe('session service', () => {
       username: 'clutchplayer',
       email: 'clutchplayer@clutch.gg',
     });
+    usePresenceStore.getState().setConnectionStatus('connected');
+    usePresenceStore.getState().upsertPresence(
+      {
+        userId: 'user-2',
+        status: 'ONLINE',
+        currentGame: null,
+        platform: 'WEB',
+      },
+      Date.now(),
+    );
 
     apiRequestMock.mockResolvedValue(new Response(null, { status: 200 }));
     publishPresenceStateMock.mockResolvedValue(undefined);
@@ -93,8 +106,12 @@ describe('session service', () => {
     );
     expect(apiRequestMock).toHaveBeenCalledWith('/auth/logout', {
       method: 'POST',
+      clearSessionOnUnauthorized: false,
+      retryOnUnauthorized: false,
     });
     expect(useAuthStore.getState().status).toBe('unauthenticated');
     expect(useAuthStore.getState().user).toBeNull();
+    expect(usePresenceStore.getState().connectionStatus).toBe('idle');
+    expect(usePresenceStore.getState().entries).toEqual({});
   });
 });
