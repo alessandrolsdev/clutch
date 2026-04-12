@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { Navbar } from '@/components/layout/navbar';
+import { AppShellRouteWarmup } from '@/components/layout/app-shell-route-warmup';
 import { Sidebar } from '@/components/layout/sidebar';
 
 type AppShellProps = {
@@ -44,6 +45,8 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <div className="min-h-screen bg-background-primary text-primary">
+      <AppShellRouteWarmup />
+
       <Navbar
         variant="app"
         menuOpen={isSidebarOpen}
