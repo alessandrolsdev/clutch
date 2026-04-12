@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AppErrorState } from '@/components/ui/app-error-state';
 import { AppLoadingScreen } from '@/components/ui/app-loading-screen';
 import { AppNotFoundState } from '@/components/ui/app-not-found-state';
+import { AppShellLoadingState } from '@/components/layout/app-shell-loading-state';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { ToastProvider, useToast } from '@/components/ui/toaster';
 
@@ -35,6 +36,12 @@ describe('UI feedback foundation', () => {
     render(<AppLoadingScreen />);
 
     expect(screen.getByTestId('app-loading-screen')).toBeInTheDocument();
+  });
+
+  it('renders the shell-local loading state', () => {
+    render(<AppShellLoadingState />);
+
+    expect(screen.getByTestId('app-shell-loading-state')).toBeInTheDocument();
   });
 
   it('renders the global not found state', () => {
