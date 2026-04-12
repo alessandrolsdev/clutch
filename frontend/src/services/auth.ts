@@ -56,6 +56,8 @@ export async function login(input: LoginRequestValues): Promise<LoginSession> {
   const response = await apiRequest('/auth/login', {
     method: 'POST',
     body: credentials,
+    clearSessionOnUnauthorized: false,
+    retryOnUnauthorized: false,
   });
 
   const payload = await readJson(response);
@@ -83,6 +85,8 @@ export async function register(
   const response = await apiRequest('/auth/register', {
     method: 'POST',
     body: registration,
+    clearSessionOnUnauthorized: false,
+    retryOnUnauthorized: false,
   });
 
   const payload = await readJson(response);
