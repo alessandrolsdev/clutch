@@ -2,6 +2,7 @@ import { apiRequest } from '@/lib/api';
 import { authSessionSchema, type AuthSession } from '@/schemas/auth';
 import { publishPresenceState } from '@/services/presence';
 import { useAuthStore } from '@/store/auth-store';
+import { usePresenceStore } from '@/store/presence-store';
 
 async function readJson(response: Response): Promise<unknown> {
   const text = await response.text();
@@ -21,6 +22,7 @@ export async function fetchAuthSession(): Promise<AuthSession | null> {
   const response = await apiRequest('/auth/me', {
     method: 'GET',
     clearSessionOnUnauthorized: false,
+    retryOnUnauthorized: false,
   });
 
   if (!response.ok) {
@@ -45,8 +47,11 @@ export async function logoutAuthSession(): Promise<void> {
 
     await apiRequest('/auth/logout', {
       method: 'POST',
+      clearSessionOnUnauthorized: false,
+      retryOnUnauthorized: false,
     });
   } finally {
     useAuthStore.getState().clearSession();
+    usePresenceStore.getState().clearAll();
   }
 }

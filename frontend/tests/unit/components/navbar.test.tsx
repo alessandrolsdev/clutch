@@ -26,6 +26,7 @@ vi.mock('@/components/notifications/notifications-bell', () => ({
 
 const mockedUseAuth = vi.mocked(useAuth);
 const mockedFetchPendingFriendRequests = vi.mocked(fetchPendingFriendRequests);
+const logoutMock = vi.fn();
 
 function renderNavbar() {
   const queryClient = new QueryClient({
@@ -45,6 +46,7 @@ describe('Navbar', () => {
   beforeEach(() => {
     mockedUseAuth.mockReset();
     mockedFetchPendingFriendRequests.mockReset();
+    logoutMock.mockReset();
 
     mockedUseAuth.mockReturnValue({
       status: 'authenticated',
@@ -53,7 +55,7 @@ describe('Navbar', () => {
         username: 'clutchplayer',
         email: 'clutchplayer@clutch.gg',
       },
-      logout: vi.fn(),
+      logout: logoutMock,
     });
   });
 
@@ -94,5 +96,15 @@ describe('Navbar', () => {
       screen.getByLabelText(/busca global ainda nao disponivel/i),
     ).toBeInTheDocument();
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  });
+
+  it('renders a visible logout action in the authenticated shell', () => {
+    mockedFetchPendingFriendRequests.mockResolvedValue([]);
+
+    renderNavbar();
+
+    fireEvent.click(screen.getByRole('button', { name: /encerrar sessao/i }));
+
+    expect(logoutMock).toHaveBeenCalledTimes(1);
   });
 });
