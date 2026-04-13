@@ -51,3 +51,7 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+
+# Runtime media storage
+backend/storage/uploads/*
+!backend/storage/uploads/.gitkeep

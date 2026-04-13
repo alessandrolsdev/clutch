@@ -1,5 +1,6 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import fastifyRateLimit from '@fastify/rate-limit';
+import fastifyMultipart from '@fastify/multipart';
 import { authRoutes } from './api/routes/auth.routes';
 import { profileRoutes } from './api/routes/profile.routes';
 import { friendRoutes } from './api/routes/friends.routes';
@@ -7,6 +8,7 @@ import { presenceRoutes } from './api/routes/presence.routes';
 import { integrationRoutes } from './api/routes/integrations.routes';
 import { postRoutes } from './api/routes/posts.routes';
 import { notificationRoutes } from './api/routes/notifications.routes';
+import { uploadRoutes } from './api/routes/uploads.routes';
 import { authenticate } from './api/middlewares/authenticate';
 import {
   runReadinessChecks,
@@ -36,8 +38,7 @@ import {
   createDiscordOAuthService,
   type DiscordOAuthService,
 } from './core/services/discord-oauth.service';
-import { createRedisRefreshSessionStore } from './infra/cache/refresh-session.store';
-import { redis as runtimeRedis } from './infra/cache/redis';
+import { ensureMediaUploadsDirectory } from './config/media-upload';
 import type Redis from 'ioredis';
 
 export type BuildAppOptions = {
@@ -64,13 +65,21 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   const jwtConfigInput = options.jwtKeyRotationConfig ?? options.jwtSecret;
   const signAccessToken = createJwtSigner(jwtConfigInput);
   const verifyAccessToken = createJwtVerifier(jwtConfigInput);
+  const resolvedRefreshSessionStore =
+    options.refreshSessionStore ?? (await import('./infra/cache/refresh-session.store')).createRedisRefreshSessionStore();
   const refreshTokenService = createRefreshTokenService({
     jwtSecret: options.jwtSecret,
     jwtKeyRotationConfig: options.jwtKeyRotationConfig,
-    refreshSessionStore: options.refreshSessionStore ?? createRedisRefreshSessionStore(),
+    refreshSessionStore: resolvedRefreshSessionStore,
   });
   const integrationsService = options.integrationsService ?? createIntegrationsService();
   const discordOAuthService = options.discordOAuthService ?? createDiscordOAuthService();
+  const resolvedRateLimitRedis =
+    options.rateLimitRedis !== undefined
+      ? options.rateLimitRedis
+      : process.env['NODE_ENV'] === 'test'
+        ? null
+        : (await import('./infra/cache/redis')).redis;
 
   app.decorate('authenticate', authenticate);
   app.decorate('signAccessToken', signAccessToken);
@@ -82,9 +91,11 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await app.register(
     fastifyRateLimit,
     createAuthRateLimitPluginOptions(
-      options.rateLimitRedis ?? (process.env['NODE_ENV'] === 'test' ? null : runtimeRedis),
+      resolvedRateLimitRedis,
     ),
   );
+  await app.register(fastifyMultipart);
+  await ensureMediaUploadsDirectory();
 
   const readinessCheck = options.readinessCheck ?? runReadinessChecks;
 
@@ -160,6 +171,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await app.register(integrationRoutes, { prefix: '/integrations' });
   await app.register(postRoutes, { prefix: '/posts' });
   await app.register(notificationRoutes, { prefix: '/notifications' });
+  await app.register(uploadRoutes, { prefix: '/uploads' });
 
   await app.ready();
 
