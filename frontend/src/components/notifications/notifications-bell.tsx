@@ -7,6 +7,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/use-auth';
 import {
+  applyAllNotificationsRead,
+  applyNotificationRead,
+  restoreQuerySnapshots,
+  snapshotQueryGroups,
+} from '@/lib/query/social-cache';
+import {
   fetchNotifications,
   markAllNotificationsAsRead,
   markNotificationAsRead,
@@ -26,30 +32,57 @@ export function NotificationsBell() {
     refetchInterval: 30_000,
   });
 
-  const invalidateNotifications = async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['notifications', userId, 'all'] }),
-      queryClient.invalidateQueries({ queryKey: ['notifications', userId, 'unread'] }),
-    ]);
-  };
-
   const markOneMutation = useMutation({
     mutationFn: markNotificationAsRead,
-    onMutate: (notificationId) => {
+    onMutate: async (notificationId) => {
       setActiveNotificationId(notificationId);
+
+      await queryClient.cancelQueries({
+        queryKey: ['notifications', userId],
+      });
+
+      const snapshots = snapshotQueryGroups(queryClient, [['notifications', userId]]);
+      applyNotificationRead(queryClient, userId as string, notificationId);
+
+      return { snapshots };
     },
-    onSuccess: async () => {
-      await invalidateNotifications();
+    onError: (_error, _notificationId, context) => {
+      if (context) {
+        restoreQuerySnapshots(queryClient, context.snapshots);
+      }
     },
-    onSettled: () => {
+    onSettled: async () => {
       setActiveNotificationId(null);
+
+      await queryClient.invalidateQueries({
+        queryKey: ['notifications', userId],
+        refetchType: 'inactive',
+      });
     },
   });
 
   const markAllMutation = useMutation({
     mutationFn: markAllNotificationsAsRead,
-    onSuccess: async () => {
-      await invalidateNotifications();
+    onMutate: async () => {
+      await queryClient.cancelQueries({
+        queryKey: ['notifications', userId],
+      });
+
+      const snapshots = snapshotQueryGroups(queryClient, [['notifications', userId]]);
+      applyAllNotificationsRead(queryClient, userId as string);
+
+      return { snapshots };
+    },
+    onError: (_error, _variables, context) => {
+      if (context) {
+        restoreQuerySnapshots(queryClient, context.snapshots);
+      }
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['notifications', userId],
+        refetchType: 'inactive',
+      });
     },
   });
 
