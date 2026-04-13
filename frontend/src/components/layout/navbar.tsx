@@ -176,6 +176,7 @@ export function Navbar({
                                 key={request.id}
                                 request={request}
                                 receiverUserId={user?.id ?? ''}
+                                receiverUsername={user?.username ?? ''}
                               />
                             ))}
                           </div>

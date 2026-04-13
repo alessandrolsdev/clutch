@@ -6,6 +6,14 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toaster';
 import { useAuth } from '@/hooks/use-auth';
 import {
+  applyAcceptedFriendRequest,
+  applyProfileFriendCountDelta,
+  applyRemovedFriend,
+  buildOptimisticFriendSummary,
+  restoreQuerySnapshots,
+  snapshotQueryGroups,
+} from '@/lib/query/social-cache';
+import {
   acceptFriendRequest,
   fetchFriends,
   fetchPendingFriendRequests,
@@ -56,30 +64,17 @@ export function FriendButton({ targetUserId }: FriendButtonProps) {
     }
   }, [incomingRequest, isFriend]);
 
-  const commonSuccessHandler = async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: ['friends', currentUserId],
-      }),
-      queryClient.invalidateQueries({
-        queryKey: ['friend-requests', currentUserId],
-      }),
-      queryClient.invalidateQueries({
-        queryKey: ['profile'],
-      }),
-    ]);
-  };
-
   const sendRequestMutation = useMutation({
     mutationFn: sendFriendRequest,
-    onSuccess: async () => {
+    onMutate: () => {
       setLocalPending(true);
+    },
+    onSuccess: () => {
       showToast({
         title: 'Pedido enviado',
         description: 'O usuario foi notificado sobre o convite de amizade.',
         tone: 'success',
       });
-      await commonSuccessHandler();
     },
     onError: (error) => {
       if (error instanceof FriendsRequestError && error.status === 409) {
@@ -91,6 +86,8 @@ export function FriendButton({ targetUserId }: FriendButtonProps) {
         });
         return;
       }
+
+      setLocalPending(false);
 
       showToast({
         title: 'Nao foi possivel enviar o pedido',
@@ -104,16 +101,54 @@ export function FriendButton({ targetUserId }: FriendButtonProps) {
 
   const acceptRequestMutation = useMutation({
     mutationFn: acceptFriendRequest,
-    onSuccess: async () => {
+    onMutate: async () => {
+      await Promise.all([
+        queryClient.cancelQueries({
+          queryKey: ['friends', currentUserId],
+        }),
+        queryClient.cancelQueries({
+          queryKey: ['friend-requests', currentUserId],
+        }),
+        queryClient.cancelQueries({
+          queryKey: ['profile'],
+        }),
+      ]);
+
+      const snapshots = snapshotQueryGroups(queryClient, [
+        ['friends', currentUserId],
+        ['friend-requests', currentUserId],
+        ['profile'],
+      ]);
+
+      if (currentUserId && incomingRequest) {
+        applyAcceptedFriendRequest(
+          queryClient,
+          currentUserId,
+          incomingRequest,
+          buildOptimisticFriendSummary(queryClient, {
+            id: currentUserId,
+            username: user?.username ?? '',
+          }),
+        );
+        applyProfileFriendCountDelta(queryClient, [currentUserId, targetUserId], 1);
+      }
+
       setLocalPending(false);
+
+      return { snapshots };
+    },
+    onSuccess: () => {
       showToast({
         title: 'Amizade confirmada',
         description: 'A amizade foi aceita com sucesso.',
         tone: 'success',
       });
-      await commonSuccessHandler();
     },
-    onError: (error) => {
+    onError: (error, _requestId, context) => {
+      if (context) {
+        restoreQuerySnapshots(queryClient, context.snapshots);
+      }
+
       showToast({
         title: 'Nao foi possivel aceitar o pedido',
         description: error instanceof FriendsRequestError
@@ -122,26 +157,68 @@ export function FriendButton({ targetUserId }: FriendButtonProps) {
         tone: 'error',
       });
     },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['profile'],
+        refetchType: 'active',
+      });
+    },
   });
 
   const removeFriendMutation = useMutation({
     mutationFn: removeFriend,
-    onSuccess: async () => {
+    onMutate: async () => {
+      await Promise.all([
+        queryClient.cancelQueries({
+          queryKey: ['friends', currentUserId],
+        }),
+        queryClient.cancelQueries({
+          queryKey: ['friends', targetUserId],
+        }),
+        queryClient.cancelQueries({
+          queryKey: ['profile'],
+        }),
+      ]);
+
+      const snapshots = snapshotQueryGroups(queryClient, [
+        ['friends', currentUserId],
+        ['friends', targetUserId],
+        ['profile'],
+      ]);
+
+      if (currentUserId) {
+        applyRemovedFriend(queryClient, currentUserId, targetUserId);
+        applyProfileFriendCountDelta(queryClient, [currentUserId, targetUserId], -1);
+      }
+
       setLocalPending(false);
+
+      return { snapshots };
+    },
+    onSuccess: () => {
       showToast({
         title: 'Amizade removida',
         description: 'O perfil voltou a ficar fora da sua lista de amigos.',
         tone: 'success',
       });
-      await commonSuccessHandler();
     },
-    onError: (error) => {
+    onError: (error, _friendId, context) => {
+      if (context) {
+        restoreQuerySnapshots(queryClient, context.snapshots);
+      }
+
       showToast({
         title: 'Nao foi possivel remover a amizade',
         description: error instanceof FriendsRequestError
           ? error.message
           : 'Tente novamente em alguns instantes.',
         tone: 'error',
+      });
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['profile'],
+        refetchType: 'active',
       });
     },
   });

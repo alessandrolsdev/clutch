@@ -3,6 +3,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import {
+  applyFeedReactionDelta,
+  restoreQuerySnapshots,
+  snapshotQueryGroups,
+} from '@/lib/query/social-cache';
 import { type InteractionType } from '@/schemas/feed';
 import { FeedRequestError, togglePostInteraction } from '@/services/feed';
 
@@ -44,9 +49,49 @@ export function ReactionBar({
 
   const toggleReactionMutation = useMutation({
     mutationFn: togglePostInteraction,
-    onSuccess: async ({ added }, variables) => {
+    onMutate: async (variables) => {
+      await queryClient.cancelQueries({
+        queryKey: ['feed'],
+      });
+
+      const feedSnapshots = snapshotQueryGroups(queryClient, [['feed']]);
+      const previousReactionCount = reactionCount;
+      const previousSelectedTypes = [...selectedTypes];
+      const optimisticAdded = !selectedTypes.includes(variables.type);
+      const delta = optimisticAdded ? 1 : -1;
+
       setServerError(null);
-      setReactionCount((current) => Math.max(0, current + (added ? 1 : -1)));
+      setReactionCount((current) => Math.max(0, current + delta));
+      setSelectedTypes((current) => {
+        const next = new Set(current);
+
+        if (optimisticAdded) {
+          next.add(variables.type);
+        } else {
+          next.delete(variables.type);
+        }
+
+        return Array.from(next);
+      });
+      applyFeedReactionDelta(queryClient, postId, delta);
+
+      return {
+        feedSnapshots,
+        optimisticAdded,
+        previousReactionCount,
+        previousSelectedTypes,
+      };
+    },
+    onSuccess: ({ added }, variables, context) => {
+      setServerError(null);
+
+      if (context && added !== context.optimisticAdded) {
+        const correction = added ? 2 : -2;
+
+        setReactionCount((current) => Math.max(0, current + correction));
+        applyFeedReactionDelta(queryClient, postId, correction);
+      }
+
       setSelectedTypes((current) => {
         const next = new Set(current);
 
@@ -58,18 +103,26 @@ export function ReactionBar({
 
         return Array.from(next);
       });
-
-      await queryClient.invalidateQueries({
-        queryKey: ['feed'],
-      });
     },
-    onError: (error) => {
+    onError: (error, _variables, context) => {
+      if (context) {
+        restoreQuerySnapshots(queryClient, context.feedSnapshots);
+        setReactionCount(context.previousReactionCount);
+        setSelectedTypes(context.previousSelectedTypes);
+      }
+
       if (error instanceof FeedRequestError) {
         setServerError(error.message);
         return;
       }
 
       setServerError('Nao foi possivel reagir a este post agora.');
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['feed'],
+        refetchType: 'inactive',
+      });
     },
   });
 
