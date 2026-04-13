@@ -7,7 +7,7 @@ import { DEMO_ACCOUNT, runSeed } from '../../prisma/seed';
 
 const prisma = new PrismaClient();
 
-let app: FastifyInstance;
+let app: FastifyInstance | undefined;
 let baseUrl: string;
 
 describe('Server connectivity', () => {
@@ -28,7 +28,7 @@ describe('Server connectivity', () => {
   }, 30_000);
 
   afterAll(async () => {
-    await app.close();
+    await app?.close();
     await prisma.$disconnect();
   });
 

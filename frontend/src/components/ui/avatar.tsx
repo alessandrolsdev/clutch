@@ -1,5 +1,5 @@
 import Image from 'next/image';
-import type { HTMLAttributes } from 'react';
+import { useState, type HTMLAttributes } from 'react';
 import { cn } from '@/lib/utils/cn';
 
 type AvatarSize = 'sm' | 'md' | 'lg';
@@ -31,6 +31,10 @@ export function Avatar({
   src,
   ...props
 }: AvatarProps) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const shouldRenderImage = Boolean(src) && !imageFailed;
+  const shouldUseNextImage = typeof src === 'string' && src.startsWith('https://images.igdb.com');
+
   return (
     <div
       className={cn(
@@ -40,14 +44,31 @@ export function Avatar({
       )}
       {...props}
     >
-      {src ? (
-        <Image
-          src={src}
-          alt={alt}
-          width={sizeDimension[size]}
-          height={sizeDimension[size]}
-          className="h-full w-full object-cover"
-        />
+      {shouldRenderImage ? (
+        shouldUseNextImage ? (
+          <Image
+            src={src as string}
+            alt={alt}
+            width={sizeDimension[size]}
+            height={sizeDimension[size]}
+            className="h-full w-full object-cover"
+            onError={() => {
+              setImageFailed(true);
+            }}
+          />
+        ) : (
+          // Avatar precisa aceitar URLs remotas genericas que o backend ja persiste hoje.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={src ?? undefined}
+            alt={alt}
+            className="h-full w-full object-cover"
+            loading="lazy"
+            onError={() => {
+              setImageFailed(true);
+            }}
+          />
+        )
       ) : (
         <span aria-hidden="true" className="font-semibold">
           {fallback}

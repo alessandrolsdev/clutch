@@ -30,7 +30,36 @@ async function proxyRequest(request: NextRequest, pathSegments: string[]) {
   const headers = new Headers(request.headers);
   headers.delete('host');
   headers.delete('cookie');
+  headers.delete('content-length');
   headers.set(REQUEST_ID_HEADER, requestId);
+
+  const originHeader = request.headers.get('origin');
+
+  if (originHeader) {
+    try {
+      const parsedOrigin = new URL(originHeader);
+      headers.set('x-forwarded-host', parsedOrigin.host);
+      headers.set('x-forwarded-proto', parsedOrigin.protocol.replace(':', ''));
+    } catch {
+      headers.set(
+        'x-forwarded-host',
+        request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? request.nextUrl.host,
+      );
+      headers.set(
+        'x-forwarded-proto',
+        request.headers.get('x-forwarded-proto') ?? request.nextUrl.protocol.replace(':', ''),
+      );
+    }
+  } else {
+    headers.set(
+      'x-forwarded-host',
+      request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? request.nextUrl.host,
+    );
+    headers.set(
+      'x-forwarded-proto',
+      request.headers.get('x-forwarded-proto') ?? request.nextUrl.protocol.replace(':', ''),
+    );
+  }
 
   const sessionCookie = request.cookies.get(AUTH_SESSION_COOKIE_NAME)?.value;
 
@@ -41,7 +70,7 @@ async function proxyRequest(request: NextRequest, pathSegments: string[]) {
   const body =
     request.method === 'GET' || request.method === 'HEAD'
       ? undefined
-      : await request.text();
+      : await request.arrayBuffer();
 
   let backendResponse: Response;
 
@@ -49,7 +78,7 @@ async function proxyRequest(request: NextRequest, pathSegments: string[]) {
     backendResponse = await fetch(backendUrl, {
       method: request.method,
       headers,
-      body: body && body.length > 0 ? body : undefined,
+      body: body && body.byteLength > 0 ? body : undefined,
     });
   } catch (error) {
     logServerEvent('error', 'frontend_api_proxy_backend_unreachable', 'Frontend API proxy could not reach backend', {
@@ -67,7 +96,7 @@ async function proxyRequest(request: NextRequest, pathSegments: string[]) {
   }
 
   const responseHeaders = new Headers(backendResponse.headers);
-  const responseBody = await backendResponse.text();
+  const responseBody = await backendResponse.arrayBuffer();
   const response = new NextResponse(responseBody || null, {
     status: backendResponse.status,
     headers: responseHeaders,

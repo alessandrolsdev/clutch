@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CreatePostForm } from '@/components/feed/create-post-form';
 import { ToastProvider } from '@/components/ui/toaster';
 import { createPost, FeedRequestError } from '@/services/feed';
+import { uploadImage } from '@/services/media';
 
 vi.mock('@/services/feed', () => ({
   createPost: vi.fn(),
@@ -19,7 +20,12 @@ vi.mock('@/services/feed', () => ({
   },
 }));
 
+vi.mock('@/services/media', () => ({
+  uploadImage: vi.fn(),
+}));
+
 const mockedCreatePost = vi.mocked(createPost);
+const mockedUploadImage = vi.mocked(uploadImage);
 
 function renderCreatePostForm() {
   const queryClient = new QueryClient({
@@ -49,6 +55,12 @@ function renderCreatePostForm() {
 describe('CreatePostForm', () => {
   beforeEach(() => {
     mockedCreatePost.mockReset();
+    mockedUploadImage.mockReset();
+    vi.stubGlobal('navigator', {
+      clipboard: {
+        readText: vi.fn().mockResolvedValue('https://example.com/post-image.png'),
+      },
+    });
   });
 
   it('renders the form fields', () => {
@@ -69,6 +81,50 @@ describe('CreatePostForm', () => {
       await screen.findByText(/adicione texto ou uma url de midia para publicar/i),
     ).toBeInTheDocument();
     expect(mockedCreatePost).not.toHaveBeenCalled();
+  });
+
+  it('supports clipboard paste and shows a media preview', async () => {
+    renderCreatePostForm();
+
+    fireEvent.click(screen.getByRole('button', { name: /colar link/i }));
+
+    expect(await screen.findByText(/link colado do clipboard/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^imagem do post$/i)).toHaveValue(
+      'https://example.com/post-image.png',
+    );
+    expect(screen.getByAltText(/preview da imagem do post/i)).toHaveAttribute(
+      'src',
+      'https://example.com/post-image.png',
+    );
+  });
+
+  it('uploads a local image and switches the post type to image', async () => {
+    mockedUploadImage.mockResolvedValue({
+      url: 'http://localhost/api/uploads/images/post-image.png',
+      contentType: 'image/png',
+      size: 1024,
+    });
+
+    renderCreatePostForm();
+
+    const fileInput = screen.getByLabelText(/arquivo de imagem para imagem do post/i);
+    const imageFile = new File(['image-bytes'], 'post-image.png', {
+      type: 'image/png',
+    });
+
+    fireEvent.change(fileInput, {
+      target: { files: [imageFile] },
+    });
+
+    await waitFor(() => {
+      expect(mockedUploadImage).toHaveBeenCalledWith(imageFile);
+    });
+
+    expect(await screen.findByText(/imagem enviada com sucesso/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^imagem do post$/i)).toHaveValue(
+      'http://localhost/api/uploads/images/post-image.png',
+    );
+    expect(screen.getByLabelText(/tipo/i)).toHaveValue('IMAGE');
   });
 
   it('submits successfully and invalidates the feed query', async () => {
