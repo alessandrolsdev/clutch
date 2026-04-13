@@ -6,6 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { HydrationSafeTime } from '@/components/ui/hydration-safe-time';
 import { useToast } from '@/components/ui/toaster';
+import {
+  applyAcceptedFriendRequest,
+  applyProfileFriendCountDelta,
+  buildOptimisticFriendSummary,
+  restoreQuerySnapshots,
+  snapshotQueryGroups,
+} from '@/lib/query/social-cache';
 import { type PendingFriendRequest } from '@/schemas/friends';
 import {
   acceptFriendRequest,
@@ -15,11 +22,13 @@ import {
 type FriendRequestCardProps = {
   request: PendingFriendRequest;
   receiverUserId: string;
+  receiverUsername: string;
 };
 
 export function FriendRequestCard({
   request,
   receiverUserId,
+  receiverUsername,
 }: FriendRequestCardProps) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -31,31 +40,62 @@ export function FriendRequestCard({
 
   const acceptMutation = useMutation({
     mutationFn: acceptFriendRequest,
-    onSuccess: async () => {
+    onMutate: async () => {
+      await Promise.all([
+        queryClient.cancelQueries({
+          queryKey: ['friend-requests', receiverUserId],
+        }),
+        queryClient.cancelQueries({
+          queryKey: ['friends', receiverUserId],
+        }),
+        queryClient.cancelQueries({
+          queryKey: ['profile'],
+        }),
+      ]);
+
+      const snapshots = snapshotQueryGroups(queryClient, [
+        ['friend-requests', receiverUserId],
+        ['friends', receiverUserId],
+        ['profile'],
+      ]);
+
+      applyAcceptedFriendRequest(
+        queryClient,
+        receiverUserId,
+        request,
+        buildOptimisticFriendSummary(queryClient, {
+          id: receiverUserId,
+          username: receiverUsername,
+        }),
+      );
+      applyProfileFriendCountDelta(queryClient, [receiverUserId, request.sender.id], 1);
+
+      return { snapshots };
+    },
+    onSuccess: () => {
       showToast({
         title: 'Pedido aceito',
         description: 'A amizade ja pode aparecer nas superfices sociais do app.',
         tone: 'success',
       });
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ['friend-requests', receiverUserId],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ['friends', receiverUserId],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ['profile'],
-        }),
-      ]);
     },
-    onError: (error) => {
+    onError: (error, _requestId, context) => {
+      if (context) {
+        restoreQuerySnapshots(queryClient, context.snapshots);
+      }
+
       showToast({
         title: 'Nao foi possivel aceitar o pedido',
         description: error instanceof FriendsRequestError
           ? error.message
           : 'Tente novamente em alguns instantes.',
         tone: 'error',
+      });
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['profile'],
+        refetchType: 'active',
       });
     },
   });

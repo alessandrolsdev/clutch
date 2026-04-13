@@ -8,6 +8,12 @@ import { SectionHeading } from '@/components/ui/section-heading';
 import { useToast } from '@/components/ui/toaster';
 import { useAuth } from '@/hooks/use-auth';
 import {
+  applyAllNotificationsRead,
+  applyNotificationRead,
+  restoreQuerySnapshots,
+  snapshotQueryGroups,
+} from '@/lib/query/social-cache';
+import {
   fetchNotifications,
   markAllNotificationsAsRead,
   markNotificationAsRead,
@@ -74,24 +80,30 @@ export function NotificationsPageContent() {
     refetchInterval: 30_000,
   });
 
-  const invalidateNotifications = async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['notifications', userId, 'all'] }),
-      queryClient.invalidateQueries({ queryKey: ['notifications', userId, 'unread'] }),
-    ]);
-  };
-
   const markOneMutation = useMutation({
     mutationFn: markNotificationAsRead,
-    onSuccess: async () => {
+    onMutate: async (notificationId) => {
+      await queryClient.cancelQueries({
+        queryKey: ['notifications', userId],
+      });
+
+      const snapshots = snapshotQueryGroups(queryClient, [['notifications', userId]]);
+      applyNotificationRead(queryClient, userId as string, notificationId);
+
+      return { snapshots };
+    },
+    onSuccess: () => {
       showToast({
         title: 'Notificacao atualizada',
         description: 'A notificacao foi marcada como lida.',
         tone: 'success',
       });
-      await invalidateNotifications();
     },
-    onError: (error) => {
+    onError: (error, _notificationId, context) => {
+      if (context) {
+        restoreQuerySnapshots(queryClient, context.snapshots);
+      }
+
       const description = error instanceof NotificationsRequestError
         ? error.message
         : 'Tente novamente em alguns instantes.';
@@ -102,19 +114,38 @@ export function NotificationsPageContent() {
         tone: 'error',
       });
     },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['notifications', userId],
+        refetchType: 'inactive',
+      });
+    },
   });
 
   const markAllMutation = useMutation({
     mutationFn: markAllNotificationsAsRead,
-    onSuccess: async () => {
+    onMutate: async () => {
+      await queryClient.cancelQueries({
+        queryKey: ['notifications', userId],
+      });
+
+      const snapshots = snapshotQueryGroups(queryClient, [['notifications', userId]]);
+      applyAllNotificationsRead(queryClient, userId as string);
+
+      return { snapshots };
+    },
+    onSuccess: () => {
       showToast({
         title: 'Inbox atualizado',
         description: 'Todas as notificacoes foram marcadas como lidas.',
         tone: 'success',
       });
-      await invalidateNotifications();
     },
-    onError: (error) => {
+    onError: (error, _variables, context) => {
+      if (context) {
+        restoreQuerySnapshots(queryClient, context.snapshots);
+      }
+
       const description = error instanceof NotificationsRequestError
         ? error.message
         : 'Tente novamente em alguns instantes.';
@@ -123,6 +154,12 @@ export function NotificationsPageContent() {
         title: 'Nao foi possivel limpar o inbox',
         description,
         tone: 'error',
+      });
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['notifications', userId],
+        refetchType: 'inactive',
       });
     },
   });
