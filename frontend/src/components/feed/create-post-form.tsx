@@ -4,15 +4,16 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { RemoteImageField } from '@/components/media/remote-image-field';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toaster';
 import {
   createPostRequestSchema,
   type CreatePostRequest,
 } from '@/schemas/feed';
 import { createPost, FeedRequestError } from '@/services/feed';
+import { uploadImage } from '@/services/media';
 
 type CreatePostFormProps = {
   userId: string;
@@ -38,6 +39,8 @@ export function CreatePostForm({ userId }: CreatePostFormProps) {
     register,
     handleSubmit,
     reset,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<CreatePostRequest>({
     resolver: zodResolver(createPostRequestSchema),
@@ -89,6 +92,7 @@ export function CreatePostForm({ userId }: CreatePostFormProps) {
       });
     },
   });
+  const mediaUrl = watch('mediaUrl');
 
   const onSubmit = handleSubmit(async (values) => {
     setFeedbackMessage(null);
@@ -151,25 +155,40 @@ export function CreatePostForm({ userId }: CreatePostFormProps) {
           ) : null}
         </label>
 
-        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_13rem]">
-          <label className="block space-y-2">
-            <span className="text-sm font-medium text-primary">
-              URL de midia
-            </span>
-            <Input
-              placeholder="https://..."
-              aria-invalid={Boolean(errors.mediaUrl)}
-              aria-describedby={errors.mediaUrl ? 'post-media-error' : undefined}
-              {...register('mediaUrl')}
-            />
-            {errors.mediaUrl ? (
-              <span id="post-media-error" className="text-sm text-status-afk">
-                {errors.mediaUrl.message}
-              </span>
-            ) : null}
-          </label>
+        <input type="hidden" {...register('mediaUrl')} />
 
-          <label className="block space-y-2">
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_13rem]">
+          <div className="min-w-0">
+            <RemoteImageField
+              id="post-media-url"
+              label="Imagem do post"
+              value={mediaUrl}
+              onChange={(value) => {
+                setValue('mediaUrl', value, {
+                  shouldDirty: true,
+                  shouldTouch: true,
+                  shouldValidate: true,
+                });
+              }}
+              onUploadFile={async (file) => {
+                const uploadedImage = await uploadImage(file);
+                setValue('type', 'IMAGE', {
+                  shouldDirty: true,
+                  shouldTouch: true,
+                  shouldValidate: true,
+                });
+                return uploadedImage.url;
+              }}
+              error={errors.mediaUrl?.message}
+              previewAlt="Preview da imagem do post"
+              emptyTitle="Nenhuma imagem selecionada"
+              emptyDescription="Envie uma imagem do seu computador ou use uma URL publica como fallback."
+              description="O post agora aceita upload real de imagem. A URL publica continua disponivel como fallback explicito."
+              previewClassName="aspect-[16/9]"
+            />
+          </div>
+
+          <label className="block space-y-2 self-start">
             <span className="text-sm font-medium text-primary">Tipo</span>
             <select
               className="h-11 rounded-control border border-border bg-background-tertiary px-control-x text-sm text-primary outline-none transition focus:border-accent-cyan focus:ring-2 focus:ring-accent-cyan/30"
@@ -181,6 +200,9 @@ export function CreatePostForm({ userId }: CreatePostFormProps) {
                 </option>
               ))}
             </select>
+            <p className="text-sm leading-6 text-secondary">
+              O upload real preenche `mediaUrl` com a URL publica gerada pelo backend. O seletor continua disponivel para ajustar o tipo quando necessario.
+            </p>
           </label>
         </div>
 
