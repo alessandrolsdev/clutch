@@ -13,6 +13,7 @@ export const buildApp = async (
   return createApp({
     jwtSecret: TEST_JWT_SECRET,
     logger: false,
+    rateLimitRedis: null,
     refreshSessionStore: createInMemoryRefreshSessionStore(),
     ...options,
   });

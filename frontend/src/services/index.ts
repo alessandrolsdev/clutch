@@ -45,3 +45,4 @@ export {
   ProfileRequestError,
   updateProfileByUsername,
 } from './profile';
+export { MediaUploadRequestError, uploadImage } from './media';

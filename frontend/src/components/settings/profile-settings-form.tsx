@@ -4,11 +4,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { RemoteImageField } from '@/components/media/remote-image-field';
 import { GamerCard } from '@/components/profile/gamer-card';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { SectionHeading } from '@/components/ui/section-heading';
 import { useAuth } from '@/hooks/use-auth';
+import { normalizeRemoteUrl, isValidRemoteUrl } from '@/lib/media/remote-url';
 import {
   profileUpdateRequestSchema,
   type ProfileResponse,
@@ -19,23 +21,11 @@ import {
   ProfileRequestError,
   updateProfileByUsername,
 } from '@/services/profile';
+import { uploadImage } from '@/services/media';
 
 const fieldClassName = 'space-y-2';
 const textAreaClassName =
   'min-h-[7rem] w-full rounded-control border border-border bg-background-secondary px-control-x py-control-y text-sm text-primary transition focus:border-accent-cyan focus:outline-none focus:ring-2 focus:ring-accent-cyan/30';
-
-function isValidRemoteUrl(value: string | null | undefined): value is string {
-  if (!value) {
-    return false;
-  }
-
-  try {
-    const parsedUrl = new URL(value);
-    return parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
 
 function isValidAccentColor(value: string | null | undefined): value is string {
   return typeof value === 'string' && /^#[0-9A-Fa-f]{6}$/.test(value);
@@ -47,8 +37,8 @@ function buildPreviewProfile(
 ): ProfileResponse {
   const displayName = values.displayName ?? profile.profile.displayName ?? '';
   const bio = values.bio ?? profile.profile.bio ?? '';
-  const avatarUrl = values.avatarUrl ?? profile.profile.avatarUrl;
-  const bannerUrl = values.bannerUrl ?? profile.profile.bannerUrl;
+  const avatarUrl = normalizeRemoteUrl(values.avatarUrl ?? profile.profile.avatarUrl);
+  const bannerUrl = normalizeRemoteUrl(values.bannerUrl ?? profile.profile.bannerUrl);
   const accentColor = values.accentColor ?? profile.profile.accentColor;
 
   return {
@@ -115,6 +105,7 @@ export function ProfileSettingsForm() {
     register,
     handleSubmit,
     reset,
+    setValue,
     watch,
     formState: { errors, isSubmitting },
   } = useForm<ProfileUpdateValues>({
@@ -255,39 +246,55 @@ export function ProfileSettingsForm() {
               ) : null}
             </label>
 
-            <label className={fieldClassName}>
-              <span className="text-sm font-medium text-primary">Avatar URL</span>
-              <input
-                type="url"
-                className="h-11 w-full rounded-control border border-border bg-background-secondary px-control-x text-sm text-primary transition focus:border-accent-cyan focus:outline-none focus:ring-2 focus:ring-accent-cyan/30"
-                placeholder="https://..."
-                aria-invalid={Boolean(errors.avatarUrl)}
-                aria-describedby={errors.avatarUrl ? 'settings-avatar-error' : undefined}
-                {...register('avatarUrl')}
-              />
-              {errors.avatarUrl ? (
-                <span id="settings-avatar-error" className="text-sm text-status-afk">
-                  {errors.avatarUrl.message}
-                </span>
-              ) : null}
-            </label>
+            <input type="hidden" {...register('avatarUrl')} />
+            <input type="hidden" {...register('bannerUrl')} />
 
-            <label className={fieldClassName}>
-              <span className="text-sm font-medium text-primary">Banner URL</span>
-              <input
-                type="url"
-                className="h-11 w-full rounded-control border border-border bg-background-secondary px-control-x text-sm text-primary transition focus:border-accent-cyan focus:outline-none focus:ring-2 focus:ring-accent-cyan/30"
-                placeholder="https://..."
-                aria-invalid={Boolean(errors.bannerUrl)}
-                aria-describedby={errors.bannerUrl ? 'settings-banner-error' : undefined}
-                {...register('bannerUrl')}
-              />
-              {errors.bannerUrl ? (
-                <span id="settings-banner-error" className="text-sm text-status-afk">
-                  {errors.bannerUrl.message}
-                </span>
-              ) : null}
-            </label>
+            <RemoteImageField
+              id="settings-avatar-url"
+              label="Avatar"
+              value={watchedValues.avatarUrl ?? ''}
+              onChange={(value) => {
+                setValue('avatarUrl', value, {
+                  shouldDirty: true,
+                  shouldTouch: true,
+                  shouldValidate: true,
+                });
+              }}
+              onUploadFile={async (file) => {
+                const uploadedImage = await uploadImage(file);
+                return uploadedImage.url;
+              }}
+              error={errors.avatarUrl?.message}
+              previewAlt="Preview do avatar"
+              emptyTitle="Sem avatar configurado"
+              emptyDescription="Envie uma imagem do seu computador ou mantenha uma URL publica como fallback."
+              description="O app agora prefere upload real para avatar, sem remover o fluxo por URL publica quando ele ainda fizer sentido."
+              previewClassName="h-40 w-40 max-w-full"
+              previewImageClassName="rounded-full"
+            />
+
+            <RemoteImageField
+              id="settings-banner-url"
+              label="Banner"
+              value={watchedValues.bannerUrl ?? ''}
+              onChange={(value) => {
+                setValue('bannerUrl', value, {
+                  shouldDirty: true,
+                  shouldTouch: true,
+                  shouldValidate: true,
+                });
+              }}
+              onUploadFile={async (file) => {
+                const uploadedImage = await uploadImage(file);
+                return uploadedImage.url;
+              }}
+              error={errors.bannerUrl?.message}
+              previewAlt="Preview do banner"
+              emptyTitle="Sem banner configurado"
+              emptyDescription="Envie um banner do seu computador ou use uma URL publica como fallback."
+              description="O preview abaixo continua validando a imagem final que sera salva no perfil."
+              previewClassName="aspect-[16/6]"
+            />
 
             <label className={fieldClassName}>
               <span className="text-sm font-medium text-primary">Accent color</span>

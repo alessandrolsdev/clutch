@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProfileSettingsForm } from '@/components/settings/profile-settings-form';
 import { useAuth } from '@/hooks/use-auth';
+import { uploadImage } from '@/services/media';
 import {
   fetchProfileByUsername,
   updateProfileByUsername,
@@ -27,6 +28,10 @@ vi.mock('@/services/profile', () => ({
   },
 }));
 
+vi.mock('@/services/media', () => ({
+  uploadImage: vi.fn(),
+}));
+
 vi.mock('@/components/profile/gamer-card', () => ({
   GamerCard: ({ profile }: { profile: { profile: { displayName: string | null; bio: string | null } } }) => (
     <div data-testid="profile-preview">
@@ -38,6 +43,7 @@ vi.mock('@/components/profile/gamer-card', () => ({
 const mockedUseAuth = vi.mocked(useAuth);
 const mockedFetchProfileByUsername = vi.mocked(fetchProfileByUsername);
 const mockedUpdateProfileByUsername = vi.mocked(updateProfileByUsername);
+const mockedUploadImage = vi.mocked(uploadImage);
 
 function renderProfileSettingsForm() {
   const queryClient = new QueryClient({
@@ -59,6 +65,7 @@ describe('ProfileSettingsForm', () => {
     mockedUseAuth.mockReset();
     mockedFetchProfileByUsername.mockReset();
     mockedUpdateProfileByUsername.mockReset();
+    mockedUploadImage.mockReset();
 
     mockedUseAuth.mockReturnValue({
       status: 'authenticated',
@@ -98,6 +105,11 @@ describe('ProfileSettingsForm', () => {
       platformIntegrations: [],
       gameLibrary: [],
     });
+    vi.stubGlobal('navigator', {
+      clipboard: {
+        readText: vi.fn().mockResolvedValue('https://example.com/avatar.png'),
+      },
+    });
   });
 
   it('renders profile preview and updates it locally', async () => {
@@ -120,6 +132,66 @@ describe('ProfileSettingsForm', () => {
         'Novo nome::Bio atualizada',
       );
     });
+  });
+
+  it('supports preview and clipboard paste for remote images', async () => {
+    renderProfileSettingsForm();
+
+    await screen.findByTestId('settings-profile-success');
+
+    expect(screen.getByText(/sem avatar configurado/i)).toBeInTheDocument();
+
+    const clipboardButton = screen.getAllByRole('button', { name: /colar link/i })[0];
+    expect(clipboardButton).toBeDefined();
+    fireEvent.click(clipboardButton as HTMLElement);
+
+    expect(await screen.findByText(/link colado do clipboard/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^avatar$/i)).toHaveValue('https://example.com/avatar.png');
+    expect(screen.getByAltText(/preview do avatar/i)).toHaveAttribute(
+      'src',
+      'https://example.com/avatar.png',
+    );
+
+    const clearButton = screen.getAllByRole('button', { name: /limpar/i })[0];
+    expect(clearButton).toBeDefined();
+    fireEvent.click(clearButton as HTMLElement);
+
+    expect(screen.getByLabelText(/^avatar$/i)).toHaveValue('');
+    expect(screen.getByText(/sem avatar configurado/i)).toBeInTheDocument();
+  });
+
+  it('uploads a local avatar and applies the returned URL to the preview', async () => {
+    mockedUploadImage.mockResolvedValue({
+      url: 'http://localhost/api/uploads/images/avatar.png',
+      contentType: 'image/png',
+      size: 2048,
+    });
+
+    renderProfileSettingsForm();
+
+    await screen.findByTestId('settings-profile-success');
+
+    const fileInput = screen.getByLabelText(/arquivo de imagem para avatar/i);
+    const avatarFile = new File(['avatar-bytes'], 'avatar.png', {
+      type: 'image/png',
+    });
+
+    fireEvent.change(fileInput, {
+      target: { files: [avatarFile] },
+    });
+
+    await waitFor(() => {
+      expect(mockedUploadImage).toHaveBeenCalledWith(avatarFile);
+    });
+
+    expect(await screen.findByText(/imagem enviada com sucesso/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^avatar$/i)).toHaveValue(
+      'http://localhost/api/uploads/images/avatar.png',
+    );
+    expect(screen.getByAltText(/preview do avatar/i)).toHaveAttribute(
+      'src',
+      'http://localhost/api/uploads/images/avatar.png',
+    );
   });
 
   it('submits the real profile patch payload', async () => {
