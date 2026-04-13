@@ -43,7 +43,7 @@ export function resolveMediaUploadsDirectory(): string {
     return path.resolve(configuredDirectory);
   }
 
-  return path.resolve(process.cwd(), 'storage', 'uploads', 'images');
+  return path.resolve(path.sep, 'data', 'uploads', 'images');
 }
 
 export async function ensureMediaUploadsDirectory(): Promise<void> {
