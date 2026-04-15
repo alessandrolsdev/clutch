@@ -2,6 +2,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import type { JwtPayload, VerifiedJwtPayload } from '../config/jwt';
 import type { DiscordOAuthService } from '../core/services/discord-oauth.service';
+import type { DiscordPresenceService } from '../core/services/discord-presence.service';
 import type { IntegrationsService } from '../core/services/integrations.service';
 import type { RefreshTokenService } from '../core/services/refresh-token.service';
 
@@ -18,6 +19,7 @@ declare module 'fastify' {
     refreshTokenService: RefreshTokenService;
     integrationsService: IntegrationsService;
     discordOAuthService: DiscordOAuthService;
+    discordPresenceService: DiscordPresenceService;
   }
 
   interface FastifyRequest {
