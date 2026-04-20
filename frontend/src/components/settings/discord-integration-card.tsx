@@ -49,10 +49,10 @@ export function DiscordIntegrationCard({
         <div className="space-y-2">
           <p className="text-xs uppercase tracking-[0.35em] text-secondary">Discord</p>
           <h2 className="font-display text-2xl font-semibold text-primary">
-            Vinculo OAuth do Discord
+            Vinculo Discord e presence bridge
           </h2>
           <p className="text-sm leading-6 text-secondary">
-            Inicia o fluxo OAuth real pelo backend e conclui a vinculacao no retorno do provedor.
+            Vincula a conta Discord pelo backend e habilita a ingestao de presenca normalizada quando o bridge estiver ativo.
           </p>
         </div>
         <Badge tone={isConnected ? 'success' : 'neutral'}>
@@ -62,7 +62,7 @@ export function DiscordIntegrationCard({
 
       <p className="text-sm text-secondary">
         {isConnected
-          ? `Conta vinculada: ${linkedAccountLabel ?? 'Discord conectado.'}`
+          ? `Conta vinculada: ${linkedAccountLabel ?? 'Discord conectado.'} O estado de presenca passa a poder ser refletido no CLUTCH sem acoplamento direto no frontend.`
           : 'Ainda nao ha integracao Discord ativa neste perfil.'}
       </p>
 
@@ -89,7 +89,7 @@ export function DiscordIntegrationCard({
       </div>
 
       <p className="text-xs leading-5 text-secondary">
-        O frontend conclui o callback em rota dedicada do App Router. Se o backend Discord nao estiver configurado no runtime atual, a UI exibe indisponibilidade sem expor detalhes internos.
+        O frontend conclui o callback em rota dedicada do App Router. A presenca continua chegando pela API do CLUTCH; o browser nao fala diretamente com o Discord.
       </p>
     </Card>
   );
