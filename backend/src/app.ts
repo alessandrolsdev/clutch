@@ -38,6 +38,10 @@ import {
   createDiscordOAuthService,
   type DiscordOAuthService,
 } from './core/services/discord-oauth.service';
+import {
+  createDiscordPresenceService,
+  type DiscordPresenceService,
+} from './core/services/discord-presence.service';
 import { ensureMediaUploadsDirectory } from './config/media-upload';
 import type Redis from 'ioredis';
 
@@ -50,6 +54,7 @@ export type BuildAppOptions = {
   rateLimitRedis?: Redis | null;
   integrationsService?: IntegrationsService;
   discordOAuthService?: DiscordOAuthService;
+  discordPresenceService?: DiscordPresenceService;
 };
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
@@ -74,6 +79,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   });
   const integrationsService = options.integrationsService ?? createIntegrationsService();
   const discordOAuthService = options.discordOAuthService ?? createDiscordOAuthService();
+  const discordPresenceService = options.discordPresenceService ?? createDiscordPresenceService();
   const resolvedRateLimitRedis =
     options.rateLimitRedis !== undefined
       ? options.rateLimitRedis
@@ -87,6 +93,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   app.decorate('refreshTokenService', refreshTokenService);
   app.decorate('integrationsService', integrationsService);
   app.decorate('discordOAuthService', discordOAuthService);
+  app.decorate('discordPresenceService', discordPresenceService);
 
   await app.register(
     fastifyRateLimit,

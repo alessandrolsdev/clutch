@@ -1,8 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp, generateTestToken } from '../../helpers/build-app';
 import {
   createIntegrationError,
-  type IntegrationError,
 } from '@/infra/integrations/integration.errors';
 
 const createMockIntegrationsService = () => ({
@@ -17,9 +16,25 @@ const createMockDiscordOAuthService = () => ({
   completeCallback: vi.fn(),
 });
 
+const createMockDiscordPresenceService = () => ({
+  ingestPresence: vi.fn(),
+});
+
 describe('Integrations Routes', () => {
+  const previousDiscordPresenceToken = process.env['DISCORD_PRESENCE_INGEST_TOKEN'];
+
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env['DISCORD_PRESENCE_INGEST_TOKEN'] = 'discord-presence-secret';
+  });
+
+  afterEach(() => {
+    if (typeof previousDiscordPresenceToken === 'string') {
+      process.env['DISCORD_PRESENCE_INGEST_TOKEN'] = previousDiscordPresenceToken;
+      return;
+    }
+
+    delete process.env['DISCORD_PRESENCE_INGEST_TOKEN'];
   });
 
   describe('POST /integrations/steam/connect', () => {
@@ -386,6 +401,148 @@ describe('Integrations Routes', () => {
       expect(response.statusCode).toBe(400);
       expect(response.json()).toMatchObject({
         message: 'Autorização Discord inválida ou expirada.',
+      });
+      await app.close();
+    });
+  });
+
+  describe('POST /integrations/discord/presence', () => {
+    it('retorna 503 quando o runtime nao esta configurado para ingestao', async () => {
+      delete process.env['DISCORD_PRESENCE_INGEST_TOKEN'];
+      const integrationsService = createMockIntegrationsService();
+      const discordOAuthService = createMockDiscordOAuthService();
+      const discordPresenceService = createMockDiscordPresenceService();
+      const app = await buildApp({ integrationsService, discordOAuthService, discordPresenceService });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/integrations/discord/presence',
+        payload: {
+          externalId: 'discord-user-id',
+          status: 'ONLINE',
+        },
+      });
+
+      expect(response.statusCode).toBe(503);
+      expect(discordPresenceService.ingestPresence).not.toHaveBeenCalled();
+      await app.close();
+    });
+
+    it('retorna 401 quando o segredo interno nao confere', async () => {
+      const integrationsService = createMockIntegrationsService();
+      const discordOAuthService = createMockDiscordOAuthService();
+      const discordPresenceService = createMockDiscordPresenceService();
+      const app = await buildApp({ integrationsService, discordOAuthService, discordPresenceService });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/integrations/discord/presence',
+        headers: {
+          'x-clutch-discord-ingest-token': 'wrong-secret',
+        },
+        payload: {
+          externalId: 'discord-user-id',
+          status: 'ONLINE',
+        },
+      });
+
+      expect(response.statusCode).toBe(401);
+      expect(discordPresenceService.ingestPresence).not.toHaveBeenCalled();
+      await app.close();
+    });
+
+    it('retorna 400 quando o payload e invalido', async () => {
+      const integrationsService = createMockIntegrationsService();
+      const discordOAuthService = createMockDiscordOAuthService();
+      const discordPresenceService = createMockDiscordPresenceService();
+      const app = await buildApp({ integrationsService, discordOAuthService, discordPresenceService });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/integrations/discord/presence',
+        headers: {
+          'x-clutch-discord-ingest-token': 'discord-presence-secret',
+        },
+        payload: {
+          externalId: '',
+          status: 'ONLINE',
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(discordPresenceService.ingestPresence).not.toHaveBeenCalled();
+      await app.close();
+    });
+
+    it('retorna 200 quando a presenca Discord e ingerida com sucesso', async () => {
+      const integrationsService = createMockIntegrationsService();
+      const discordOAuthService = createMockDiscordOAuthService();
+      const discordPresenceService = createMockDiscordPresenceService();
+      discordPresenceService.ingestPresence.mockResolvedValue({
+        message: 'Presença Discord atualizada.',
+        userId: 'user-id-1',
+        externalId: 'discord-user-id',
+        status: 'IN_GAME',
+        platform: 'DISCORD',
+        updatedAt: '2026-04-13T18:40:00.000Z',
+      });
+
+      const app = await buildApp({ integrationsService, discordOAuthService, discordPresenceService });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/integrations/discord/presence',
+        headers: {
+          'x-clutch-discord-ingest-token': 'discord-presence-secret',
+        },
+        payload: {
+          externalId: 'discord-user-id',
+          status: 'IN_GAME',
+          currentGame: 'Valorant',
+          gameDetails: { activityType: 'PLAYING' },
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(discordPresenceService.ingestPresence).toHaveBeenCalledWith({
+        externalId: 'discord-user-id',
+        status: 'IN_GAME',
+        currentGame: 'Valorant',
+        gameDetails: { activityType: 'PLAYING' },
+        requestId: expect.any(String),
+      });
+      expect(response.json()).toMatchObject({
+        userId: 'user-id-1',
+        platform: 'DISCORD',
+      });
+      await app.close();
+    });
+
+    it('traduz ausencia de vinculo Discord para 404', async () => {
+      const integrationsService = createMockIntegrationsService();
+      const discordOAuthService = createMockDiscordOAuthService();
+      const discordPresenceService = createMockDiscordPresenceService();
+      discordPresenceService.ingestPresence.mockRejectedValue(
+        createIntegrationError('discord', 404, 'not_connected', 'Conta Discord não vinculada a um usuário CLUTCH.'),
+      );
+
+      const app = await buildApp({ integrationsService, discordOAuthService, discordPresenceService });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/integrations/discord/presence',
+        headers: {
+          'x-clutch-discord-ingest-token': 'discord-presence-secret',
+        },
+        payload: {
+          externalId: 'discord-user-id',
+          status: 'ONLINE',
+        },
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toMatchObject({
+        message: 'Conta Discord não vinculada a um usuário CLUTCH.',
       });
       await app.close();
     });

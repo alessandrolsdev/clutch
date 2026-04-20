@@ -1,5 +1,11 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import {
+  DISCORD_PRESENCE_INGEST_TOKEN_HEADER,
+  hasValidDiscordPresenceIngestToken,
+  isDiscordPresenceIngestConfigured,
+} from '../../config/discord-presence';
+import { createIntegrationError } from '../../infra/integrations/integration.errors';
 import { isIntegrationError } from '../../core/services/integrations.service';
 
 const steamConnectSchema = z.object({
@@ -21,6 +27,13 @@ const discordCallbackSchema = z.object({
     message: 'Callback Discord inválido.',
   },
 );
+
+const discordPresenceIngestSchema = z.object({
+  externalId: z.string().min(1, 'Discord externalId é obrigatório.'),
+  status: z.enum(['ONLINE', 'IN_GAME', 'AFK', 'OFFLINE']),
+  currentGame: z.string().max(100).nullable().optional(),
+  gameDetails: z.record(z.unknown()).nullable().optional(),
+});
 
 function replyWithIntegrationError(
   request: { id: string; method: string; url: string; log: FastifyInstance['log'] },
@@ -146,6 +159,62 @@ export async function integrationRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(200).send(resultPayload);
       } catch (error) {
         const integrationError = replyWithIntegrationError(request, error, { logFailure: false });
+        return reply.status(integrationError.statusCode).send(integrationError.payload);
+      }
+    },
+  );
+
+  // ── POST /integrations/discord/presence ────────────────
+  app.post(
+    '/discord/presence',
+    async (request, reply) => {
+      if (!isDiscordPresenceIngestConfigured()) {
+        const integrationError = replyWithIntegrationError(
+          request,
+          createIntegrationError(
+            'discord',
+            503,
+            'misconfigured',
+            'Ingestão de presença Discord indisponível no runtime atual.',
+          ),
+          { logFailure: false },
+        );
+
+        return reply.status(integrationError.statusCode).send(integrationError.payload);
+      }
+
+      if (!hasValidDiscordPresenceIngestToken(request.headers[DISCORD_PRESENCE_INGEST_TOKEN_HEADER])) {
+        const integrationError = replyWithIntegrationError(
+          request,
+          createIntegrationError(
+            'discord',
+            401,
+            'invalid_credentials',
+            'Integração Discord não autorizada.',
+          ),
+          { logFailure: false },
+        );
+
+        return reply.status(integrationError.statusCode).send(integrationError.payload);
+      }
+
+      const result = discordPresenceIngestSchema.safeParse(request.body);
+      if (!result.success) {
+        return reply.status(400).send({ message: result.error.errors[0]?.message ?? 'Dados inválidos.' });
+      }
+
+      try {
+        const resultPayload = await app.discordPresenceService.ingestPresence({
+          externalId: result.data.externalId,
+          status: result.data.status,
+          currentGame: result.data.currentGame,
+          gameDetails: result.data.gameDetails as Record<string, unknown> | null | undefined,
+          requestId: request.id,
+        });
+
+        return reply.status(200).send(resultPayload);
+      } catch (error) {
+        const integrationError = replyWithIntegrationError(request, error);
         return reply.status(integrationError.statusCode).send(integrationError.payload);
       }
     },
