@@ -49,7 +49,7 @@ describe('IntegrationsPageContent', () => {
     mockedFetchProfileByUsername.mockReset();
   });
 
-  it('renders integrations status including discord oauth state', async () => {
+  it('renders integrations status including discord connection state', async () => {
     mockedUseAuth.mockReturnValue({
       status: 'authenticated',
       user: {
@@ -116,7 +116,10 @@ describe('IntegrationsPageContent', () => {
     expect(screen.getByText(/biblioteca steam/i)).toBeInTheDocument();
     expect(screen.getByText(/biblioteca epic games/i)).toBeInTheDocument();
     expect(screen.getByText(/^discord$/i)).toBeInTheDocument();
-    expect(screen.getByText(/vinculo oauth do discord/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /vinculo discord e presence bridge/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /reconectar discord/i })).toBeInTheDocument();
     expect(screen.getByText(/conta vinculada: clutch guild/i)).toBeInTheDocument();
     expect(screen.queryByText(/ainda fora do contrato frontend atual/i)).not.toBeInTheDocument();
   });
