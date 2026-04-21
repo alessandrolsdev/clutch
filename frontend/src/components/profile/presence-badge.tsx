@@ -22,8 +22,8 @@ const toneByStatus: Record<
 
 const labelByStatus: Record<ProfilePresenceStatus, string> = {
   ONLINE: 'Online',
-  IN_GAME: 'In game',
-  AFK: 'AFK',
+  IN_GAME: 'Jogando',
+  AFK: 'Ausente',
   OFFLINE: 'Offline',
 };
 
@@ -35,30 +35,34 @@ function resolvePrimaryDetail(
     return `Jogando ${currentGame}`;
   }
 
+  if (status === 'IN_GAME') {
+    return 'Em partida agora';
+  }
+
   if (status === 'ONLINE') {
-    return 'Disponivel para jogar';
+    return 'Disponivel para jogar agora';
   }
 
   if (status === 'AFK') {
-    return 'Ausente no momento';
+    return 'Em pausa no momento';
   }
 
-  return 'Sem atividade ativa';
+  return 'Sem sessao publica ativa';
 }
 
 function resolveSecondaryDetail(
   status: ProfilePresenceStatus,
   platform: string | null,
 ): string {
-  if (platform) {
-    return `Plataforma atual: ${platform}`;
+  if (platform && status !== 'OFFLINE') {
+    return `Via ${platform}`;
   }
 
   if (status === 'OFFLINE') {
-    return 'Nenhuma sessao publica no momento';
+    return 'Nenhuma plataforma publica ativa';
   }
 
-  return 'Sem plataforma informada';
+  return 'Sem plataforma publica informada';
 }
 
 export function PresenceBadge({
@@ -70,7 +74,10 @@ export function PresenceBadge({
   const secondaryDetail = resolveSecondaryDetail(status, platform);
 
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-control border border-border bg-background-tertiary/70 px-3 py-3">
+    <div
+      data-testid="presence-badge"
+      className="flex flex-wrap items-center gap-3 rounded-control border border-border bg-background-tertiary/70 px-3 py-3"
+    >
       <Badge tone={toneByStatus[status]}>
         <motion.span
           initial={{ opacity: 0.55 }}
