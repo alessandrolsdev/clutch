@@ -5,9 +5,17 @@ import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { PresenceBadge } from '@/components/profile/presence-badge';
+import {
+  getPresenceConnectionView,
+  isPresenceRealtimeActive,
+} from '@/lib/presence/connection-state';
 import { type FriendSummary, type FriendPresenceStatus } from '@/schemas/friends';
 import { fetchFriends } from '@/services/friends';
-import { usePresenceStore, type PresenceEntry } from '@/store/presence-store';
+import {
+  usePresenceStore,
+  type PresenceConnectionStatus,
+  type PresenceEntry,
+} from '@/store/presence-store';
 
 type FriendsListProps = {
   userId: string;
@@ -53,47 +61,6 @@ export function sortFriendsByEffectivePresence(
   });
 }
 
-function describeRealtimeState(connectionStatus: string, errorMessage: string | null) {
-  switch (connectionStatus) {
-    case 'connected':
-      return {
-        tone: 'success' as const,
-        label: 'Presenca ao vivo',
-        detail: 'Status e ordenacao refletem atualizacoes em tempo real.',
-      };
-    case 'connecting':
-      return {
-        tone: 'neutral' as const,
-        label: 'Sincronizando presenca',
-        detail: 'Exibindo o snapshot mais recente ate o realtime estabilizar.',
-      };
-    case 'reconnecting':
-      return {
-        tone: 'warning' as const,
-        label: 'Reconectando presenca',
-        detail: 'Mantendo o snapshot atual enquanto as atualizacoes ao vivo retornam.',
-      };
-    case 'auth_error':
-      return {
-        tone: 'warning' as const,
-        label: 'Sessao de presenca expirada',
-        detail: errorMessage ?? 'A sessao sera renovada antes de retomar as atualizacoes ao vivo.',
-      };
-    case 'error':
-      return {
-        tone: 'warning' as const,
-        label: 'Atualizacoes ao vivo indisponiveis',
-        detail: errorMessage ?? 'Exibindo o snapshot mais recente do backend.',
-      };
-    default:
-      return {
-        tone: 'neutral' as const,
-        label: 'Presenca ao vivo inativa',
-        detail: 'Exibindo o snapshot mais recente do backend.',
-      };
-  }
-}
-
 function FriendsListLoadingState() {
   return (
     <Card data-testid="friends-list-loading">
@@ -111,7 +78,9 @@ export function FriendsList({
   title = 'Amigos',
 }: FriendsListProps) {
   const presenceEntries = usePresenceStore((state) => state.entries);
-  const connectionStatus = usePresenceStore((state) => state.connectionStatus);
+  const connectionStatus = usePresenceStore(
+    (state) => state.connectionStatus,
+  ) as PresenceConnectionStatus;
   const errorMessage = usePresenceStore((state) => state.errorMessage);
   const friendsQuery = useQuery({
     queryKey: ['friends', userId],
@@ -137,9 +106,9 @@ export function FriendsList({
     );
   }
 
-  const realtimeEntries = connectionStatus === 'connected' ? presenceEntries : {};
+  const realtimeEntries = isPresenceRealtimeActive(connectionStatus) ? presenceEntries : {};
   const friends = sortFriendsByEffectivePresence(friendsQuery.data, realtimeEntries);
-  const realtimeState = describeRealtimeState(connectionStatus, errorMessage);
+  const realtimeState = getPresenceConnectionView(connectionStatus, errorMessage);
 
   if (friends.length === 0) {
     return (
@@ -203,6 +172,7 @@ export function FriendsList({
                   status={effectivePresence.status}
                   currentGame={effectivePresence.currentGame}
                   platform={effectivePresence.platform}
+                  connectionStatus={connectionStatus}
                 />
               </div>
             );
