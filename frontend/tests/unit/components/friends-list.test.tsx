@@ -1,6 +1,6 @@
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FriendsList } from '@/components/friends/friends-list';
 import { fetchFriends } from '@/services/friends';
@@ -57,9 +57,15 @@ describe('FriendsList', () => {
     renderFriendsList();
 
     const items = await screen.findAllByTestId('friend-list-item');
-    expect(items[0]).toHaveTextContent(/in game/i);
-    expect(items[1]).toHaveTextContent(/online/i);
-    expect(items[2]).toHaveTextContent(/offline/i);
+    expect(
+      within(within(items[0] as HTMLElement).getByTestId('presence-badge')).getByText(/^jogando$/i),
+    ).toBeInTheDocument();
+    expect(
+      within(within(items[1] as HTMLElement).getByTestId('presence-badge')).getByText(/^online$/i),
+    ).toBeInTheDocument();
+    expect(
+      within(within(items[2] as HTMLElement).getByTestId('presence-badge')).getByText(/^offline$/i),
+    ).toBeInTheDocument();
   });
 
   it('reorders the list when realtime presence overrides the fetched snapshot', async () => {
@@ -92,9 +98,13 @@ describe('FriendsList', () => {
     renderFriendsList();
 
     const items = await screen.findAllByTestId('friend-list-item');
-    expect(items[0]).toHaveTextContent(/offline/i);
-    expect(items[0]).toHaveTextContent(/jogando marvel rivals/i);
-    expect(items[1]).toHaveTextContent(/online/i);
+    const firstPresenceBadge = within(items[0] as HTMLElement).getByTestId('presence-badge');
+    const secondPresenceBadge = within(items[1] as HTMLElement).getByTestId('presence-badge');
+
+    expect(within(firstPresenceBadge).getByText(/^jogando$/i)).toBeInTheDocument();
+    expect(within(firstPresenceBadge).getByText(/jogando marvel rivals/i)).toBeInTheDocument();
+    expect(within(firstPresenceBadge).getByText(/^via pc$/i)).toBeInTheDocument();
+    expect(within(secondPresenceBadge).getByText(/^online$/i)).toBeInTheDocument();
   });
 
   it('falls back to the backend snapshot when realtime is disconnected', async () => {
@@ -126,9 +136,14 @@ describe('FriendsList', () => {
 
     renderFriendsList();
 
-    expect((await screen.findAllByText(/realtime indisponivel/i)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/atualizacoes ao vivo indisponiveis/i)).length).toBeGreaterThan(0);
     const items = await screen.findAllByTestId('friend-list-item');
-    expect(items[0]).toHaveTextContent(/online/i);
-    expect(items[1]).toHaveTextContent(/offline/i);
+    expect(
+      within(within(items[0] as HTMLElement).getByTestId('presence-badge')).getByText(/^online$/i),
+    ).toBeInTheDocument();
+    expect(
+      within(within(items[1] as HTMLElement).getByTestId('presence-badge')).getByText(/^offline$/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/marvel rivals/i)).not.toBeInTheDocument();
   });
 });

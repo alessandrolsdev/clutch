@@ -54,9 +54,9 @@ describe('GamerCard', () => {
 
     render(<GamerCard profile={profileFixture} />);
 
-    expect(screen.getByText(/in game/i)).toBeInTheDocument();
+    expect(screen.getByText(/^jogando$/i)).toBeInTheDocument();
     expect(screen.getByText(/jogando valorant/i)).toBeInTheDocument();
-    expect(screen.getByText(/plataforma atual: pc/i)).toBeInTheDocument();
+    expect(screen.getByText(/^via pc$/i)).toBeInTheDocument();
     expect(screen.getByText(/nivel 18/i)).toBeInTheDocument();
     expect(screen.getByText(/founder/i)).toBeInTheDocument();
     const platformsSection = screen.getByTestId('profile-platform-badges');
@@ -92,9 +92,9 @@ describe('GamerCard', () => {
       />,
     );
 
-    expect(screen.getByText(/offline/i)).toBeInTheDocument();
-    expect(screen.getByText(/sem atividade ativa/i)).toBeInTheDocument();
-    expect(screen.getByText(/nenhuma sessao publica no momento/i)).toBeInTheDocument();
+    expect(screen.getByText(/^offline$/i)).toBeInTheDocument();
+    expect(screen.getByText(/sem sessao publica ativa/i)).toBeInTheDocument();
+    expect(screen.getByText(/nenhuma plataforma publica ativa/i)).toBeInTheDocument();
     expect(screen.getByText(/esse jogador ainda nao adicionou uma bio/i)).toBeInTheDocument();
   });
 
