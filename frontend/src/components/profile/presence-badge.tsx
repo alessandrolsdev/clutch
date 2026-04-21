@@ -27,20 +27,50 @@ const labelByStatus: Record<ProfilePresenceStatus, string> = {
   OFFLINE: 'Offline',
 };
 
+function resolvePrimaryDetail(
+  status: ProfilePresenceStatus,
+  currentGame: string | null,
+): string {
+  if (status === 'IN_GAME' && currentGame) {
+    return `Jogando ${currentGame}`;
+  }
+
+  if (status === 'ONLINE') {
+    return 'Disponivel para jogar';
+  }
+
+  if (status === 'AFK') {
+    return 'Ausente no momento';
+  }
+
+  return 'Sem atividade ativa';
+}
+
+function resolveSecondaryDetail(
+  status: ProfilePresenceStatus,
+  platform: string | null,
+): string {
+  if (platform) {
+    return `Plataforma atual: ${platform}`;
+  }
+
+  if (status === 'OFFLINE') {
+    return 'Nenhuma sessao publica no momento';
+  }
+
+  return 'Sem plataforma informada';
+}
+
 export function PresenceBadge({
   status,
   currentGame,
   platform,
 }: PresenceBadgeProps) {
-  const detail =
-    status === 'IN_GAME' && currentGame
-      ? `Jogando ${currentGame}`
-      : platform
-        ? `Disponivel em ${platform}`
-        : 'Sem atividade ativa';
+  const primaryDetail = resolvePrimaryDetail(status, currentGame);
+  const secondaryDetail = resolveSecondaryDetail(status, platform);
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-3 rounded-control border border-border bg-background-tertiary/70 px-3 py-3">
       <Badge tone={toneByStatus[status]}>
         <motion.span
           initial={{ opacity: 0.55 }}
@@ -51,7 +81,14 @@ export function PresenceBadge({
         />
         {labelByStatus[status]}
       </Badge>
-      <span className="text-sm text-secondary">{detail}</span>
+      <div className="min-w-0 space-y-1">
+        <p className="truncate text-sm font-medium text-primary">
+          {primaryDetail}
+        </p>
+        <p className="truncate text-xs uppercase tracking-[0.28em] text-secondary">
+          {secondaryDetail}
+        </p>
+      </div>
     </div>
   );
 }
