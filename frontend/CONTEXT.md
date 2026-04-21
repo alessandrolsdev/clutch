@@ -20,16 +20,18 @@ Este arquivo descreve o estado real atual do frontend do CLUTCH, os contratos qu
 - `/`
 - `/login`
 - `/register`
+- `/offline`
 
 ### Autenticadas
 - `/feed`
 - `/notifications`
 - `/settings`
 - `/settings/integrations`
+- `/settings/integrations/discord/callback`
 - `/:username`
-
-### Ausentes no App Router atual
 - `/:username/library`
+
+### Superficies globais do App Router
 - `error.tsx`
 - `loading.tsx`
 - `not-found.tsx`
@@ -96,11 +98,14 @@ Esse catch-all encaminha chamadas para o backend real e, quando existe `clutch_s
 - `PATCH /notifications/:id/read`
 - `POST /integrations/steam/connect`
 - `POST /integrations/steam/sync`
-- `GET /integrations/igdb/search`
 - `POST /integrations/epic/connect`
+- `GET /integrations/igdb/search`
+- `GET /integrations/discord/auth`
+- `GET /integrations/discord/callback`
 
 ### Observacao importante
-O frontend atual nao depende de um endpoint de Discord connect porque esse contrato nao existe no backend atual. A UI de integracoes ja reconhece isso como limitacao real.
+- o frontend usa Discord OAuth real via backend, mas nao consome diretamente a rota interna de ingestao de presence Discord
+- a presence do browser continua chegando pela API do CLUTCH e pelo WebSocket do proprio produto
 
 ## Resolucao de URLs
 
@@ -124,7 +129,11 @@ NEXT_PUBLIC_API_URL=/api
 2. a rota server-side valida ou renova a sessao
 3. a resposta devolve `{ token }`
 4. o client abre `ws://<host>/ws/presence?token=<jwt>`
-5. o hook `usePresence` atualiza o store e limpa a sessao se houver falha de auth
+5. o hook `usePresence` atualiza a store e limpa a sessao se houver falha de auth
+
+### Comportamento atual
+- o frontend combina snapshot vindo do backend com overlay realtime da store
+- shell, perfil e lista de amigos distinguem realtime ativo, reconexao e fallback para snapshot
 
 ### Dependencia atual
 O presence service aceita token por query string e por header `Authorization`, mas o frontend atual usa query string.
@@ -139,13 +148,13 @@ O presence service aceita token por query string e por header `Authorization`, m
 ## Limitacoes reais
 
 ### Implementado parcialmente
-- a UI de landing publica e simples
+- a UI de landing publica continua simples
 - varias paginas existem e consomem contratos reais, mas a cobertura funcional do produto ainda nao esta completa
 
-### Ausente
-- biblioteca publica do usuario
-- Discord OAuth
-- tela global de erro/loading/404 no App Router
+### Sensivel
+- auth e refresh exigem cuidado com a ordem entre middleware, bootstrap e navegacao
+- presence exige cuidado com fallback entre snapshot e realtime
+- integracoes dependem de indisponibilidade e dados ausentes serem tratados com honestidade
 
 ### Nao assumir
 - nao assumir que `python-service` participe do runtime do frontend
