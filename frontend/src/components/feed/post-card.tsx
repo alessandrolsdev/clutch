@@ -17,9 +17,68 @@ type PostCardProps = {
   post: FeedPost;
 };
 
+type PostTypeTone = 'neutral' | 'accent' | 'success' | 'warning';
+
+type PostCardPresentation = {
+  badgeLabel: string;
+  badgeTone: PostTypeTone;
+  highlightEyebrow: string | null;
+  highlightTitle: string | null;
+  highlightDetail: string | null;
+};
+
+function normalizeContextValue(value: string | null | undefined) {
+  const normalized = value?.trim();
+
+  return normalized && normalized.length > 0 ? normalized : null;
+}
+
+function getPostCardPresentation(post: FeedPost): PostCardPresentation {
+  const gameName = normalizeContextValue(post.gameContext?.gameName);
+  const platform = normalizeContextValue(post.gameContext?.platform);
+  const platformDetail = platform ? `Via ${platform}` : null;
+
+  switch (post.type) {
+    case 'GAME_SESSION':
+      return {
+        badgeLabel: 'Sessao',
+        badgeTone: 'success',
+        highlightEyebrow: 'Registro de sessao',
+        highlightTitle: gameName ? `Sessao em ${gameName}` : 'Sessao de jogo registrada',
+        highlightDetail: platformDetail,
+      };
+    case 'ACHIEVEMENT':
+      return {
+        badgeLabel: 'Conquista',
+        badgeTone: 'warning',
+        highlightEyebrow: 'Registro de conquista',
+        highlightTitle: gameName ? `Conquista em ${gameName}` : 'Conquista registrada',
+        highlightDetail: platformDetail,
+      };
+    case 'IMAGE':
+      return {
+        badgeLabel: 'Imagem',
+        badgeTone: 'accent',
+        highlightEyebrow: null,
+        highlightTitle: null,
+        highlightDetail: null,
+      };
+    case 'TEXT':
+    default:
+      return {
+        badgeLabel: 'Texto',
+        badgeTone: 'neutral',
+        highlightEyebrow: null,
+        highlightTitle: null,
+        highlightDetail: null,
+      };
+  }
+}
+
 export function PostCard({ post }: PostCardProps) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const postPresentation = getPostCardPresentation(post);
   const displayName =
     post.author.profile?.displayName && post.author.profile.displayName.length > 0
       ? post.author.profile.displayName
@@ -59,8 +118,26 @@ export function PostCard({ post }: PostCardProps) {
               <p className="truncate text-xs text-secondary">@{post.author.username}</p>
             </div>
           </div>
-          <Badge tone="neutral">{post.type}</Badge>
+          <Badge tone={postPresentation.badgeTone}>{postPresentation.badgeLabel}</Badge>
         </header>
+
+        {postPresentation.highlightEyebrow && postPresentation.highlightTitle ? (
+          <div className="space-y-2 rounded-control border border-border/80 bg-background-secondary/60 px-4 py-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-secondary">
+              {postPresentation.highlightEyebrow}
+            </p>
+            <div className="space-y-1">
+              <p className="text-base font-semibold text-primary">
+                {postPresentation.highlightTitle}
+              </p>
+              {postPresentation.highlightDetail ? (
+                <p className="text-sm leading-6 text-secondary">
+                  {postPresentation.highlightDetail}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         {post.contentText ? (
           <p className="text-sm leading-6 text-primary">{post.contentText}</p>
