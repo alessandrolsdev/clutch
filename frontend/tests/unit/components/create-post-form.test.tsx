@@ -1,6 +1,6 @@
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CreatePostForm } from '@/components/feed/create-post-form';
 import { ToastProvider } from '@/components/ui/toaster';
@@ -67,15 +67,19 @@ describe('CreatePostForm', () => {
     renderCreatePostForm();
 
     expect(
-      screen.getByRole('heading', { name: /compartilhe algo com sua timeline/i }),
+      screen.getByRole('heading', { name: /registre algo no seu diario gamer/i }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /publicar post/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /registrar no feed/i })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /^tipo texto$/i })).toBeChecked();
+    expect(screen.getByRole('radio', { name: /^tipo imagem$/i })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /^tipo conquista$/i })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /^tipo sessao$/i })).toBeInTheDocument();
   });
 
   it('validates when both content and media are empty', async () => {
     renderCreatePostForm();
 
-    fireEvent.click(screen.getByRole('button', { name: /publicar post/i }));
+    fireEvent.click(screen.getByRole('button', { name: /registrar no feed/i }));
 
     expect(
       await screen.findByText(/adicione texto ou uma url de midia para publicar/i),
@@ -124,7 +128,24 @@ describe('CreatePostForm', () => {
     expect(screen.getByLabelText(/^imagem do post$/i)).toHaveValue(
       'http://localhost/api/uploads/images/post-image.png',
     );
-    expect(screen.getByLabelText(/tipo/i)).toHaveValue('IMAGE');
+    expect(screen.getByRole('radio', { name: /^tipo imagem$/i })).toBeChecked();
+  });
+
+  it('updates the diary guidance when the selected post type changes', () => {
+    renderCreatePostForm();
+
+    fireEvent.click(screen.getByRole('radio', { name: /^tipo conquista$/i }));
+
+    const selectedSummary = screen.getByTestId('selected-post-type-summary');
+
+    expect(within(selectedSummary).getByText(/^tipo selecionado$/i)).toBeInTheDocument();
+    expect(
+      within(selectedSummary).getByText(/bom para marcar um marco do progresso, mesmo sem print/i),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/^registro$/i)).toHaveAttribute(
+      'placeholder',
+      'Qual conquista, rank ou objetivo voce desbloqueou hoje?',
+    );
   });
 
   it('submits successfully and invalidates the feed query', async () => {
@@ -140,10 +161,10 @@ describe('CreatePostForm', () => {
 
     const { invalidateQueriesSpy } = renderCreatePostForm();
 
-    fireEvent.change(screen.getByLabelText(/conteudo/i), {
+    fireEvent.change(screen.getByLabelText(/^registro$/i), {
       target: { value: 'Novo post' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /publicar post/i }));
+    fireEvent.click(screen.getByRole('button', { name: /registrar no feed/i }));
 
     await waitFor(() => {
       expect(mockedCreatePost).toHaveBeenCalled();
@@ -160,9 +181,9 @@ describe('CreatePostForm', () => {
       });
     });
 
-    expect(await screen.findByText(/post publicado com sucesso\./i)).toBeInTheDocument();
+    expect(await screen.findByText(/registro publicado com sucesso\./i)).toBeInTheDocument();
     expect(await screen.findByTestId('toast-item')).toHaveTextContent(
-      /post publicado com sucesso/i,
+      /registro publicado com sucesso/i,
     );
   });
 
@@ -173,10 +194,10 @@ describe('CreatePostForm', () => {
 
     renderCreatePostForm();
 
-    fireEvent.change(screen.getByLabelText(/conteudo/i), {
+    fireEvent.change(screen.getByLabelText(/^registro$/i), {
       target: { value: 'Falha de teste' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /publicar post/i }));
+    fireEvent.click(screen.getByRole('button', { name: /registrar no feed/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       /post precisa ter texto ou midia/i,
