@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { PresenceBadge } from '@/components/profile/presence-badge';
 import { PlatformBadges } from '@/components/profile/platform-badges';
+import { isPresenceRealtimeActive } from '@/lib/presence/connection-state';
 import { type ProfileResponse } from '@/schemas/profile';
 import { usePresenceStore } from '@/store/presence-store';
 
@@ -35,8 +36,9 @@ export function GamerCard({ profile, actions }: GamerCardProps) {
   const initials = profile.username.slice(0, 2).toUpperCase();
   const accentColor = profile.profile.accentColor ?? '#7C3AED';
   const memberSinceLabel = formatMemberSince(profile.createdAt);
+  const connectionStatus = usePresenceStore((state) => state.connectionStatus);
   const realtimePresence = usePresenceStore((state) =>
-    state.connectionStatus === 'connected' ? state.entries[profile.id] : undefined,
+    isPresenceRealtimeActive(state.connectionStatus) ? state.entries[profile.id] : undefined,
   );
   const effectivePresence = {
     status: realtimePresence?.status ?? profile.presence.status,
@@ -112,6 +114,7 @@ export function GamerCard({ profile, actions }: GamerCardProps) {
           status={effectivePresence.status}
           currentGame={effectivePresence.currentGame}
           platform={effectivePresence.platform}
+          connectionStatus={connectionStatus}
         />
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(260px,0.65fr)]">

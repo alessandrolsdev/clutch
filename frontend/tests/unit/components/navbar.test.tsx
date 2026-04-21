@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Navbar } from '@/components/layout/navbar';
 import { useAuth } from '@/hooks/use-auth';
 import { fetchPendingFriendRequests } from '@/services/friends';
+import { resetPresenceStore, usePresenceStore } from '@/store/presence-store';
 
 vi.mock('@/hooks/use-auth', () => ({
   useAuth: vi.fn(),
@@ -47,6 +48,7 @@ describe('Navbar', () => {
     mockedUseAuth.mockReset();
     mockedFetchPendingFriendRequests.mockReset();
     logoutMock.mockReset();
+    resetPresenceStore();
 
     mockedUseAuth.mockReturnValue({
       status: 'authenticated',
@@ -106,5 +108,21 @@ describe('Navbar', () => {
     fireEvent.click(screen.getByRole('button', { name: /encerrar sessao/i }));
 
     expect(logoutMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('signals when the shell fell back to the backend snapshot during reconnect', () => {
+    mockedFetchPendingFriendRequests.mockResolvedValue([]);
+    usePresenceStore
+      .getState()
+      .setConnectionStatus('reconnecting', 'Retomando o websocket de presenca');
+
+    renderNavbar();
+
+    expect(screen.getByTestId('navbar-presence-status')).toHaveTextContent(
+      /reconectando presenca/i,
+    );
+    expect(
+      screen.getByText(/mantendo o snapshot atual enquanto as atualizacoes ao vivo retornam/i),
+    ).toBeInTheDocument();
   });
 });

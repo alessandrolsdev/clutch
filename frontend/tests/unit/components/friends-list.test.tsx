@@ -101,9 +101,16 @@ describe('FriendsList', () => {
     const firstPresenceBadge = within(items[0] as HTMLElement).getByTestId('presence-badge');
     const secondPresenceBadge = within(items[1] as HTMLElement).getByTestId('presence-badge');
 
+    expect(screen.getByText(/realtime ativo/i)).toBeInTheDocument();
+    expect(screen.getByText(/atualizacoes ao vivo estao ativas agora/i)).toBeInTheDocument();
+    expect(within(firstPresenceBadge).getByTestId('presence-source-badge')).toHaveTextContent(
+      /ao vivo/i,
+    );
     expect(within(firstPresenceBadge).getByText(/^jogando$/i)).toBeInTheDocument();
     expect(within(firstPresenceBadge).getByText(/jogando marvel rivals/i)).toBeInTheDocument();
-    expect(within(firstPresenceBadge).getByText(/^via pc$/i)).toBeInTheDocument();
+    expect(
+      within(firstPresenceBadge).getByText(/via pc • presenca ao vivo/i),
+    ).toBeInTheDocument();
     expect(within(secondPresenceBadge).getByText(/^online$/i)).toBeInTheDocument();
   });
 
@@ -137,10 +144,16 @@ describe('FriendsList', () => {
     renderFriendsList();
 
     expect((await screen.findAllByText(/atualizacoes ao vivo indisponiveis/i)).length).toBeGreaterThan(0);
+    expect(screen.getByText(/realtime indisponivel/i)).toBeInTheDocument();
     const items = await screen.findAllByTestId('friend-list-item');
     expect(
       within(within(items[0] as HTMLElement).getByTestId('presence-badge')).getByText(/^online$/i),
     ).toBeInTheDocument();
+    expect(
+      within(
+        within(items[0] as HTMLElement).getByTestId('presence-badge'),
+      ).getByTestId('presence-source-badge'),
+    ).toHaveTextContent(/snapshot/i);
     expect(
       within(within(items[1] as HTMLElement).getByTestId('presence-badge')).getByText(/^offline$/i),
     ).toBeInTheDocument();
