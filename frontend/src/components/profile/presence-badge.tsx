@@ -2,12 +2,15 @@
 
 import { motion } from 'framer-motion';
 import { Badge } from '@/components/ui/badge';
+import { getPresenceConnectionView } from '@/lib/presence/connection-state';
 import { type ProfilePresenceStatus } from '@/schemas/profile';
+import { type PresenceConnectionStatus } from '@/store/presence-store';
 
 type PresenceBadgeProps = {
   status: ProfilePresenceStatus;
   currentGame: string | null;
   platform: string | null;
+  connectionStatus?: PresenceConnectionStatus;
 };
 
 const toneByStatus: Record<
@@ -69,31 +72,42 @@ export function PresenceBadge({
   status,
   currentGame,
   platform,
+  connectionStatus = 'connected',
 }: PresenceBadgeProps) {
   const primaryDetail = resolvePrimaryDetail(status, currentGame);
   const secondaryDetail = resolveSecondaryDetail(status, platform);
+  const connectionView = getPresenceConnectionView(connectionStatus);
 
   return (
     <div
       data-testid="presence-badge"
       className="flex flex-wrap items-center gap-3 rounded-control border border-border bg-background-tertiary/70 px-3 py-3"
     >
-      <Badge tone={toneByStatus[status]}>
-        <motion.span
-          initial={{ opacity: 0.55 }}
-          animate={{ opacity: [0.55, 1, 0.55] }}
-          transition={{ duration: 1.4, repeat: Number.POSITIVE_INFINITY }}
-          className="mr-1 inline-block h-2 w-2 rounded-full bg-current"
-          aria-hidden="true"
-        />
-        {labelByStatus[status]}
-      </Badge>
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone={toneByStatus[status]}>
+          <motion.span
+            initial={{ opacity: 0.55 }}
+            animate={{ opacity: [0.55, 1, 0.55] }}
+            transition={{ duration: 1.4, repeat: Number.POSITIVE_INFINITY }}
+            className="mr-1 inline-block h-2 w-2 rounded-full bg-current"
+            aria-hidden="true"
+          />
+          {labelByStatus[status]}
+        </Badge>
+        <Badge
+          tone={connectionView.tone}
+          data-testid="presence-source-badge"
+          title={connectionView.detail}
+        >
+          {connectionView.badgeLabel}
+        </Badge>
+      </div>
       <div className="min-w-0 space-y-1">
         <p className="truncate text-sm font-medium text-primary">
           {primaryDetail}
         </p>
         <p className="truncate text-xs uppercase tracking-[0.28em] text-secondary">
-          {secondaryDetail}
+          {[secondaryDetail, connectionView.sourceLabel].join(' • ')}
         </p>
       </div>
     </div>

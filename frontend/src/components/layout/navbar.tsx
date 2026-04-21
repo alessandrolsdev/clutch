@@ -10,8 +10,10 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { NotificationsBell } from '@/components/notifications/notifications-bell';
 import { useAuth } from '@/hooks/use-auth';
+import { getPresenceConnectionView } from '@/lib/presence/connection-state';
 import { cn } from '@/lib/utils/cn';
 import { fetchPendingFriendRequests } from '@/services/friends';
+import { usePresenceStore } from '@/store/presence-store';
 
 type NavbarVariant = 'auth' | 'app';
 
@@ -55,6 +57,12 @@ export function Navbar({
 }: NavbarProps) {
   const { user, status, logout } = useAuth();
   const [isRequestsOpen, setIsRequestsOpen] = useState(false);
+  const presenceConnectionStatus = usePresenceStore((state) => state.connectionStatus);
+  const presenceConnectionError = usePresenceStore((state) => state.errorMessage);
+  const presenceConnectionView = getPresenceConnectionView(
+    presenceConnectionStatus,
+    presenceConnectionError,
+  );
   const pendingRequestsQuery = useQuery({
     queryKey: ['friend-requests', user?.id],
     queryFn: () => fetchPendingFriendRequests(user?.id as string),
@@ -109,6 +117,17 @@ export function Navbar({
         <div className="flex items-center gap-2">
           {variant === 'app' ? (
             <>
+              <div
+                className="hidden min-w-0 flex-col items-end gap-1 lg:flex"
+                data-testid="navbar-presence-status"
+              >
+                <Badge tone={presenceConnectionView.tone}>
+                  {presenceConnectionView.label}
+                </Badge>
+                <p className="max-w-52 text-right text-[11px] leading-4 text-secondary">
+                  {presenceConnectionView.detail}
+                </p>
+              </div>
               <NotificationsBell />
               <ActionButton
                 type="button"
