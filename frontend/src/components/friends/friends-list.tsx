@@ -58,37 +58,37 @@ function describeRealtimeState(connectionStatus: string, errorMessage: string | 
     case 'connected':
       return {
         tone: 'success' as const,
-        label: 'Realtime ativo',
-        detail: 'A ordenacao usa atualizacoes em tempo real.',
+        label: 'Presenca ao vivo',
+        detail: 'Status e ordenacao refletem atualizacoes em tempo real.',
       };
     case 'connecting':
       return {
         tone: 'neutral' as const,
-        label: 'Conectando realtime',
-        detail: 'A lista usa o snapshot do backend ate a conexao estabilizar.',
+        label: 'Sincronizando presenca',
+        detail: 'Exibindo o snapshot mais recente ate o realtime estabilizar.',
       };
     case 'reconnecting':
       return {
         tone: 'warning' as const,
-        label: 'Reconectando realtime',
-        detail: 'A lista voltou temporariamente para o snapshot do backend.',
+        label: 'Reconectando presenca',
+        detail: 'Mantendo o snapshot atual enquanto as atualizacoes ao vivo retornam.',
       };
     case 'auth_error':
       return {
         tone: 'warning' as const,
-        label: 'Sessao do realtime expirou',
-        detail: errorMessage ?? 'A sessao sera restaurada antes de reabrir o realtime.',
+        label: 'Sessao de presenca expirada',
+        detail: errorMessage ?? 'A sessao sera renovada antes de retomar as atualizacoes ao vivo.',
       };
     case 'error':
       return {
         tone: 'warning' as const,
-        label: 'Realtime indisponivel',
+        label: 'Atualizacoes ao vivo indisponiveis',
         detail: errorMessage ?? 'Exibindo o snapshot mais recente do backend.',
       };
     default:
       return {
         tone: 'neutral' as const,
-        label: 'Realtime inativo',
+        label: 'Presenca ao vivo inativa',
         detail: 'Exibindo o snapshot mais recente do backend.',
       };
   }
@@ -177,7 +177,7 @@ export function FriendsList({
                 ? friend.profile.displayName
                 : friend.username;
             const avatarFallback = friend.username.slice(0, 2).toUpperCase();
-            const effectivePresence = resolvePresence(friend, presenceEntries[friend.id]);
+            const effectivePresence = resolvePresence(friend, realtimeEntries[friend.id]);
 
             return (
               <div
