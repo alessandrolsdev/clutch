@@ -80,14 +80,16 @@ export function ProfilePageContent({ username }: ProfilePageContentProps) {
         profile={profileQuery.data}
         actions={<FriendButton targetUserId={profileQuery.data.id} />}
       />
-      <ProfileStats stats={profileQuery.data.stats} />
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+        <ProfileStats stats={profileQuery.data.stats} />
+        <GameLibraryPreview
+          username={profileQuery.data.username}
+          games={profileQuery.data.gameLibrary}
+        />
+      </div>
       <FriendsList
         userId={profileQuery.data.id}
         title={`Amigos de @${profileQuery.data.username}`}
-      />
-      <GameLibraryPreview
-        username={profileQuery.data.username}
-        games={profileQuery.data.gameLibrary}
       />
     </div>
   );
