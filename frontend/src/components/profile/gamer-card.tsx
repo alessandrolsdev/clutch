@@ -15,6 +15,12 @@ type GamerCardProps = {
   actions?: ReactNode;
 };
 
+function normalizeBadges(badges: string[]): string[] {
+  return badges
+    .map((badge) => badge.trim())
+    .filter((badge, index, list) => badge.length > 0 && list.indexOf(badge) === index);
+}
+
 function formatMemberSince(createdAt: string): string {
   const joinedAt = new Date(createdAt);
 
@@ -32,7 +38,9 @@ function formatMemberSince(createdAt: string): string {
 
 export function GamerCard({ profile, actions }: GamerCardProps) {
   const displayName = profile.profile.displayName || profile.username;
-  const badgeList = profile.profile.badges.slice(0, 4);
+  const badgeList = normalizeBadges(profile.profile.badges);
+  const featuredTitle = badgeList[0] ?? null;
+  const specialBadges = badgeList.slice(1, 4);
   const initials = profile.username.slice(0, 2).toUpperCase();
   const accentColor = profile.profile.accentColor ?? '#7C3AED';
   const memberSinceLabel = formatMemberSince(profile.createdAt);
@@ -84,9 +92,19 @@ export function GamerCard({ profile, actions }: GamerCardProps) {
               </div>
 
               <div className="space-y-1">
-                <h1 className="truncate font-display text-3xl font-semibold text-primary sm:text-4xl">
-                  {displayName}
-                </h1>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="truncate font-display text-3xl font-semibold text-primary sm:text-4xl">
+                    {displayName}
+                  </h1>
+                  {featuredTitle ? (
+                    <span
+                      data-testid="profile-featured-title"
+                      className="inline-flex items-center rounded-pill border border-[rgba(124,58,237,0.24)] bg-[rgba(124,58,237,0.14)] px-3 py-1 text-xs font-semibold text-accent-purple"
+                    >
+                      {featuredTitle}
+                    </span>
+                  ) : null}
+                </div>
                 <p className="truncate text-sm font-medium text-secondary">
                   @{profile.username}
                 </p>
@@ -94,11 +112,9 @@ export function GamerCard({ profile, actions }: GamerCardProps) {
 
               <div className="flex flex-wrap items-center gap-2">
                 <Badge tone="accent">Nivel {profile.stats.level}</Badge>
-                {badgeList.map((badge) => (
-                  <Badge key={badge} tone="neutral">
-                    {badge}
-                  </Badge>
-                ))}
+                <Badge tone="success">
+                  Reputacao {profile.stats.reputation.toLocaleString('pt-BR')}
+                </Badge>
               </div>
             </div>
           </div>
@@ -117,18 +133,80 @@ export function GamerCard({ profile, actions }: GamerCardProps) {
           connectionStatus={connectionStatus}
         />
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(260px,0.65fr)]">
-          <div className="space-y-2 rounded-control border border-border bg-background-tertiary/40 px-4 py-4">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(240px,0.65fr)_minmax(260px,0.8fr)]">
+          <div className="space-y-4 rounded-control border border-border bg-background-tertiary/40 px-4 py-4">
             <p className="text-xs uppercase tracking-[0.3em] text-secondary">
               Identidade
             </p>
             <p className="text-sm leading-6 text-secondary">
               {profile.profile.bio || 'Esse jogador ainda nao adicionou uma bio.'}
             </p>
+
+            {specialBadges.length > 0 ? (
+              <div className="space-y-2" data-testid="profile-special-badges">
+                <p className="text-xs uppercase tracking-[0.3em] text-secondary">
+                  Badges especiais
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {specialBadges.map((badge) => (
+                    <span
+                      key={badge}
+                      className="inline-flex items-center rounded-pill border border-border bg-background-secondary/70 px-3 py-1 text-xs font-semibold text-primary"
+                    >
+                      {badge}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="rounded-control border border-border bg-background-tertiary/40 px-4 py-4">
             <PlatformBadges integrations={profile.platformIntegrations} />
+          </div>
+
+          <div
+            data-testid="profile-social-progress"
+            className="space-y-4 rounded-control border border-border bg-background-tertiary/40 px-4 py-4"
+          >
+            <div className="space-y-1">
+              <p className="text-xs uppercase tracking-[0.3em] text-secondary">
+                Progresso social visivel
+              </p>
+              <p className="text-sm leading-6 text-secondary">
+                Este primeiro slice usa apenas stats reais do perfil. Continuidade
+                com amigos, streaks e ofensivas ficam para a etapa funcional posterior.
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+              <div className="rounded-control border border-border bg-background-secondary/70 px-4 py-3">
+                <p className="text-xs uppercase tracking-[0.3em] text-secondary">
+                  Reputacao
+                </p>
+                <p className="mt-2 font-display text-xl font-semibold text-primary">
+                  {profile.stats.reputation.toLocaleString('pt-BR')}
+                </p>
+              </div>
+
+              <div className="rounded-control border border-border bg-background-secondary/70 px-4 py-3">
+                <p className="text-xs uppercase tracking-[0.3em] text-secondary">
+                  Amigos
+                </p>
+                <p className="mt-2 font-display text-xl font-semibold text-primary">
+                  {profile.stats.friendCount.toLocaleString('pt-BR')}
+                </p>
+              </div>
+
+              <div className="rounded-control border border-border bg-background-secondary/70 px-4 py-3">
+                <p className="text-xs uppercase tracking-[0.3em] text-secondary">
+                  Posts
+                </p>
+                <p className="mt-2 font-display text-xl font-semibold text-primary">
+                  {profile.stats.postCount.toLocaleString('pt-BR')}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
