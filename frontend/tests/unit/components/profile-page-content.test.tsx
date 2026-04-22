@@ -46,7 +46,7 @@ const profileFixture: ProfileResponse = {
     avatarUrl: null,
     bannerUrl: null,
     accentColor: '#7C3AED',
-    badges: ['Founder'],
+    badges: ['Founder', 'Ranked Grinder'],
   },
   stats: {
     level: 18,
@@ -123,6 +123,10 @@ describe('ProfilePageContent', () => {
     expect(
       screen.getByRole('heading', { name: /clutch player/i }),
     ).toBeInTheDocument();
+    expect(screen.getByTestId('profile-featured-title')).toHaveTextContent('Founder');
+    expect(screen.getByTestId('profile-social-progress')).toHaveTextContent(
+      /progresso social visivel/i,
+    );
     expect(screen.getByText(/jogando valorant/i)).toBeInTheDocument();
     const statsSection = screen.getByTestId('profile-stats');
     const libraryPreview = screen.getByTestId('game-library-preview');
