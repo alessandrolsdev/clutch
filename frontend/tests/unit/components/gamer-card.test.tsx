@@ -15,7 +15,7 @@ const profileFixture: ProfileResponse = {
     avatarUrl: null,
     bannerUrl: null,
     accentColor: '#7C3AED',
-    badges: ['Founder'],
+    badges: ['Founder', 'Ranked Grinder', 'Community Host'],
   },
   stats: {
     level: 18,
@@ -38,6 +38,19 @@ const profileFixture: ProfileResponse = {
 describe('GamerCard', () => {
   beforeEach(() => {
     resetPresenceStore();
+  });
+
+  it('renders featured title, special badges and visible social progress from current profile data', () => {
+    render(<GamerCard profile={profileFixture} />);
+
+    expect(screen.getByTestId('profile-featured-title')).toHaveTextContent('Founder');
+    expect(screen.getByTestId('profile-special-badges')).toHaveTextContent('Ranked Grinder');
+    expect(screen.getByTestId('profile-special-badges')).toHaveTextContent('Community Host');
+    expect(screen.getByTestId('profile-social-progress')).toHaveTextContent(
+      /progresso social visivel/i,
+    );
+    expect(screen.getByTestId('profile-social-progress')).toHaveTextContent('215');
+    expect(screen.getByTestId('profile-social-progress')).toHaveTextContent('2');
   });
 
   it('overrides static profile presence with realtime store data', () => {
@@ -121,5 +134,22 @@ describe('GamerCard', () => {
     ).toBeInTheDocument();
     expect(within(platformsSection).getByText(/^steam$/i)).toBeInTheDocument();
     expect(within(platformsSection).getByText(/^discord$/i)).toBeInTheDocument();
+  });
+
+  it('omits featured title and special badges when no badge source exists', () => {
+    render(
+      <GamerCard
+        profile={{
+          ...profileFixture,
+          profile: {
+            ...profileFixture.profile,
+            badges: [],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.queryByTestId('profile-featured-title')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('profile-special-badges')).not.toBeInTheDocument();
   });
 });
