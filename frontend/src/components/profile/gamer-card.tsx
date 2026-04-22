@@ -36,6 +36,14 @@ function formatMemberSince(createdAt: string): string {
   return `No CLUTCH desde ${formattedMonthYear}`;
 }
 
+function formatDayCount(days: number): string {
+  if (days <= 0) {
+    return 'Sem atividade';
+  }
+
+  return days === 1 ? '1 dia' : `${days.toLocaleString('pt-BR')} dias`;
+}
+
 export function GamerCard({ profile, actions }: GamerCardProps) {
   const displayName = profile.profile.displayName || profile.username;
   const badgeList = normalizeBadges(profile.profile.badges);
@@ -53,6 +61,7 @@ export function GamerCard({ profile, actions }: GamerCardProps) {
     currentGame: realtimePresence?.currentGame ?? profile.presence.currentGame,
     platform: realtimePresence?.platform ?? profile.presence.platform,
   };
+  const strongestFriendOffensive = profile.socialContinuity.strongestFriendOffensive;
 
   return (
     <Card className="overflow-hidden p-0">
@@ -174,8 +183,9 @@ export function GamerCard({ profile, actions }: GamerCardProps) {
                 Progresso social visivel
               </p>
               <p className="text-sm leading-6 text-secondary">
-                Este primeiro slice usa apenas stats reais do perfil. Continuidade
-                com amigos, streaks e ofensivas ficam para a etapa funcional posterior.
+                Este slice combina stats reais do perfil com atividade publica ja
+                observavel para resumir continuidade social sem prometer um sistema
+                completo de recompensas.
               </p>
             </div>
 
@@ -204,6 +214,51 @@ export function GamerCard({ profile, actions }: GamerCardProps) {
                 </p>
                 <p className="mt-2 font-display text-xl font-semibold text-primary">
                   {profile.stats.postCount.toLocaleString('pt-BR')}
+                </p>
+              </div>
+            </div>
+
+            <div
+              data-testid="profile-social-continuity"
+              className="grid gap-3 rounded-control border border-border bg-background-secondary/40 p-3 sm:grid-cols-3"
+            >
+              <div className="rounded-control border border-border bg-background-secondary/70 px-4 py-3">
+                <p className="text-xs uppercase tracking-[0.3em] text-secondary">
+                  Streak atual
+                </p>
+                <p className="mt-2 font-display text-xl font-semibold text-primary">
+                  {formatDayCount(profile.socialContinuity.currentStreakDays)}
+                </p>
+                <p className="mt-1 text-xs text-secondary">
+                  Dias seguidos com post ou comentario publico.
+                </p>
+              </div>
+
+              <div className="rounded-control border border-border bg-background-secondary/70 px-4 py-3">
+                <p className="text-xs uppercase tracking-[0.3em] text-secondary">
+                  Ofensivas ativas
+                </p>
+                <p className="mt-2 font-display text-xl font-semibold text-primary">
+                  {profile.socialContinuity.activeFriendOffensiveCount.toLocaleString('pt-BR')}
+                </p>
+                <p className="mt-1 text-xs text-secondary">
+                  Amigos com continuidade compartilhada na janela diaria atual.
+                </p>
+              </div>
+
+              <div className="rounded-control border border-border bg-background-secondary/70 px-4 py-3">
+                <p className="text-xs uppercase tracking-[0.3em] text-secondary">
+                  Maior ofensiva
+                </p>
+                <p className="mt-2 font-display text-xl font-semibold text-primary">
+                  {strongestFriendOffensive
+                    ? formatDayCount(strongestFriendOffensive.days)
+                    : 'Sem ofensiva'}
+                </p>
+                <p className="mt-1 text-xs text-secondary">
+                  {strongestFriendOffensive
+                    ? `Com @${strongestFriendOffensive.friendUsername}`
+                    : 'Ainda sem sobreposicao ativa com amigos.'}
                 </p>
               </div>
             </div>

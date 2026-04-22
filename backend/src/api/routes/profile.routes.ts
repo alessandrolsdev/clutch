@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { profileRepository } from '../../core/repositories/profile.repository';
+import { socialContinuityService } from '../../core/services/social-continuity.service';
 import { userRepository } from '../../core/repositories/user.repository';
 
 // ─────────────────────────────────────────────────────────────
@@ -28,7 +29,13 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const profile = await profileRepository.findFullProfileByUsername(request.params.username);
       if (!profile) return reply.status(404).send({ message: 'Perfil não encontrado.' });
-      return reply.status(200).send(profile);
+
+      const socialContinuity = await socialContinuityService.summarizeUser(profile.id);
+
+      return reply.status(200).send({
+        ...profile,
+        socialContinuity,
+      });
     },
   );
 

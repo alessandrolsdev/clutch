@@ -79,6 +79,11 @@ function createProfileFixture({
     },
     platformIntegrations: [],
     gameLibrary: [],
+    socialContinuity: {
+      currentStreakDays: 0,
+      activeFriendOffensiveCount: 0,
+      strongestFriendOffensive: null,
+    },
   };
 }
 

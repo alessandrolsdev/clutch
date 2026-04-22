@@ -104,6 +104,11 @@ describe('ProfileSettingsForm', () => {
       },
       platformIntegrations: [],
       gameLibrary: [],
+      socialContinuity: {
+        currentStreakDays: 0,
+        activeFriendOffensiveCount: 0,
+        strongestFriendOffensive: null,
+      },
     });
     vi.stubGlobal('navigator', {
       clipboard: {

@@ -105,6 +105,11 @@ describe('IntegrationsPageContent', () => {
           lastPlayedAt: '2026-03-29T22:15:00.000Z',
         },
       ],
+      socialContinuity: {
+        currentStreakDays: 0,
+        activeFriendOffensiveCount: 0,
+        strongestFriendOffensive: null,
+      },
     });
 
     renderWithQuery(<IntegrationsPageContent />);

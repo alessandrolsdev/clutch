@@ -48,6 +48,11 @@ describe('profile service', () => {
           },
           platformIntegrations: [],
           gameLibrary: [],
+          socialContinuity: {
+            currentStreakDays: 0,
+            activeFriendOffensiveCount: 0,
+            strongestFriendOffensive: null,
+          },
         }),
         {
           status: 200,
