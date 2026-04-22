@@ -8,6 +8,12 @@ vi.mock('@/core/repositories/profile.repository', () => ({
   },
 }));
 
+vi.mock('@/core/services/social-continuity.service', () => ({
+  socialContinuityService: {
+    summarizeUser: vi.fn(),
+  },
+}));
+
 vi.mock('@/core/repositories/user.repository', () => ({
   userRepository: {
     findById: vi.fn(), findByEmail: vi.fn(), findByUsername: vi.fn(),
@@ -16,6 +22,7 @@ vi.mock('@/core/repositories/user.repository', () => ({
 }));
 
 import { profileRepository } from '@/core/repositories/profile.repository';
+import { socialContinuityService } from '@/core/services/social-continuity.service';
 import { userRepository }    from '@/core/repositories/user.repository';
 
 const mockUser = {
@@ -31,6 +38,17 @@ const mockFullProfile = {
   platformIntegrations: [], gameLibrary: [],
 };
 
+const mockSocialContinuity = {
+  currentStreakDays: 3,
+  activeFriendOffensiveCount: 1,
+  strongestFriendOffensive: {
+    friendId: 'friend-1',
+    friendUsername: 'duoqueue',
+    days: 2,
+    lastQualifiedAt: '2026-04-22T00:00:00.000Z',
+  },
+};
+
 const mockUpdatedProfile = {
   id: 'profile-id-1', userId: 'user-id-1', displayName: 'Novo Nome',
   bio: 'Nova bio', avatarUrl: null, bannerUrl: null, accentColor: null,
@@ -39,7 +57,10 @@ const mockUpdatedProfile = {
 
 describe('Profile Routes', () => {
 
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(socialContinuityService.summarizeUser).mockResolvedValue(mockSocialContinuity);
+  });
 
   describe('GET /profiles/:username', () => {
     it('retorna 200 com perfil completo', async () => {
@@ -49,7 +70,18 @@ describe('Profile Routes', () => {
       const response = await app.inject({ method: 'GET', url: '/profiles/clutchplayer' });
 
       expect(response.statusCode).toBe(200);
-      expect(response.json()).toMatchObject({ username: 'clutchplayer' });
+      expect(response.json()).toMatchObject({
+        username: 'clutchplayer',
+        socialContinuity: {
+          currentStreakDays: 3,
+          activeFriendOffensiveCount: 1,
+          strongestFriendOffensive: {
+            friendId: 'friend-1',
+            friendUsername: 'duoqueue',
+            days: 2,
+          },
+        },
+      });
       await app.close();
     });
 

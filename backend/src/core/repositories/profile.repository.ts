@@ -13,6 +13,45 @@ export interface UpdateProfileInput {
   accentColor?: string;
 }
 
+export interface FullProfileRecord {
+  id: string;
+  username: string;
+  createdAt: Date;
+  profile: {
+    displayName: string | null;
+    bio: string | null;
+    avatarUrl: string | null;
+    bannerUrl: string | null;
+    accentColor: string | null;
+    badges: string[];
+  };
+  stats: {
+    level: number;
+    xp: number;
+    reputation: number;
+    friendCount: number;
+    postCount: number;
+  };
+  presence: {
+    status: string;
+    currentGame: string | null;
+    gameDetails: Record<string, unknown> | null;
+    platform: string | null;
+    updatedAt: Date;
+  };
+  platformIntegrations: Array<{
+    platform: string;
+    metadata: Record<string, unknown> | null;
+  }>;
+  gameLibrary: Array<{
+    gameName: string;
+    coverUrl: string | null;
+    platform: string;
+    hoursPlayed: number | null;
+    lastPlayedAt: Date | null;
+  }>;
+}
+
 export const profileRepository = {
   async findByUsername(username: string): Promise<Profile | null> {
     const user = await prisma.user.findUnique({
@@ -34,7 +73,7 @@ export const profileRepository = {
     return user?.profile ?? null;
   },
 
-  async findFullProfileByUsername(username: string): Promise<object | null> {
+  async findFullProfileByUsername(username: string): Promise<FullProfileRecord | null> {
     return prisma.user.findUnique({
       where: { username },
       select: {
@@ -84,7 +123,7 @@ export const profileRepository = {
           },
         },
       },
-    });
+    }) as Promise<FullProfileRecord | null>;
   },
 
   async updateByUserId(userId: string, input: UpdateProfileInput): Promise<Profile> {

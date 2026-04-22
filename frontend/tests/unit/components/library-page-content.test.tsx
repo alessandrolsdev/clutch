@@ -84,6 +84,11 @@ const profileFixture: ProfileResponse = {
       lastPlayedAt: '2026-03-27T10:00:00.000Z',
     },
   ],
+  socialContinuity: {
+    currentStreakDays: 0,
+    activeFriendOffensiveCount: 0,
+    strongestFriendOffensive: null,
+  },
 };
 
 function renderWithQuery(ui: ReactElement) {
