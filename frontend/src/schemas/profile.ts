@@ -18,6 +18,19 @@ export const profileIntegrationPlatformSchema = z.enum([
   'MYANIMELIST',
 ]);
 
+export const strongestFriendOffensiveSchema = z.object({
+  friendId: z.string().min(1),
+  friendUsername: z.string().min(1),
+  days: z.number().int().min(0),
+  lastQualifiedAt: z.string().min(1),
+});
+
+export const socialContinuitySchema = z.object({
+  currentStreakDays: z.number().int().min(0),
+  activeFriendOffensiveCount: z.number().int().min(0),
+  strongestFriendOffensive: strongestFriendOffensiveSchema.nullable(),
+});
+
 export const profileResponseSchema = z.object({
   id: z.string().min(1),
   username: z.string().min(1),
@@ -59,6 +72,7 @@ export const profileResponseSchema = z.object({
       lastPlayedAt: z.string().nullable(),
     }),
   ),
+  socialContinuity: socialContinuitySchema,
 });
 
 export const profileUpdateRequestSchema = z.object({
