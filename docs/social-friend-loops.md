@@ -2,7 +2,7 @@
 
 ## Escopo
 
-Este documento fecha a definicao da `#233` sem implementar streaks, ofensivas, badges, titulos ou reward engine.
+Este documento complementa a definicao da `#222` sem implementar streaks, ofensivas, badges, titulos ou reward engine.
 
 Ele existe para responder quatro perguntas de forma objetiva:
 
@@ -11,7 +11,7 @@ Ele existe para responder quatro perguntas de forma objetiva:
 3. o que ainda depende de contrato novo
 4. qual e o menor slice futuro implementavel sem overengineering
 
-## Relacao com a #222
+## Relacao com a trilha social
 
 A `#222` definiu o modelo base:
 
@@ -19,7 +19,7 @@ A `#222` definiu o modelo base:
 - o que conta e o que nao conta como streak
 - por que presence, XP e notificacoes nao podem virar fonte de verdade sozinhos
 
-Esta `#233` afunila esse modelo para a camada friend-linked:
+Este documento aprofunda esse modelo na camada friend-linked e deixa a `#233` livre para a etapa funcional posterior:
 
 - quais loops entre amigos existem de fato
 - como streak e ofensiva deixam de ser contadores vazios
