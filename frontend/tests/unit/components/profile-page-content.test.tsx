@@ -77,6 +77,16 @@ const profileFixture: ProfileResponse = {
       lastPlayedAt: '2026-03-29T22:15:00.000Z',
     },
   ],
+  socialContinuity: {
+    currentStreakDays: 4,
+    activeFriendOffensiveCount: 1,
+    strongestFriendOffensive: {
+      friendId: 'friend-2',
+      friendUsername: 'duoqueue',
+      days: 3,
+      lastQualifiedAt: '2026-03-29T00:00:00.000Z',
+    },
+  },
 };
 
 function renderWithQuery(ui: ReactElement) {
@@ -126,6 +136,10 @@ describe('ProfilePageContent', () => {
     expect(screen.getByTestId('profile-featured-title')).toHaveTextContent('Founder');
     expect(screen.getByTestId('profile-social-progress')).toHaveTextContent(
       /progresso social visivel/i,
+    );
+    expect(screen.getByTestId('profile-social-continuity')).toHaveTextContent(/4 dias/i);
+    expect(screen.getByTestId('profile-social-continuity')).toHaveTextContent(
+      /com @duoqueue/i,
     );
     expect(screen.getByText(/jogando valorant/i)).toBeInTheDocument();
     const statsSection = screen.getByTestId('profile-stats');

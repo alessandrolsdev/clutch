@@ -33,6 +33,16 @@ const profileFixture: ProfileResponse = {
   },
   platformIntegrations: [],
   gameLibrary: [],
+  socialContinuity: {
+    currentStreakDays: 4,
+    activeFriendOffensiveCount: 1,
+    strongestFriendOffensive: {
+      friendId: 'friend-1',
+      friendUsername: 'duoqueue',
+      days: 3,
+      lastQualifiedAt: '2026-03-29T00:00:00.000Z',
+    },
+  },
 };
 
 describe('GamerCard', () => {
@@ -51,6 +61,10 @@ describe('GamerCard', () => {
     );
     expect(screen.getByTestId('profile-social-progress')).toHaveTextContent('215');
     expect(screen.getByTestId('profile-social-progress')).toHaveTextContent('2');
+    expect(screen.getByTestId('profile-social-continuity')).toHaveTextContent(/4 dias/i);
+    expect(screen.getByTestId('profile-social-continuity')).toHaveTextContent(
+      /com @duoqueue/i,
+    );
   });
 
   it('overrides static profile presence with realtime store data', () => {
@@ -151,5 +165,30 @@ describe('GamerCard', () => {
 
     expect(screen.queryByTestId('profile-featured-title')).not.toBeInTheDocument();
     expect(screen.queryByTestId('profile-special-badges')).not.toBeInTheDocument();
+  });
+
+  it('renders honest fallbacks when no active friend offensive exists', () => {
+    render(
+      <GamerCard
+        profile={{
+          ...profileFixture,
+          socialContinuity: {
+            currentStreakDays: 0,
+            activeFriendOffensiveCount: 0,
+            strongestFriendOffensive: null,
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId('profile-social-continuity')).toHaveTextContent(
+      /sem atividade/i,
+    );
+    expect(screen.getByTestId('profile-social-continuity')).toHaveTextContent(
+      /sem ofensiva/i,
+    );
+    expect(screen.getByTestId('profile-social-continuity')).toHaveTextContent(
+      /ainda sem sobreposicao ativa com amigos/i,
+    );
   });
 });
