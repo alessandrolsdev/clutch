@@ -4,6 +4,9 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { GameCard, type LibraryGameRecord } from '@/components/library/game-card';
 import {
+  LibraryShareButton,
+} from '@/components/library/library-share-button';
+import {
   LibraryFilters,
   type LibrarySortOption,
 } from '@/components/library/library-filters';
@@ -231,11 +234,14 @@ export function LibraryPageContent({ username }: LibraryPageContentProps) {
         description="Explore a biblioteca carregada pelo profile atual com busca, filtros e ordenação locais, sem alterar os dados importados."
         level="h1"
         actions={
-          hasActiveRefinements ? (
-            <Button variant="secondary" size="sm" onClick={resetRefinements}>
-              Limpar refinamentos
-            </Button>
-          ) : undefined
+          <>
+            <LibraryShareButton username={profileQuery.data.username} />
+            {hasActiveRefinements ? (
+              <Button variant="secondary" size="sm" onClick={resetRefinements}>
+                Limpar refinamentos
+              </Button>
+            ) : null}
+          </>
         }
       />
 

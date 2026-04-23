@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LibraryPageContent } from '@/components/library/library-page-content';
+import { ToastProvider } from '@/components/ui/toaster';
 import {
   fetchProfileByUsername,
   ProfileRequestError,
@@ -101,7 +102,9 @@ function renderWithQuery(ui: ReactElement) {
   });
 
   return render(
-    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
+    <ToastProvider>
+      <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+    </ToastProvider>,
   );
 }
 
@@ -133,6 +136,7 @@ describe('LibraryPageContent', () => {
     });
 
     expect(screen.getByText(/biblioteca de @clutchplayer/i)).toBeInTheDocument();
+    expect(screen.getByTestId('library-share-button')).toHaveTextContent(/copiar link/i);
     expect(screen.getByText('4')).toBeInTheDocument();
     expect(screen.getByText('1157h')).toBeInTheDocument();
     expect(screen.getByText(/exibindo 4 de 4 jogos/i)).toBeInTheDocument();
