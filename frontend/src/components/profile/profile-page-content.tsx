@@ -6,6 +6,7 @@ import { FriendsList } from '@/components/friends/friends-list';
 import { Card } from '@/components/ui/card';
 import { GamerCard } from '@/components/profile/gamer-card';
 import { GameLibraryPreview } from '@/components/profile/game-library-preview';
+import { ProfileShareButton } from '@/components/profile/profile-share-button';
 import { ProfileSkeleton } from '@/components/profile/profile-skeleton';
 import { ProfileStats } from '@/components/profile/profile-stats';
 import {
@@ -78,7 +79,12 @@ export function ProfilePageContent({ username }: ProfilePageContentProps) {
     <div className="space-y-section" data-testid="profile-success">
       <GamerCard
         profile={profileQuery.data}
-        actions={<FriendButton targetUserId={profileQuery.data.id} />}
+        actions={
+          <>
+            <ProfileShareButton username={profileQuery.data.username} />
+            <FriendButton targetUserId={profileQuery.data.id} />
+          </>
+        }
       />
       <div className="grid gap-6 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
         <ProfileStats stats={profileQuery.data.stats} />
