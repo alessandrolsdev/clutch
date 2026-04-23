@@ -17,7 +17,7 @@ function isAbsoluteUrl(value: string): boolean {
   }
 }
 
-function resolvePublicAppOrigin(): string {
+export function resolvePublicAppOrigin(): string {
   const explicitPublicOrigin =
     process.env.PUBLIC_APP_URL?.trim() ||
     process.env.NEXT_PUBLIC_APP_URL?.trim();
@@ -45,6 +45,13 @@ function resolvePublicAppOrigin(): string {
   }
 
   throw new Error('Public app origin is not configured.');
+}
+
+export function buildPublicAppUrl(pathname: string): string {
+  return new URL(
+    normalizePathname(pathname),
+    normalizeBaseUrl(resolvePublicAppOrigin()),
+  ).toString();
 }
 
 export function resolvePublicApiBaseUrl(): string {
