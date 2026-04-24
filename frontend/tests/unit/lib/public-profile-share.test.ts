@@ -58,6 +58,7 @@ const profileFixture: ProfileResponse = {
       lastQualifiedAt: '2026-03-29T00:00:00.000Z',
     },
   },
+  otakuShowcase: null,
 };
 
 const originalNextPublicAppUrl = process.env.NEXT_PUBLIC_APP_URL;
