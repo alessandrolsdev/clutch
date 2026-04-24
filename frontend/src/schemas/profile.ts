@@ -31,6 +31,22 @@ export const socialContinuitySchema = z.object({
   strongestFriendOffensive: strongestFriendOffensiveSchema.nullable(),
 });
 
+export const otakuShowcaseItemSchema = z.object({
+  id: z.string().min(1),
+  kind: z.enum(['ANIME', 'MANGA']),
+  title: z.string().min(1),
+  coverUrl: z.string().nullable(),
+});
+
+export const otakuShowcaseSchema = z
+  .object({
+    featured: z.array(otakuShowcaseItemSchema),
+    consumingNow: z.array(otakuShowcaseItemSchema),
+    consumingCount: z.number().int().min(0),
+    completedCount: z.number().int().min(0),
+  })
+  .nullable();
+
 export const profileResponseSchema = z.object({
   id: z.string().min(1),
   username: z.string().min(1),
@@ -73,6 +89,7 @@ export const profileResponseSchema = z.object({
     }),
   ),
   socialContinuity: socialContinuitySchema,
+  otakuShowcase: otakuShowcaseSchema,
 });
 
 export const profileUpdateRequestSchema = z.object({

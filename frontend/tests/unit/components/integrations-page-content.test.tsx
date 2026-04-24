@@ -110,6 +110,7 @@ describe('IntegrationsPageContent', () => {
         activeFriendOffensiveCount: 0,
         strongestFriendOffensive: null,
       },
+      otakuShowcase: null,
     });
 
     renderWithQuery(<IntegrationsPageContent />);
