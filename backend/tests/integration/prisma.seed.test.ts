@@ -25,6 +25,16 @@ describe('Prisma seed', () => {
         presence: true,
         platformIntegrations: true,
         gameLibrary: true,
+        mediaEntries: {
+          where: {
+            showcaseRank: {
+              not: null,
+            },
+          },
+          include: {
+            mediaTitle: true,
+          },
+        },
       },
     });
 
@@ -38,6 +48,8 @@ describe('Prisma seed', () => {
     expect(demoUserRecord.presence?.status).toBe('IN_GAME');
     expect(demoUserRecord.platformIntegrations.length).toBeGreaterThanOrEqual(2);
     expect(demoUserRecord.gameLibrary.length).toBeGreaterThanOrEqual(2);
+    expect(demoUserRecord.mediaEntries.length).toBeGreaterThanOrEqual(3);
+    expect(demoUserRecord.mediaEntries[0]?.mediaTitle.canonicalTitle).toBeTruthy();
 
     const countsBeforeRerun = {
       posts: await prisma.post.count({ where: { id: { in: [...SEEDED_ENTITY_IDS.posts] } } }),
@@ -46,6 +58,8 @@ describe('Prisma seed', () => {
       notifications: await prisma.notification.count({ where: { id: { in: [...SEEDED_ENTITY_IDS.notifications] } } }),
       friendships: await prisma.friendship.count({ where: { id: { in: [...SEEDED_ENTITY_IDS.friendships] } } }),
       friendRequests: await prisma.friendRequest.count({ where: { id: { in: [...SEEDED_ENTITY_IDS.friendRequests] } } }),
+      mediaTitles: await prisma.mediaTitle.count({ where: { id: { in: [...SEEDED_ENTITY_IDS.mediaTitles] } } }),
+      mediaEntries: await prisma.userMediaEntry.count({ where: { id: { in: [...SEEDED_ENTITY_IDS.mediaEntries] } } }),
     };
 
     await runSeed(prisma);
@@ -57,6 +71,8 @@ describe('Prisma seed', () => {
       notifications: await prisma.notification.count({ where: { id: { in: [...SEEDED_ENTITY_IDS.notifications] } } }),
       friendships: await prisma.friendship.count({ where: { id: { in: [...SEEDED_ENTITY_IDS.friendships] } } }),
       friendRequests: await prisma.friendRequest.count({ where: { id: { in: [...SEEDED_ENTITY_IDS.friendRequests] } } }),
+      mediaTitles: await prisma.mediaTitle.count({ where: { id: { in: [...SEEDED_ENTITY_IDS.mediaTitles] } } }),
+      mediaEntries: await prisma.userMediaEntry.count({ where: { id: { in: [...SEEDED_ENTITY_IDS.mediaEntries] } } }),
     };
 
     expect(countsAfterRerun).toEqual(countsBeforeRerun);
@@ -96,6 +112,15 @@ describe('Prisma seed', () => {
       profile: expect.objectContaining({
         displayName: 'CLUTCH Player',
       }),
+      otakuShowcase: {
+        featured: expect.arrayContaining([
+          expect.objectContaining({
+            title: 'Sousou no Frieren',
+          }),
+        ]),
+        consumingCount: 2,
+        completedCount: 1,
+      },
     });
 
     const friendsResponse = await app.inject({

@@ -88,6 +88,32 @@ const profileFixture: ProfileResponse = {
       lastQualifiedAt: '2026-03-29T00:00:00.000Z',
     },
   },
+  otakuShowcase: {
+    featured: [
+      {
+        id: 'media-1',
+        kind: 'ANIME',
+        title: 'Sousou no Frieren',
+        coverUrl: 'https://cdn.clutch.gg/frieren.jpg',
+      },
+      {
+        id: 'media-2',
+        kind: 'MANGA',
+        title: 'Blue Lock',
+        coverUrl: null,
+      },
+    ],
+    consumingNow: [
+      {
+        id: 'media-2',
+        kind: 'MANGA',
+        title: 'Blue Lock',
+        coverUrl: null,
+      },
+    ],
+    consumingCount: 1,
+    completedCount: 1,
+  },
 };
 
 function renderWithQuery(ui: ReactElement) {
@@ -160,6 +186,10 @@ describe('ProfilePageContent', () => {
     expect(within(libraryPreview).getByText(/1 jogo no payload atual/i)).toBeInTheDocument();
     const libraryCard = within(libraryPreview).getByTestId('profile-library-game');
     expect(within(libraryCard).getByText(/120h jogadas/i)).toBeInTheDocument();
+    expect(screen.getByTestId('otaku-showcase-card')).toBeInTheDocument();
+    expect(screen.getByText(/showcase otaku/i)).toBeInTheDocument();
+    expect(screen.getByText(/sousou no frieren/i)).toBeInTheDocument();
+    expect(screen.getByTestId('otaku-showcase-consuming')).toHaveTextContent(/blue lock/i);
   });
 
   it('renders not found state', async () => {

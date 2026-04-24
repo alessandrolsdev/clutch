@@ -63,6 +63,19 @@ enum FriendRequestStatus {
   REJECTED
 }
 
+enum MediaKind {
+  ANIME
+  MANGA
+}
+
+enum MediaConsumptionStatus {
+  PLANNING
+  CONSUMING
+  COMPLETED
+  PAUSED
+  DROPPED
+}
+
 // ── User ─────────────────────────────────────────────────────
 
 model User {
@@ -90,6 +103,7 @@ model User {
   friendOf             Friendship[]          @relation("FriendshipFriend")
   sentGameInvites      GameInvite[]          @relation("GameInviteSender")
   receivedGameInvites  GameInvite[]          @relation("GameInviteReceiver")
+  mediaEntries         UserMediaEntry[]
 
   @@map("users")
 }
@@ -183,6 +197,36 @@ model UserGameLibrary {
 
   @@unique([userId, gameId, platform])
   @@map("user_game_library")
+}
+
+model MediaTitle {
+  id             String           @id @default(uuid())
+  kind           MediaKind
+  canonicalTitle String
+  coverUrl       String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  userEntries UserMediaEntry[]
+
+  @@map("media_titles")
+}
+
+model UserMediaEntry {
+  id           String                 @id @default(uuid())
+  userId       String
+  mediaTitleId String
+  status       MediaConsumptionStatus
+  showcaseRank Int?
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mediaTitle MediaTitle @relation(fields: [mediaTitleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, mediaTitleId])
+  @@index([userId, showcaseRank])
+  @@map("user_media_entries")
 }
 
 // ── Post ─────────────────────────────────────────────────────

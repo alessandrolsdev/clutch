@@ -6,6 +6,7 @@ import { FriendsList } from '@/components/friends/friends-list';
 import { Card } from '@/components/ui/card';
 import { GamerCard } from '@/components/profile/gamer-card';
 import { GameLibraryPreview } from '@/components/profile/game-library-preview';
+import { OtakuShowcaseCard } from '@/components/profile/otaku-showcase-card';
 import { ProfileShareButton } from '@/components/profile/profile-share-button';
 import { ProfileSkeleton } from '@/components/profile/profile-skeleton';
 import { ProfileStats } from '@/components/profile/profile-stats';
@@ -93,6 +94,7 @@ export function ProfilePageContent({ username }: ProfilePageContentProps) {
           games={profileQuery.data.gameLibrary}
         />
       </div>
+      <OtakuShowcaseCard showcase={profileQuery.data.otakuShowcase} />
       <FriendsList
         userId={profileQuery.data.id}
         title={`Amigos de @${profileQuery.data.username}`}

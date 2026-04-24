@@ -14,6 +14,12 @@ vi.mock('@/core/services/social-continuity.service', () => ({
   },
 }));
 
+vi.mock('@/core/services/otaku-showcase.service', () => ({
+  otakuShowcaseService: {
+    summarizeUser: vi.fn(),
+  },
+}));
+
 vi.mock('@/core/repositories/user.repository', () => ({
   userRepository: {
     findById: vi.fn(), findByEmail: vi.fn(), findByUsername: vi.fn(),
@@ -22,6 +28,7 @@ vi.mock('@/core/repositories/user.repository', () => ({
 }));
 
 import { profileRepository } from '@/core/repositories/profile.repository';
+import { otakuShowcaseService } from '@/core/services/otaku-showcase.service';
 import { socialContinuityService } from '@/core/services/social-continuity.service';
 import { userRepository }    from '@/core/repositories/user.repository';
 
@@ -49,6 +56,27 @@ const mockSocialContinuity = {
   },
 };
 
+const mockOtakuShowcase = {
+  featured: [
+    {
+      id: 'media-1',
+      kind: 'ANIME' as const,
+      title: 'Sousou no Frieren',
+      coverUrl: 'https://cdn.clutch.gg/frieren.jpg',
+    },
+  ],
+  consumingNow: [
+    {
+      id: 'media-2',
+      kind: 'MANGA' as const,
+      title: 'Blue Lock',
+      coverUrl: null,
+    },
+  ],
+  consumingCount: 1,
+  completedCount: 1,
+};
+
 const mockUpdatedProfile = {
   id: 'profile-id-1', userId: 'user-id-1', displayName: 'Novo Nome',
   bio: 'Nova bio', avatarUrl: null, bannerUrl: null, accentColor: null,
@@ -60,6 +88,7 @@ describe('Profile Routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(socialContinuityService.summarizeUser).mockResolvedValue(mockSocialContinuity);
+    vi.mocked(otakuShowcaseService.summarizeUser).mockResolvedValue(mockOtakuShowcase);
   });
 
   describe('GET /profiles/:username', () => {
@@ -81,6 +110,37 @@ describe('Profile Routes', () => {
             days: 2,
           },
         },
+        otakuShowcase: {
+          featured: [
+            {
+              id: 'media-1',
+              title: 'Sousou no Frieren',
+            },
+          ],
+          consumingNow: [
+            {
+              id: 'media-2',
+              title: 'Blue Lock',
+            },
+          ],
+          consumingCount: 1,
+          completedCount: 1,
+        },
+      });
+      await app.close();
+    });
+
+    it('retorna otakuShowcase nulo quando o usuario nao configurou destaque publico', async () => {
+      vi.mocked(profileRepository.findFullProfileByUsername).mockResolvedValue(mockFullProfile);
+      vi.mocked(otakuShowcaseService.summarizeUser).mockResolvedValue(null);
+
+      const app = await buildApp();
+      const response = await app.inject({ method: 'GET', url: '/profiles/clutchplayer' });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        username: 'clutchplayer',
+        otakuShowcase: null,
       });
       await app.close();
     });
