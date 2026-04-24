@@ -53,6 +53,7 @@ describe('profile service', () => {
             activeFriendOffensiveCount: 0,
             strongestFriendOffensive: null,
           },
+          otakuShowcase: null,
         }),
         {
           status: 200,

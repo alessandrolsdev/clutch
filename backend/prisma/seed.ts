@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 
 const {
   InteractionType,
+  MediaConsumptionStatus,
+  MediaKind,
   NotificationType,
   Platform,
   PostType,
@@ -17,6 +19,8 @@ const {
 } = prismaClientPackage;
 
 type InteractionType = (typeof InteractionType)[keyof typeof InteractionType];
+type MediaConsumptionStatus = (typeof MediaConsumptionStatus)[keyof typeof MediaConsumptionStatus];
+type MediaKind = (typeof MediaKind)[keyof typeof MediaKind];
 type NotificationType = (typeof NotificationType)[keyof typeof NotificationType];
 type Platform = (typeof Platform)[keyof typeof Platform];
 type PostType = (typeof PostType)[keyof typeof PostType];
@@ -65,6 +69,18 @@ export const SEEDED_ENTITY_IDS = {
     'f4444444-4444-4444-8444-444444444444',
     'f5555555-5555-4555-8555-555555555555',
     'f6666666-6666-4666-8666-666666666666',
+  ],
+  mediaTitles: [
+    'g1111111-1111-4111-8111-111111111111',
+    'g2222222-2222-4222-8222-222222222222',
+    'g3333333-3333-4333-8333-333333333333',
+    'g4444444-4444-4444-8444-444444444444',
+  ],
+  mediaEntries: [
+    'h1111111-1111-4111-8111-111111111111',
+    'h2222222-2222-4222-8222-222222222222',
+    'h3333333-3333-4333-8333-333333333333',
+    'h4444444-4444-4444-8444-444444444444',
   ],
 } as const;
 
@@ -165,6 +181,21 @@ type SeedIntegrationConfig = {
   platform: Platform;
   externalId: string;
   metadata: Prisma.JsonObject;
+};
+
+type SeedMediaTitleConfig = {
+  id: string;
+  kind: MediaKind;
+  canonicalTitle: string;
+  coverUrl: string | null;
+};
+
+type SeedUserMediaEntryConfig = {
+  id: string;
+  userEmail: string;
+  mediaTitleId: string;
+  status: MediaConsumptionStatus;
+  showcaseRank: number | null;
 };
 
 function toNullableJsonInput(value: Prisma.JsonObject | null): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput {
@@ -536,6 +567,64 @@ const seedIntegrations: SeedIntegrationConfig[] = [
   },
 ];
 
+const seedMediaTitles: SeedMediaTitleConfig[] = [
+  {
+    id: 'g1111111-1111-4111-8111-111111111111',
+    kind: MediaKind.ANIME,
+    canonicalTitle: 'Sousou no Frieren',
+    coverUrl: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=600&q=80',
+  },
+  {
+    id: 'g2222222-2222-4222-8222-222222222222',
+    kind: MediaKind.ANIME,
+    canonicalTitle: 'Dungeon Meshi',
+    coverUrl: 'https://images.unsplash.com/photo-1511884642898-4c92249e20b6?auto=format&fit=crop&w=600&q=80',
+  },
+  {
+    id: 'g3333333-3333-4333-8333-333333333333',
+    kind: MediaKind.MANGA,
+    canonicalTitle: 'Blue Lock',
+    coverUrl: 'https://images.unsplash.com/photo-1542751110-97427bbecf20?auto=format&fit=crop&w=600&q=80',
+  },
+  {
+    id: 'g4444444-4444-4444-8444-444444444444',
+    kind: MediaKind.MANGA,
+    canonicalTitle: 'Vagabond',
+    coverUrl: null,
+  },
+];
+
+const seedUserMediaEntries: SeedUserMediaEntryConfig[] = [
+  {
+    id: 'h1111111-1111-4111-8111-111111111111',
+    userEmail: DEMO_ACCOUNT.email,
+    mediaTitleId: 'g1111111-1111-4111-8111-111111111111',
+    status: MediaConsumptionStatus.COMPLETED,
+    showcaseRank: 1,
+  },
+  {
+    id: 'h2222222-2222-4222-8222-222222222222',
+    userEmail: DEMO_ACCOUNT.email,
+    mediaTitleId: 'g2222222-2222-4222-8222-222222222222',
+    status: MediaConsumptionStatus.CONSUMING,
+    showcaseRank: 2,
+  },
+  {
+    id: 'h3333333-3333-4333-8333-333333333333',
+    userEmail: DEMO_ACCOUNT.email,
+    mediaTitleId: 'g3333333-3333-4333-8333-333333333333',
+    status: MediaConsumptionStatus.CONSUMING,
+    showcaseRank: 3,
+  },
+  {
+    id: 'h4444444-4444-4444-8444-444444444444',
+    userEmail: 'luna@clutch.gg',
+    mediaTitleId: 'g4444444-4444-4444-8444-444444444444',
+    status: MediaConsumptionStatus.PLANNING,
+    showcaseRank: null,
+  },
+];
+
 function seedUsersPlaceholder(): readonly string[] {
   return [
     DEMO_ACCOUNT.email,
@@ -638,6 +727,42 @@ function getUserId(userIdsByEmail: Map<string, string>, email: string): string {
 }
 
 async function upsertSeedRelations(client: PrismaClient, userIdsByEmail: Map<string, string>): Promise<void> {
+  for (const mediaTitle of seedMediaTitles) {
+    await client.mediaTitle.upsert({
+      where: { id: mediaTitle.id },
+      update: {
+        kind: mediaTitle.kind,
+        canonicalTitle: mediaTitle.canonicalTitle,
+        coverUrl: mediaTitle.coverUrl,
+      },
+      create: {
+        id: mediaTitle.id,
+        kind: mediaTitle.kind,
+        canonicalTitle: mediaTitle.canonicalTitle,
+        coverUrl: mediaTitle.coverUrl,
+      },
+    });
+  }
+
+  for (const mediaEntry of seedUserMediaEntries) {
+    await client.userMediaEntry.upsert({
+      where: { id: mediaEntry.id },
+      update: {
+        userId: getUserId(userIdsByEmail, mediaEntry.userEmail),
+        mediaTitleId: mediaEntry.mediaTitleId,
+        status: mediaEntry.status,
+        showcaseRank: mediaEntry.showcaseRank,
+      },
+      create: {
+        id: mediaEntry.id,
+        userId: getUserId(userIdsByEmail, mediaEntry.userEmail),
+        mediaTitleId: mediaEntry.mediaTitleId,
+        status: mediaEntry.status,
+        showcaseRank: mediaEntry.showcaseRank,
+      },
+    });
+  }
+
   for (const integration of seedIntegrations) {
     const userId = getUserId(userIdsByEmail, integration.userEmail);
     await client.platformIntegration.upsert({
