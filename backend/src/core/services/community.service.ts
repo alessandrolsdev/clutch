@@ -1,4 +1,5 @@
 import { CommunityMemberRole } from '@prisma/client';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import {
   communityRepository,
   type CommunityDetail,
@@ -38,6 +39,10 @@ function normalizeSlug(input: string): string {
     .slice(0, 64);
 
   return normalized.length > 0 ? normalized : 'community';
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return error instanceof PrismaClientKnownRequestError && error.code === 'P2002';
 }
 
 async function withViewerRole(
@@ -97,12 +102,25 @@ export const communityService = {
       );
     }
 
-    const community = await communityRepository.create({
-      ownerUserId: input.ownerUserId,
-      slug,
-      name: input.name,
-      description: description && description.length > 0 ? description : null,
-    });
+    let community: CommunitySummary;
+
+    try {
+      community = await communityRepository.create({
+        ownerUserId: input.ownerUserId,
+        slug,
+        name: input.name,
+        description: description && description.length > 0 ? description : null,
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new CommunityServiceError(
+          'COMMUNITY_SLUG_CONFLICT',
+          'Já existe uma comunidade com esse nome.',
+        );
+      }
+
+      throw error;
+    }
 
     return {
       ...community,
@@ -129,7 +147,18 @@ export const communityService = {
       );
     }
 
-    await communityRepository.addMember(community.id, userId);
+    try {
+      await communityRepository.addMember(community.id, userId);
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new CommunityServiceError(
+          'COMMUNITY_ALREADY_JOINED',
+          'Usuário já participa desta comunidade.',
+        );
+      }
+
+      throw error;
+    }
     const updatedCommunity = await communityRepository.findPublicActiveBySlug(slug);
 
     if (!updatedCommunity) {
