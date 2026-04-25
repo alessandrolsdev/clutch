@@ -9,6 +9,15 @@ export {
   registerSessionSchema,
 } from './auth';
 export {
+  communitiesResponseSchema,
+  communityResponseSchema,
+  communityRoleSchema,
+  communitySchema,
+  communityStatusSchema,
+  communityVisibilitySchema,
+  createCommunityRequestSchema,
+} from './communities';
+export {
   commentContentSchema,
   createPostRequestSchema,
   createPostCommentRequestSchema,

@@ -76,6 +76,20 @@ enum MediaConsumptionStatus {
   DROPPED
 }
 
+enum CommunityVisibility {
+  PUBLIC
+}
+
+enum CommunityStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum CommunityMemberRole {
+  OWNER
+  MEMBER
+}
+
 // ── User ─────────────────────────────────────────────────────
 
 model User {
@@ -104,6 +118,8 @@ model User {
   sentGameInvites      GameInvite[]          @relation("GameInviteSender")
   receivedGameInvites  GameInvite[]          @relation("GameInviteReceiver")
   mediaEntries         UserMediaEntry[]
+  ownedCommunities     Community[]           @relation("CommunityOwner")
+  communityMemberships CommunityMember[]
 
   @@map("users")
 }
@@ -227,6 +243,41 @@ model UserMediaEntry {
   @@unique([userId, mediaTitleId])
   @@index([userId, showcaseRank])
   @@map("user_media_entries")
+}
+
+// ── Community ────────────────────────────────────────────────
+
+model Community {
+  id          String              @id @default(uuid())
+  slug        String              @unique
+  name        String
+  description String?
+  visibility  CommunityVisibility @default(PUBLIC)
+  status      CommunityStatus     @default(ACTIVE)
+  ownerUserId String
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  owner   User              @relation("CommunityOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  members CommunityMember[]
+
+  @@index([status, visibility, createdAt])
+  @@map("communities")
+}
+
+model CommunityMember {
+  id          String              @id @default(uuid())
+  communityId String
+  userId      String
+  role        CommunityMemberRole @default(MEMBER)
+  joinedAt    DateTime            @default(now())
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([communityId, userId])
+  @@index([userId])
+  @@map("community_members")
 }
 
 // ── Post ─────────────────────────────────────────────────────
