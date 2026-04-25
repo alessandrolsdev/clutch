@@ -116,7 +116,7 @@ describe('Communities Routes', () => {
     await app.close();
   });
 
-  it('retorna 409 ao criar comunidade com slug existente', async () => {
+  it('retorna 409 ao criar comunidade com slug existente ou corrida de criação', async () => {
     vi.mocked(communityService.createPublicCommunity).mockRejectedValue(
       new CommunityServiceError(
         'COMMUNITY_SLUG_CONFLICT',
@@ -159,6 +159,26 @@ describe('Communities Routes', () => {
       'guilda-dos-speedrunners',
       'member-id-1',
     );
+    await app.close();
+  });
+
+  it('retorna 409 quando corrida de membership indica usuário já participante', async () => {
+    vi.mocked(communityService.joinCommunity).mockRejectedValue(
+      new CommunityServiceError(
+        'COMMUNITY_ALREADY_JOINED',
+        'Usuário já participa desta comunidade.',
+      ),
+    );
+
+    const app = await buildApp();
+    const token = generateTestToken(app, 'member-id-1');
+    const response = await app.inject({
+      method: 'POST',
+      url: '/communities/guilda-dos-speedrunners/join',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    expect(response.statusCode).toBe(409);
     await app.close();
   });
 

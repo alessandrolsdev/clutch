@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CommunityMemberRole, CommunityStatus, CommunityVisibility } from '@prisma/client';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { communityService } from '@/core/services/community.service';
 import { communityRepository, type CommunitySummary } from '@/core/repositories/community.repository';
 
@@ -32,6 +33,14 @@ const baseCommunity: CommunitySummary = {
   createdAt: new Date('2026-04-25T10:00:00.000Z'),
   updatedAt: new Date('2026-04-25T10:00:00.000Z'),
 };
+
+function createUniqueConstraintError(target: string[]): PrismaClientKnownRequestError {
+  return new PrismaClientKnownRequestError('Unique constraint failed', {
+    code: 'P2002',
+    clientVersion: '5.22.0',
+    meta: { target },
+  });
+}
 
 describe('communityService', () => {
   beforeEach(() => {
@@ -76,6 +85,22 @@ describe('communityService', () => {
     });
   });
 
+  it('traduz corrida de slug único na criação para conflito de domínio', async () => {
+    vi.mocked(communityRepository.findBySlug).mockResolvedValue(null);
+    vi.mocked(communityRepository.create).mockRejectedValue(
+      createUniqueConstraintError(['slug']),
+    );
+
+    await expect(
+      communityService.createPublicCommunity({
+        ownerUserId: 'owner-id-1',
+        name: 'Guilda dos Speedrunners',
+      }),
+    ).rejects.toMatchObject({
+      code: 'COMMUNITY_SLUG_CONFLICT',
+    });
+  });
+
   it('retorna papel do viewer ao buscar comunidade pública autenticada', async () => {
     vi.mocked(communityRepository.findPublicActiveBySlug).mockResolvedValue(baseCommunity);
     vi.mocked(communityRepository.findMembershipRole).mockResolvedValue(CommunityMemberRole.MEMBER);
@@ -106,6 +131,20 @@ describe('communityService', () => {
     );
     expect(result.memberCount).toBe(2);
     expect(result.viewerMembershipRole).toBe(CommunityMemberRole.MEMBER);
+  });
+
+  it('traduz corrida de membership único ao entrar para conflito de domínio', async () => {
+    vi.mocked(communityRepository.findPublicActiveBySlug).mockResolvedValue(baseCommunity);
+    vi.mocked(communityRepository.findMembershipRole).mockResolvedValue(null);
+    vi.mocked(communityRepository.addMember).mockRejectedValue(
+      createUniqueConstraintError(['communityId', 'userId']),
+    );
+
+    await expect(
+      communityService.joinCommunity('guilda-dos-speedrunners', 'member-id-1'),
+    ).rejects.toMatchObject({
+      code: 'COMMUNITY_ALREADY_JOINED',
+    });
   });
 
   it('impede owner de sair pelo fluxo simples de membership', async () => {
