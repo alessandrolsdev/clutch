@@ -13,6 +13,7 @@ import {
   joinCommunity,
   leaveCommunity,
 } from '@/services/communities';
+import { CommunityEventsPanel } from './community-events-panel';
 
 type CommunityPageContentProps = {
   slug: string;
@@ -40,6 +41,7 @@ export function CommunityPageContent({ slug }: CommunityPageContentProps) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['communities'] }),
         queryClient.invalidateQueries({ queryKey: ['communities', slug] }),
+        queryClient.invalidateQueries({ queryKey: ['communities', slug, 'events'] }),
       ]);
     },
   });
@@ -50,6 +52,7 @@ export function CommunityPageContent({ slug }: CommunityPageContentProps) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['communities'] }),
         queryClient.invalidateQueries({ queryKey: ['communities', slug] }),
+        queryClient.invalidateQueries({ queryKey: ['communities', slug, 'events'] }),
       ]);
     },
   });
@@ -160,6 +163,12 @@ export function CommunityPageContent({ slug }: CommunityPageContentProps) {
           </p>
         ) : null}
       </Card>
+
+      <CommunityEventsPanel
+        slug={slug}
+        isAuthenticated={isAuthenticated}
+        viewerMembershipRole={community.viewerMembershipRole ?? null}
+      />
     </div>
   );
 }

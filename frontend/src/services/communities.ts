@@ -1,9 +1,16 @@
 import { apiRequest } from '@/lib/api';
 import {
   communitiesResponseSchema,
+  communityEventResponseSchema,
+  communityEventRsvpRequestSchema,
+  communityEventsResponseSchema,
   communityResponseSchema,
+  createCommunityEventRequestSchema,
   createCommunityRequestSchema,
   type Community,
+  type CommunityEvent,
+  type CommunityEventRsvpStatus,
+  type CreateCommunityEventValues,
   type CreateCommunityValues,
 } from '@/schemas/communities';
 
@@ -132,4 +139,116 @@ export async function leaveCommunity(slug: string): Promise<Community> {
   }
 
   return communityResponseSchema.parse(payload).community;
+}
+
+export async function fetchCommunityEvents(slug: string): Promise<CommunityEvent[]> {
+  const response = await apiRequest(`/communities/${encodeURIComponent(slug)}/events`, {
+    method: 'GET',
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw new CommunitiesRequestError(
+      response.status,
+      resolveErrorMessage(payload, 'Nao foi possivel carregar os eventos da comunidade.'),
+    );
+  }
+
+  return communityEventsResponseSchema.parse(payload).events;
+}
+
+export async function fetchCommunityEventById(
+  slug: string,
+  eventId: string,
+): Promise<CommunityEvent> {
+  const response = await apiRequest(
+    `/communities/${encodeURIComponent(slug)}/events/${encodeURIComponent(eventId)}`,
+    {
+      method: 'GET',
+    },
+  );
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw new CommunitiesRequestError(
+      response.status,
+      resolveErrorMessage(payload, 'Nao foi possivel carregar este evento.'),
+    );
+  }
+
+  return communityEventResponseSchema.parse(payload).event;
+}
+
+export async function createCommunityEvent(
+  slug: string,
+  input: CreateCommunityEventValues,
+): Promise<CommunityEvent> {
+  const payload = createCommunityEventRequestSchema.parse(input);
+  const normalizedPayload = {
+    title: payload.title.trim(),
+    description: payload.description?.trim() || undefined,
+    startsAt: payload.startsAt,
+  };
+
+  const response = await apiRequest(`/communities/${encodeURIComponent(slug)}/events`, {
+    method: 'POST',
+    body: normalizedPayload,
+  });
+  const responsePayload = await readJson(response);
+
+  if (!response.ok) {
+    throw new CommunitiesRequestError(
+      response.status,
+      resolveErrorMessage(responsePayload, 'Nao foi possivel criar o evento.'),
+    );
+  }
+
+  return communityEventResponseSchema.parse(responsePayload).event;
+}
+
+export async function setCommunityEventRsvp(
+  slug: string,
+  eventId: string,
+  status: CommunityEventRsvpStatus,
+): Promise<CommunityEvent> {
+  const payload = communityEventRsvpRequestSchema.parse({ status });
+  const response = await apiRequest(
+    `/communities/${encodeURIComponent(slug)}/events/${encodeURIComponent(eventId)}/rsvp`,
+    {
+      method: 'POST',
+      body: payload,
+    },
+  );
+  const responsePayload = await readJson(response);
+
+  if (!response.ok) {
+    throw new CommunitiesRequestError(
+      response.status,
+      resolveErrorMessage(responsePayload, 'Nao foi possivel atualizar o RSVP.'),
+    );
+  }
+
+  return communityEventResponseSchema.parse(responsePayload).event;
+}
+
+export async function cancelCommunityEvent(
+  slug: string,
+  eventId: string,
+): Promise<CommunityEvent> {
+  const response = await apiRequest(
+    `/communities/${encodeURIComponent(slug)}/events/${encodeURIComponent(eventId)}`,
+    {
+      method: 'DELETE',
+    },
+  );
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw new CommunitiesRequestError(
+      response.status,
+      resolveErrorMessage(payload, 'Nao foi possivel cancelar o evento.'),
+    );
+  }
+
+  return communityEventResponseSchema.parse(payload).event;
 }

@@ -1,10 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { CommunityMemberRole, CommunityStatus, CommunityVisibility } from '@prisma/client';
+import {
+  CommunityEventRsvpStatus,
+  CommunityEventStatus,
+  CommunityMemberRole,
+  CommunityStatus,
+  CommunityVisibility,
+} from '@prisma/client';
 import { buildApp, generateTestToken } from '../../helpers/build-app';
 import {
   communityService,
   CommunityServiceError,
 } from '@/core/services/community.service';
+import {
+  communityEventService,
+  CommunityEventServiceError,
+} from '@/core/services/community-event.service';
 
 vi.mock('@/core/services/community.service', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/core/services/community.service')>();
@@ -17,6 +27,21 @@ vi.mock('@/core/services/community.service', async (importOriginal) => {
       createPublicCommunity: vi.fn(),
       joinCommunity: vi.fn(),
       leaveCommunity: vi.fn(),
+    },
+  };
+});
+
+vi.mock('@/core/services/community-event.service', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/core/services/community-event.service')>();
+
+  return {
+    ...actual,
+    communityEventService: {
+      listEvents: vi.fn(),
+      getEvent: vi.fn(),
+      createEvent: vi.fn(),
+      setRsvp: vi.fn(),
+      cancelEvent: vi.fn(),
     },
   };
 });
@@ -42,6 +67,28 @@ const mockCommunity = {
   createdAt: new Date('2026-04-25T10:00:00.000Z'),
   updatedAt: new Date('2026-04-25T10:00:00.000Z'),
   viewerMembershipRole: null,
+};
+
+const mockEvent = {
+  id: 'event-id-1',
+  communityId: 'community-id-1',
+  title: 'Noite de ranked',
+  description: 'Fila fechada para subir elo.',
+  startsAt: new Date('2099-05-01T23:00:00.000Z'),
+  status: CommunityEventStatus.PUBLISHED,
+  createdAt: new Date('2026-04-25T10:00:00.000Z'),
+  updatedAt: new Date('2026-04-25T10:00:00.000Z'),
+  createdBy: {
+    id: 'owner-id-1',
+    username: 'owner',
+    displayName: 'Owner',
+  },
+  viewerRsvp: null,
+  rsvpCounts: {
+    going: 0,
+    interested: 0,
+    notGoing: 0,
+  },
 };
 
 describe('Communities Routes', () => {
@@ -197,6 +244,152 @@ describe('Communities Routes', () => {
     expect(communityService.leaveCommunity).toHaveBeenCalledWith(
       'guilda-dos-speedrunners',
       'member-id-1',
+    );
+    await app.close();
+  });
+
+  it('lista eventos da comunidade pública', async () => {
+    vi.mocked(communityEventService.listEvents).mockResolvedValue([mockEvent]);
+
+    const app = await buildApp();
+    const response = await app.inject({
+      method: 'GET',
+      url: '/communities/guilda-dos-speedrunners/events',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      events: [
+        {
+          id: 'event-id-1',
+          title: 'Noite de ranked',
+          rsvpCounts: { going: 0, interested: 0, notGoing: 0 },
+        },
+      ],
+    });
+    await app.close();
+  });
+
+  it('cria evento como owner autenticado', async () => {
+    vi.mocked(communityEventService.createEvent).mockResolvedValue(mockEvent);
+
+    const app = await buildApp();
+    const token = generateTestToken(app, 'owner-id-1');
+    const response = await app.inject({
+      method: 'POST',
+      url: '/communities/guilda-dos-speedrunners/events',
+      headers: { Authorization: `Bearer ${token}` },
+      payload: {
+        title: 'Noite de ranked',
+        description: 'Fila fechada para subir elo.',
+        startsAt: '2099-05-01T23:00:00.000Z',
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(communityEventService.createEvent).toHaveBeenCalledWith(
+      'guilda-dos-speedrunners',
+      'owner-id-1',
+      {
+        title: 'Noite de ranked',
+        description: 'Fila fechada para subir elo.',
+        startsAt: new Date('2099-05-01T23:00:00.000Z'),
+      },
+    );
+    await app.close();
+  });
+
+  it('retorna 403 quando membro tenta criar evento', async () => {
+    vi.mocked(communityEventService.createEvent).mockRejectedValue(
+      new CommunityEventServiceError(
+        'COMMUNITY_EVENT_FORBIDDEN',
+        'Apenas o owner pode gerenciar eventos desta comunidade.',
+      ),
+    );
+
+    const app = await buildApp();
+    const token = generateTestToken(app, 'member-id-1');
+    const response = await app.inject({
+      method: 'POST',
+      url: '/communities/guilda-dos-speedrunners/events',
+      headers: { Authorization: `Bearer ${token}` },
+      payload: {
+        title: 'Noite de ranked',
+        startsAt: '2099-05-01T23:00:00.000Z',
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it('retorna detalhe básico do evento', async () => {
+    vi.mocked(communityEventService.getEvent).mockResolvedValue(mockEvent);
+
+    const app = await buildApp();
+    const response = await app.inject({
+      method: 'GET',
+      url: '/communities/guilda-dos-speedrunners/events/event-id-1',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      event: {
+        id: 'event-id-1',
+        title: 'Noite de ranked',
+      },
+    });
+    await app.close();
+  });
+
+  it('permite RSVP básico para membro autenticado', async () => {
+    vi.mocked(communityEventService.setRsvp).mockResolvedValue({
+      ...mockEvent,
+      viewerRsvp: CommunityEventRsvpStatus.GOING,
+      rsvpCounts: { going: 1, interested: 0, notGoing: 0 },
+    });
+
+    const app = await buildApp();
+    const token = generateTestToken(app, 'member-id-1');
+    const response = await app.inject({
+      method: 'POST',
+      url: '/communities/guilda-dos-speedrunners/events/event-id-1/rsvp',
+      headers: { Authorization: `Bearer ${token}` },
+      payload: { status: 'GOING' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(communityEventService.setRsvp).toHaveBeenCalledWith(
+      'guilda-dos-speedrunners',
+      'event-id-1',
+      'member-id-1',
+      CommunityEventRsvpStatus.GOING,
+    );
+    await app.close();
+  });
+
+  it('cancela evento como owner autenticado', async () => {
+    vi.mocked(communityEventService.cancelEvent).mockResolvedValue({
+      ...mockEvent,
+      status: CommunityEventStatus.CANCELLED,
+    });
+
+    const app = await buildApp();
+    const token = generateTestToken(app, 'owner-id-1');
+    const response = await app.inject({
+      method: 'DELETE',
+      url: '/communities/guilda-dos-speedrunners/events/event-id-1',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      event: { status: CommunityEventStatus.CANCELLED },
+    });
+    expect(communityEventService.cancelEvent).toHaveBeenCalledWith(
+      'guilda-dos-speedrunners',
+      'event-id-1',
+      'owner-id-1',
     );
     await app.close();
   });

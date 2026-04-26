@@ -10,11 +10,18 @@ export {
 } from './auth';
 export {
   communitiesResponseSchema,
+  communityEventResponseSchema,
+  communityEventRsvpRequestSchema,
+  communityEventRsvpStatusSchema,
+  communityEventSchema,
+  communityEventStatusSchema,
+  communityEventsResponseSchema,
   communityResponseSchema,
   communityRoleSchema,
   communitySchema,
   communityStatusSchema,
   communityVisibilitySchema,
+  createCommunityEventRequestSchema,
   createCommunityRequestSchema,
 } from './communities';
 export {
