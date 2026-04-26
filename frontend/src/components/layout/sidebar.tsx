@@ -95,6 +95,12 @@ export function Sidebar({ isOpen, onClose, className }: SidebarProps) {
       unavailableReason: 'Ainda nao existe uma pagina dedicada de amigos nesta superficie.',
     },
     {
+      label: 'Communities',
+      href: '/communities',
+      tone: pathname.startsWith('/communities') ? 'accent' : 'neutral',
+      description: 'Public guilds and basic membership',
+    },
+    {
       label: 'Notifications',
       href: '/notifications',
       tone: pathname === '/notifications' ? 'accent' : 'neutral',
