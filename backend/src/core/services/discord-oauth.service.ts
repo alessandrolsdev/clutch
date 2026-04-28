@@ -1,6 +1,5 @@
 /* eslint-disable no-unused-vars */
 import { Prisma } from '@prisma/client';
-import { prisma } from '../../infra/database/client';
 import {
   createIntegrationError,
   type IntegrationError,
@@ -11,6 +10,10 @@ import {
   type DiscordTokenSet,
 } from '../../infra/integrations/discord/discord.service';
 import { writeBackendRuntimeLog } from '../../config/logging';
+import {
+  ConnectedAccountConflictError,
+  createConnectedAccountService,
+} from './connected-account.service';
 
 type PersistDiscordIntegrationInput = {
   externalId: string;
@@ -47,32 +50,33 @@ type CompleteDiscordOAuthInput = {
 };
 
 function createPrismaDiscordOAuthPersistence(): DiscordOAuthPersistence {
+  const connectedAccountService = createConnectedAccountService();
+
   return {
     async upsertDiscordIntegration(userId, data): Promise<void> {
-      await prisma.platformIntegration.upsert({
-        where: {
-          userId_platform: {
-            userId,
-            platform: 'DISCORD',
-          },
-        },
-        create: {
+      try {
+        await connectedAccountService.connectExternalIdentity({
           userId,
-          platform: 'DISCORD',
+          provider: 'DISCORD',
           externalId: data.externalId,
+          connectionType: 'CONNECTED_ACCOUNT',
+          dataSource: 'OFFICIAL',
           accessToken: data.accessToken,
           refreshToken: data.refreshToken,
           metadata: data.metadata,
-          isActive: true,
-        },
-        update: {
-          externalId: data.externalId,
-          accessToken: data.accessToken,
-          refreshToken: data.refreshToken,
-          metadata: data.metadata,
-          isActive: true,
-        },
-      });
+        });
+      } catch (error) {
+        if (error instanceof ConnectedAccountConflictError) {
+          throw createIntegrationError(
+            'discord',
+            409,
+            'conflict',
+            'Esta conta Discord já está vinculada a outro usuário.',
+          );
+        }
+
+        throw error;
+      }
     },
   };
 }
