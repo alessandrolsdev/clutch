@@ -38,4 +38,15 @@ describe('provider registry', () => {
       expect.arrayContaining(['CONNECTED_ACCOUNT', 'OAUTH_CONNECT']),
     );
   });
+
+  it('mantem Epic como provider experimental sem login social', () => {
+    const epic = getProviderDefinition('EPIC');
+
+    expect(epic.status).toBe('EXPERIMENTAL');
+    expect(epic.dataSource).toBe('EXPERIMENTAL');
+    expect(epic.capabilities).toContain('CONNECTED_ACCOUNT');
+    expect(epic.capabilities).toContain('TOKEN_CONNECT');
+    expect(epic.capabilities).not.toContain('SOCIAL_LOGIN');
+    expect(epic.capabilities).not.toContain('OAUTH_CONNECT');
+  });
 });

@@ -1,9 +1,9 @@
 /* eslint-disable no-unused-vars */
-import { createHash } from 'node:crypto';
 import { prisma } from '../../infra/database/client';
 import type {
   PlatformIntegrationDataSource,
 } from '@prisma/client';
+import { buildExperimentalEpicExternalId } from '../providers/epic-identity';
 import {
   createIntegrationError,
   type IntegrationError,
@@ -199,10 +199,6 @@ export function createIntegrationsService(dependencies?: {
   const epicClient = dependencies?.epicClient ?? epicService;
   const persistence = dependencies?.persistence ?? createPrismaIntegrationsPersistence();
 
-  function buildEpicExternalId(authToken: string): string {
-    return `epic:${createHash('sha256').update(authToken).digest('hex')}`;
-  }
-
   return {
     async connectSteam(userId: string, steamId: string): Promise<{ imported: number; message: string }> {
       const isValidSteamId = await steamClient.validateSteamId(steamId);
@@ -275,7 +271,7 @@ export function createIntegrationsService(dependencies?: {
       const games = await epicClient.getLibrary(authToken);
 
       await persistence.upsertPlatformIntegration(userId, 'EPIC', {
-        externalId: buildEpicExternalId(authToken),
+        externalId: buildExperimentalEpicExternalId(authToken),
         accessToken: authToken,
         dataSource: 'EXPERIMENTAL',
       });

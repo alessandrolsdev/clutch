@@ -21,3 +21,17 @@ Login social e conta conectada usam a mesma base de identidade, mas finalidades 
 6. Cubra a capability matrix, conflitos e compatibilidade com testes.
 
 Tokens externos devem ser protegidos antes de persistir. Rotas e frontends devem consumir apenas contratos de dominio, sem payload bruto do provider.
+
+## Dados legados e diagnostico
+
+A unicidade global de `provider + externalId` e parte da fundacao: a mesma identidade externa nao pode pertencer a dois usuarios CLUTCH.
+
+Antes desta fundacao, a integracao Epic gravava `externalId = "epic"` para toda conexao. A migration converte esses registros para `legacy:epic:<userId>`, marca `status = NEEDS_REAUTH` e `dataSource = EXPERIMENTAL`. Esse valor e apenas um fallback legado para preservar a linha existente; ele nao representa uma identidade Epic confiavel.
+
+Para procurar duplicidades antes da migration, rode:
+
+```bash
+psql "$DATABASE_URL" -f backend/prisma/diagnostics/platform-integration-identity-duplicates.sql
+```
+
+Qualquer linha retornada depois do backfill Epic exige correcao manual antes do indice unico global.
