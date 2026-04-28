@@ -8,6 +8,7 @@ export type IntegrationName = 'steam' | 'igdb' | 'epic' | 'discord';
 export type IntegrationErrorReason =
   | 'invalid_request'
   | 'invalid_credentials'
+  | 'conflict'
   | 'not_found'
   | 'not_connected'
   | 'timeout'

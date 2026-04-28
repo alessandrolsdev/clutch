@@ -259,7 +259,11 @@ describe('integrations service layer', () => {
     expect(persistence.upsertPlatformIntegration).toHaveBeenCalledWith(
       'user-id-1',
       'EPIC',
-      { externalId: 'epic', accessToken: 'valid-token' },
+      {
+        externalId: expect.stringMatching(/^epic:[a-f0-9]{64}$/u),
+        accessToken: 'valid-token',
+        dataSource: 'EXPERIMENTAL',
+      },
     );
   });
 });
