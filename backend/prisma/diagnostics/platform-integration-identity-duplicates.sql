@@ -1,11 +1,17 @@
--- Detect duplicate external identities before applying the provider identity
--- foundation migration.
+-- Manual pre-deploy diagnostic for duplicate external identities.
 --
 -- Usage:
 --   psql "$DATABASE_URL" -f backend/prisma/diagnostics/platform-integration-identity-duplicates.sql
 --
--- Any returned row means the global unique index on (platform, externalId)
--- would reject the current data unless the duplicate is corrected first.
+-- Run this before deploy to see whether legacy data would conflict with the
+-- global unique index on (platform, externalId). The migration itself also
+-- performs the known EPIC legacy backfill first and then runs an internal
+-- duplicate guard immediately before creating the index.
+--
+-- Expected legacy EPIC rows with externalId = 'epic' will appear here before
+-- the migration. They are handled automatically by the migration as
+-- legacy:epic:<userId>, status NEEDS_REAUTH, dataSource EXPERIMENTAL.
+-- Any duplicate row that remains after that backfill requires manual cleanup.
 SELECT
   "platform",
   "externalId",

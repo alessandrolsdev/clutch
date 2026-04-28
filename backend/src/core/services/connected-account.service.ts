@@ -28,6 +28,16 @@ export class ConnectedAccountConflictError extends Error {
   }
 }
 
+export class ConnectedAccountInvalidExternalIdError extends Error {
+  readonly provider: Platform;
+
+  constructor(provider: Platform) {
+    super('Identidade externa exige externalId válido.');
+    this.name = 'ConnectedAccountInvalidExternalIdError';
+    this.provider = provider;
+  }
+}
+
 export type ConnectExternalIdentityInput = {
   userId: string;
   provider: Platform;
@@ -55,15 +65,21 @@ export function createConnectedAccountService(dependencies?: {
 
   return {
     async connectExternalIdentity(input: ConnectExternalIdentityInput): Promise<ConnectedAccountRecord> {
+      const externalId = input.externalId.trim();
+
+      if (externalId.length === 0) {
+        throw new ConnectedAccountInvalidExternalIdError(input.provider);
+      }
+
       const existingIdentity = await repository.findByProviderExternalId(
         input.provider,
-        input.externalId,
+        externalId,
       );
 
       if (existingIdentity && existingIdentity.userId !== input.userId) {
         throw new ConnectedAccountConflictError(
           input.provider,
-          input.externalId,
+          externalId,
           existingIdentity.userId,
         );
       }
@@ -72,7 +88,7 @@ export function createConnectedAccountService(dependencies?: {
         return await repository.upsertConnectedAccount({
           userId: input.userId,
           provider: input.provider,
-          externalId: input.externalId,
+          externalId,
           connectionType: input.connectionType,
           status: input.status ?? 'CONNECTED',
           dataSource: input.dataSource,
@@ -85,7 +101,7 @@ export function createConnectedAccountService(dependencies?: {
         if (error instanceof ConnectedAccountUniquenessError && error.owner) {
           throw new ConnectedAccountConflictError(
             input.provider,
-            input.externalId,
+            externalId,
             error.owner.userId,
           );
         }

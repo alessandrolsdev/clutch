@@ -28,10 +28,10 @@ A unicidade global de `provider + externalId` e parte da fundacao: a mesma ident
 
 Antes desta fundacao, a integracao Epic gravava `externalId = "epic"` para toda conexao. A migration converte esses registros para `legacy:epic:<userId>`, marca `status = NEEDS_REAUTH` e `dataSource = EXPERIMENTAL`. Esse valor e apenas um fallback legado para preservar a linha existente; ele nao representa uma identidade Epic confiavel.
 
-Para procurar duplicidades antes da migration, rode:
+Para procurar duplicidades antes do deploy, rode:
 
 ```bash
 psql "$DATABASE_URL" -f backend/prisma/diagnostics/platform-integration-identity-duplicates.sql
 ```
 
-Qualquer linha retornada depois do backfill Epic exige correcao manual antes do indice unico global.
+Antes da migration, registros Epic legados com `externalId = "epic"` podem aparecer nesse diagnostico e sao tratados automaticamente pelo backfill. A propria migration tambem executa uma checagem interna depois desse backfill e antes do indice. Qualquer duplicidade que restar nesse ponto exige correcao manual antes do indice unico global.
