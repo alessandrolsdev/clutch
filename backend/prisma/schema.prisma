@@ -21,6 +21,7 @@ enum PresenceStatus {
 }
 
 enum Platform {
+  GOOGLE
   STEAM
   EPIC
   DISCORD
@@ -29,6 +30,26 @@ enum Platform {
   RIOT
   ANILIST
   MYANIMELIST
+}
+
+enum PlatformIntegrationConnectionType {
+  SOCIAL_LOGIN
+  CONNECTED_ACCOUNT
+}
+
+enum PlatformIntegrationStatus {
+  CONNECTED
+  NEEDS_REAUTH
+  DISCONNECTED
+  UNAVAILABLE
+  EXPERIMENTAL
+}
+
+enum PlatformIntegrationDataSource {
+  OFFICIAL
+  MANUAL
+  EXPERIMENTAL
+  LOCAL_COMPANION
 }
 
 enum PostType {
@@ -179,20 +200,25 @@ model UserPresence {
 // ── PlatformIntegration ──────────────────────────────────────
 
 model PlatformIntegration {
-  id           String   @id @default(uuid())
-  userId       String
-  platform     Platform
-  externalId   String
-  accessToken  String?
-  refreshToken String?
-  metadata     Json?
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id             String                            @id @default(uuid())
+  userId         String
+  platform       Platform
+  externalId     String
+  connectionType PlatformIntegrationConnectionType @default(CONNECTED_ACCOUNT)
+  status         PlatformIntegrationStatus         @default(CONNECTED)
+  dataSource     PlatformIntegrationDataSource     @default(OFFICIAL)
+  accessToken    String?
+  refreshToken   String?
+  metadata       Json?
+  isActive       Boolean                           @default(true)
+  lastSyncAt     DateTime?
+  createdAt      DateTime                          @default(now())
+  updatedAt      DateTime                          @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, platform])
+  @@unique([platform, externalId])
   @@map("platform_integrations")
 }
 
