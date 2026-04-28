@@ -259,7 +259,11 @@ describe('integrations service layer', () => {
     expect(persistence.upsertPlatformIntegration).toHaveBeenCalledWith(
       'user-id-1',
       'EPIC',
-      { externalId: 'epic', accessToken: 'valid-token' },
+      {
+        externalId: expect.stringMatching(/^epic:[a-f0-9]{64}$/u),
+        accessToken: 'valid-token',
+        dataSource: 'EXPERIMENTAL',
+      },
     );
   });
 });
@@ -388,6 +392,28 @@ describe('createPrismaIntegrationsPersistence', () => {
         },
       }),
     );
+  });
+
+  it('traduz conflito global de identidade externa para erro de dominio', async () => {
+    vi.mocked(prisma.platformIntegration.findUnique).mockResolvedValueOnce({
+      id: 'integration-id-1',
+      userId: 'other-user-id',
+      platform: 'STEAM',
+      externalId: '76561198000000000',
+      status: 'CONNECTED',
+    } as never);
+    const persistence = createPrismaIntegrationsPersistence();
+
+    await expect(persistence.upsertPlatformIntegration(
+      'user-id-1',
+      'STEAM',
+      { externalId: '76561198000000000' },
+    )).rejects.toMatchObject({
+      statusCode: 409,
+      reason: 'conflict',
+    });
+
+    expect(prisma.platformIntegration.upsert).not.toHaveBeenCalled();
   });
 });
 

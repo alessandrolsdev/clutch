@@ -1,5 +1,9 @@
 /* eslint-disable no-unused-vars */
 import { prisma } from '../../infra/database/client';
+import type {
+  PlatformIntegrationDataSource,
+} from '@prisma/client';
+import { buildExperimentalEpicExternalId } from '../providers/epic-identity';
 import {
   createIntegrationError,
   type IntegrationError,
@@ -9,6 +13,10 @@ import { epicService, type EpicGame } from '../../infra/integrations/epic/epic.s
 import { igdbService, type IgdbGame } from '../../infra/integrations/igdb/igdb.service';
 import { steamService, type SteamGame } from '../../infra/integrations/steam/steam.service';
 import { writeBackendRuntimeLog } from '../../config/logging';
+import {
+  ConnectedAccountConflictError,
+  createConnectedAccountService,
+} from './connected-account.service';
 
 type PlatformIntegrationPlatform = 'STEAM' | 'EPIC';
 
@@ -20,6 +28,7 @@ type PersistedIntegration = {
 type PersistIntegrationInput = {
   externalId: string;
   accessToken?: string | null;
+  dataSource?: PlatformIntegrationDataSource;
 };
 
 type SteamIntegrationClient = Pick<typeof steamService, 'validateSteamId' | 'getOwnedGames'>;
@@ -50,31 +59,32 @@ type IntegrationsPersistence = {
 export type IntegrationsService = ReturnType<typeof createIntegrationsService>;
 
 export function createPrismaIntegrationsPersistence(): IntegrationsPersistence {
+  const connectedAccountService = createConnectedAccountService();
+
   return {
     async upsertPlatformIntegration(userId, platform, data): Promise<void> {
-      await prisma.platformIntegration.upsert({
-        where: {
-          userId_platform: {
-            userId,
-            platform,
-          },
-        },
-        create: {
+      try {
+        await connectedAccountService.connectExternalIdentity({
           userId,
-          platform,
+          provider: platform,
           externalId: data.externalId,
-          ...(typeof data.accessToken === 'string'
-            ? { accessToken: data.accessToken }
-            : {}),
-        },
-        update: {
-          externalId: data.externalId,
-          isActive: true,
-          ...(typeof data.accessToken === 'string'
-            ? { accessToken: data.accessToken }
-            : {}),
-        },
-      });
+          connectionType: 'CONNECTED_ACCOUNT',
+          dataSource: data.dataSource ?? 'OFFICIAL',
+          accessToken: data.accessToken,
+          lastSyncAt: new Date(),
+        });
+      } catch (error) {
+        if (error instanceof ConnectedAccountConflictError) {
+          throw createIntegrationError(
+            platform.toLowerCase() as 'steam' | 'epic',
+            409,
+            'conflict',
+            'Esta conta externa já está vinculada a outro usuário.',
+          );
+        }
+
+        throw error;
+      }
     },
     async findPlatformIntegration(userId, platform): Promise<PersistedIntegration | null> {
       const integration = await prisma.platformIntegration.findUnique({
@@ -261,8 +271,9 @@ export function createIntegrationsService(dependencies?: {
       const games = await epicClient.getLibrary(authToken);
 
       await persistence.upsertPlatformIntegration(userId, 'EPIC', {
-        externalId: 'epic',
+        externalId: buildExperimentalEpicExternalId(authToken),
         accessToken: authToken,
+        dataSource: 'EXPERIMENTAL',
       });
 
       for (const game of games) {
