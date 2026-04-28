@@ -3,6 +3,7 @@ import {
   ConnectedAccountConflictError,
   createConnectedAccountService,
 } from '@/core/services/connected-account.service';
+import { ConnectedAccountUniquenessError } from '@/core/repositories/connected-account.repository';
 
 const createRepository = () => ({
   findByProviderExternalId: vi.fn(),
@@ -74,6 +75,33 @@ describe('connected account service', () => {
     })).rejects.toBeInstanceOf(ConnectedAccountConflictError);
 
     expect(repository.upsertConnectedAccount).not.toHaveBeenCalled();
+  });
+
+  it('traduz corrida de unicidade global para conflito de dominio', async () => {
+    const repository = createRepository();
+    repository.findByProviderExternalId.mockResolvedValue(null);
+    repository.upsertConnectedAccount.mockRejectedValue(
+      new ConnectedAccountUniquenessError({
+        id: 'account-id-1',
+        userId: 'other-user-id',
+        provider: 'STEAM',
+        externalId: '76561198000000000',
+        status: 'CONNECTED',
+      }),
+    );
+    const service = createConnectedAccountService({ repository });
+
+    await expect(service.connectExternalIdentity({
+      userId: 'user-id-1',
+      provider: 'STEAM',
+      externalId: '76561198000000000',
+      connectionType: 'CONNECTED_ACCOUNT',
+      dataSource: 'OFFICIAL',
+    })).rejects.toMatchObject({
+      provider: 'STEAM',
+      externalId: '76561198000000000',
+      ownerUserId: 'other-user-id',
+    });
   });
 
   it('permite reconectar a mesma identidade externa ao mesmo usuario', async () => {
