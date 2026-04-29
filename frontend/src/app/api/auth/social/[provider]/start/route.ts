@@ -5,7 +5,7 @@ import {
   serializeServerError,
   logServerEvent,
 } from '@/lib/server/logger';
-import { buildApiUrl } from '@/services/http/client';
+import { buildApiUrl, buildPublicAppUrl } from '@/services/http/client';
 
 type RouteContext = {
   params: Promise<{
@@ -32,8 +32,8 @@ async function readJsonBody(response: Response): Promise<StartSocialLoginRespons
   }
 }
 
-function redirectToLoginWithError(request: NextRequest, message: string): NextResponse {
-  const redirectUrl = new URL('/login', request.url);
+function redirectToLoginWithError(message: string): NextResponse {
+  const redirectUrl = new URL(buildPublicAppUrl('/login'));
   redirectUrl.searchParams.set('socialAuthError', message);
   return NextResponse.redirect(redirectUrl);
 }
@@ -74,35 +74,23 @@ export async function GET(request: NextRequest, context: RouteContext): Promise<
       ...serializeServerError(error),
     });
 
-    return redirectToLoginWithError(
-      request,
-      'Nao foi possivel iniciar o login social agora.',
-    );
+    return redirectToLoginWithError('Nao foi possivel iniciar o login social agora.');
   }
 
   const payload = await readJsonBody(backendResponse);
 
   if (!backendResponse.ok) {
-    return redirectToLoginWithError(
-      request,
-      payload?.message ?? 'Nao foi possivel iniciar o login social agora.',
-    );
+    return redirectToLoginWithError(payload?.message ?? 'Nao foi possivel iniciar o login social agora.');
   }
 
   if (!payload?.authorizationUrl) {
-    return redirectToLoginWithError(
-      request,
-      'Resposta invalida do backend de login social.',
-    );
+    return redirectToLoginWithError('Resposta invalida do backend de login social.');
   }
 
   const authorizationUrl = parseAuthorizationUrl(payload.authorizationUrl);
 
   if (!authorizationUrl) {
-    return redirectToLoginWithError(
-      request,
-      'URL de autorizacao social invalida.',
-    );
+    return redirectToLoginWithError('URL de autorizacao social invalida.');
   }
 
   return NextResponse.redirect(authorizationUrl);

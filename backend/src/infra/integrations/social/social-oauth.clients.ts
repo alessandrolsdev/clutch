@@ -275,19 +275,21 @@ export const googleSocialOAuthClient: SocialAuthProviderClient = {
       );
     }
 
+    const emailVerified = normalizeGoogleEmailVerified(userInfo.email_verified);
+
     return {
       provider: 'GOOGLE',
       externalId: userInfo.sub,
       email: userInfo.email ?? null,
-      emailVerified: normalizeGoogleEmailVerified(userInfo.email_verified),
+      emailVerified,
       displayName: userInfo.name ?? null,
-      username: userInfo.email?.split('@')[0] ?? null,
+      username: emailVerified ? userInfo.email?.split('@')[0] ?? null : null,
       avatarUrl: userInfo.picture ?? null,
       accessToken: tokenSet.access_token,
       refreshToken: tokenSet.refresh_token ?? null,
       metadata: {
         email: userInfo.email ?? null,
-        emailVerified: normalizeGoogleEmailVerified(userInfo.email_verified),
+        emailVerified,
         name: userInfo.name ?? null,
         picture: userInfo.picture ?? null,
         tokenType: tokenSet.token_type,
