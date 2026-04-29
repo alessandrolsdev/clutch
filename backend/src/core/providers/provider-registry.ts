@@ -25,7 +25,7 @@ const PROVIDER_DEFINITIONS: readonly ProviderDefinition[] = [
     provider: 'GOOGLE',
     displayName: 'Google',
     dataSource: 'OFFICIAL',
-    status: 'UNAVAILABLE',
+    status: 'CONNECTED',
     capabilities: ['SOCIAL_LOGIN', 'OAUTH_CONNECT'],
   },
   {

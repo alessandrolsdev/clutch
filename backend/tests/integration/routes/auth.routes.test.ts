@@ -812,4 +812,115 @@ describe('Auth Routes', () => {
     });
   });
 
+  describe('GET /auth/social/:provider', () => {
+    it('inicia login social para provider suportado', async () => {
+      const socialAuthService = {
+        startLogin: vi.fn().mockResolvedValue({
+          provider: 'GOOGLE',
+          authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth?state=signed-state',
+        }),
+        completeCallback: vi.fn(),
+      };
+      const app = await buildApp({ socialAuthService });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/social/google/start',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        provider: 'GOOGLE',
+        authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth?state=signed-state',
+      });
+      expect(socialAuthService.startLogin).toHaveBeenCalledWith('google');
+      await app.close();
+    });
+
+    it('retorna erro coerente para provider social nao suportado', async () => {
+      const socialAuthService = {
+        startLogin: vi.fn().mockRejectedValue({
+          name: 'SocialAuthError',
+          statusCode: 400,
+          reason: 'unsupported_provider',
+          clientMessage: 'Provider social não suportado.',
+        }),
+        completeCallback: vi.fn(),
+      };
+      const app = await buildApp({ socialAuthService });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/social/steam/start',
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({
+        message: 'Provider social não suportado.',
+      });
+      await app.close();
+    });
+
+    it('conclui callback social e emite refresh cookie da sessao CLUTCH', async () => {
+      const socialAuthService = {
+        startLogin: vi.fn(),
+        completeCallback: vi.fn().mockResolvedValue({
+          provider: 'DISCORD',
+          user: {
+            id: 'user-id-1',
+            username: 'clutchplayer',
+          },
+          isNewUser: false,
+        }),
+      };
+      const app = await buildApp({ socialAuthService });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/social/discord/callback?code=oauth-code&state=signed-state',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        id: 'user-id-1',
+        username: 'clutchplayer',
+        message: 'Acesso autorizado.',
+      });
+      expect(response.json()).toHaveProperty('token');
+      expect(String(response.headers['set-cookie'])).toContain(REFRESH_TOKEN_COOKIE_NAME);
+      expect(socialAuthService.completeCallback).toHaveBeenCalledWith({
+        provider: 'discord',
+        code: 'oauth-code',
+        state: 'signed-state',
+        providerError: undefined,
+        requestId: expect.any(String),
+      });
+      await app.close();
+    });
+
+    it('retorna erro coerente para callback com state invalido', async () => {
+      const socialAuthService = {
+        startLogin: vi.fn(),
+        completeCallback: vi.fn().mockRejectedValue({
+          name: 'SocialAuthError',
+          statusCode: 400,
+          reason: 'invalid_state',
+          clientMessage: 'Callback social inválido.',
+        }),
+      };
+      const app = await buildApp({ socialAuthService });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/social/google/callback?code=oauth-code&state=invalid-state',
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({
+        message: 'Callback social inválido.',
+      });
+      await app.close();
+    });
+  });
+
 });
