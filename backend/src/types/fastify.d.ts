@@ -5,6 +5,7 @@ import type { DiscordOAuthService } from '../core/services/discord-oauth.service
 import type { DiscordPresenceService } from '../core/services/discord-presence.service';
 import type { IntegrationsService } from '../core/services/integrations.service';
 import type { RefreshTokenService } from '../core/services/refresh-token.service';
+import type { AccountConnectionService } from '../core/services/account-connection.service';
 import type { SocialAuthService } from '../core/services/social-auth.service';
 
 // ─────────────────────────────────────────────────────────────
@@ -22,6 +23,7 @@ declare module 'fastify' {
     discordOAuthService: DiscordOAuthService;
     discordPresenceService: DiscordPresenceService;
     socialAuthService: SocialAuthService;
+    accountConnectionService: AccountConnectionService;
   }
 
   interface FastifyRequest {

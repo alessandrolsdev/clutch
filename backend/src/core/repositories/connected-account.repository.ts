@@ -79,12 +79,14 @@ function toConnectedAccountRecord(account: {
 }
 
 export type ConnectedAccountRepository = {
+  listByUser(userId: string): Promise<ConnectedAccountRecord[]>;
   findByProviderExternalId(
     provider: Platform,
     externalId: string,
   ): Promise<ConnectedAccountOwnershipRecord | null>;
   findByUserProvider(userId: string, provider: Platform): Promise<ConnectedAccountRecord | null>;
   upsertConnectedAccount(input: UpsertConnectedAccountInput): Promise<ConnectedAccountRecord>;
+  deleteByUserProvider(userId: string, provider: Platform): Promise<ConnectedAccountRecord | null>;
 };
 
 export function createConnectedAccountRepository(): ConnectedAccountRepository {
@@ -122,6 +124,15 @@ export function createConnectedAccountRepository(): ConnectedAccountRepository {
   }
 
   return {
+    async listByUser(userId: string): Promise<ConnectedAccountRecord[]> {
+      const accounts = await prisma.platformIntegration.findMany({
+        where: { userId },
+        orderBy: [{ platform: 'asc' }],
+      });
+
+      return accounts.map(toConnectedAccountRecord);
+    },
+
     findByProviderExternalId,
 
     async findByUserProvider(
@@ -185,6 +196,32 @@ export function createConnectedAccountRepository(): ConnectedAccountRepository {
 
         throw error;
       }
+    },
+
+    async deleteByUserProvider(userId: string, provider: Platform): Promise<ConnectedAccountRecord | null> {
+      const existingAccount = await prisma.platformIntegration.findUnique({
+        where: {
+          userId_platform: {
+            userId,
+            platform: provider,
+          },
+        },
+      });
+
+      if (!existingAccount) {
+        return null;
+      }
+
+      const deletedAccount = await prisma.platformIntegration.delete({
+        where: {
+          userId_platform: {
+            userId,
+            platform: provider,
+          },
+        },
+      });
+
+      return toConnectedAccountRecord(deletedAccount);
     },
   };
 }

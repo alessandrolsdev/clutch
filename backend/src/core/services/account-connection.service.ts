@@ -1,0 +1,760 @@
+/* eslint-disable no-unused-vars */
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+import type {
+  Platform,
+  PlatformIntegrationConnectionType,
+  PlatformIntegrationStatus,
+  Prisma,
+  User,
+} from '@prisma/client';
+import { getProviderDefinition, listProviderDefinitions } from '../providers/provider-registry';
+import {
+  createConnectedAccountRepository,
+  type ConnectedAccountRecord,
+  type ConnectedAccountRepository,
+} from '../repositories/connected-account.repository';
+import {
+  ConnectedAccountConflictError,
+  createConnectedAccountService,
+  type ConnectedAccountService,
+} from './connected-account.service';
+import {
+  createInMemorySocialOAuthStateStore,
+  type SocialAuthProvider,
+  type SocialAuthProviderClient,
+  type SocialAuthProviderIdentity,
+  type SocialOAuthStateStore,
+} from './social-auth.service';
+import {
+  discordSocialOAuthClient,
+  googleSocialOAuthClient,
+} from '../../infra/integrations/social/social-oauth.clients';
+import { userRepository } from '../repositories/user.repository';
+import { IntegrationError } from '../../infra/integrations/integration.errors';
+
+const ACCOUNT_CONNECTION_STATE_TTL_MS = 10 * 60 * 1000;
+const DEFAULT_DEVELOPMENT_STATE_SECRET = 'clutch-account-connection-dev-secret';
+const SOCIAL_PLACEHOLDER_EMAIL_DOMAIN = 'users.clutch.local';
+
+export type AccountConnectionMode = 'link' | 'reauth';
+
+export type PublicConnectedAccount = {
+  provider: Platform;
+  displayName: string;
+  externalId: string;
+  connectionType: PlatformIntegrationConnectionType;
+  status: PlatformIntegrationStatus;
+  dataSource: ConnectedAccountRecord['dataSource'];
+  connected: boolean;
+  needsReauth: boolean;
+  experimental: boolean;
+  canUnlink: boolean;
+  capabilities: string[];
+  lastSyncAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AccountConnectionStartResult = {
+  provider: SocialAuthProvider;
+  authorizationUrl: string;
+};
+
+export type AccountConnectionCallbackResult = {
+  provider: SocialAuthProvider;
+  externalId: string;
+  status: PlatformIntegrationStatus;
+  connectionType: PlatformIntegrationConnectionType;
+  message: string;
+};
+
+export type AccountConnectionErrorReason =
+  | 'unsupported_provider'
+  | 'invalid_request'
+  | 'invalid_state'
+  | 'provider_unavailable'
+  | 'identity_conflict'
+  | 'not_connected'
+  | 'unsafe_unlink';
+
+export class AccountConnectionError extends Error {
+  readonly statusCode: number;
+  readonly reason: AccountConnectionErrorReason;
+  readonly clientMessage: string;
+  readonly provider: Platform | null;
+
+  constructor(input: {
+    statusCode: number;
+    reason: AccountConnectionErrorReason;
+    clientMessage: string;
+    provider?: Platform | null;
+  }) {
+    super(input.clientMessage);
+    this.name = 'AccountConnectionError';
+    this.statusCode = input.statusCode;
+    this.reason = input.reason;
+    this.clientMessage = input.clientMessage;
+    this.provider = input.provider ?? null;
+  }
+}
+
+export type AccountConnectionService = {
+  listConnectedAccounts(userId: string): Promise<{ accounts: PublicConnectedAccount[] }>;
+  startLink(input: { userId: string; provider: string }): Promise<AccountConnectionStartResult>;
+  completeLink(input: {
+    provider: string;
+    code?: string;
+    state?: string;
+    providerError?: string;
+  }): Promise<AccountConnectionCallbackResult>;
+  unlink(input: { userId: string; provider: string }): Promise<{ message: string; provider: Platform }>;
+  startReauth(input: { userId: string; provider: string }): Promise<AccountConnectionStartResult>;
+  completeReauth(input: {
+    provider: string;
+    code?: string;
+    state?: string;
+    providerError?: string;
+  }): Promise<AccountConnectionCallbackResult>;
+};
+
+type AccountConnectionUserGateway = {
+  findById(id: string): Promise<User | null>;
+};
+
+type AccountConnectionDependencies = {
+  providerClients?: Partial<Record<SocialAuthProvider, SocialAuthProviderClient>>;
+  users?: AccountConnectionUserGateway;
+  repository?: Pick<
+    ConnectedAccountRepository,
+    'listByUser' | 'findByProviderExternalId' | 'findByUserProvider' | 'deleteByUserProvider'
+  >;
+  connectedAccountService?: Pick<ConnectedAccountService, 'connectExternalIdentity'>;
+  stateStore?: SocialOAuthStateStore;
+};
+
+type AccountConnectionStatePayload = {
+  purpose: 'account_connection';
+  mode: AccountConnectionMode;
+  provider: SocialAuthProvider;
+  userId: string;
+  expectedExternalId?: string;
+  nonce: string;
+  issuedAt: number;
+};
+
+function createAccountConnectionError(input: {
+  statusCode: number;
+  reason: AccountConnectionErrorReason;
+  clientMessage: string;
+  provider?: Platform | null;
+}): AccountConnectionError {
+  return new AccountConnectionError(input);
+}
+
+function resolveStateSecret(): string {
+  const configuredSecret = process.env['ACCOUNT_CONNECTION_STATE_SECRET']?.trim()
+    ?? process.env['SOCIAL_OAUTH_STATE_SECRET']?.trim()
+    ?? process.env['JWT_SECRET']?.trim();
+
+  if (configuredSecret && configuredSecret.length > 0) {
+    return configuredSecret;
+  }
+
+  if (process.env['NODE_ENV'] === 'production') {
+    throw createAccountConnectionError({
+      statusCode: 503,
+      reason: 'provider_unavailable',
+      clientMessage: 'Conexões de conta indisponíveis no runtime atual.',
+    });
+  }
+
+  return DEFAULT_DEVELOPMENT_STATE_SECRET;
+}
+
+function signState(encodedPayload: string): string {
+  return createHmac('sha256', resolveStateSecret()).update(encodedPayload).digest('base64url');
+}
+
+function encodeStatePayload(payload: AccountConnectionStatePayload): string {
+  return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+}
+
+function isSocialOAuthProvider(value: unknown): value is SocialAuthProvider {
+  return value === 'GOOGLE' || value === 'DISCORD';
+}
+
+function decodeStatePayload(value: string): AccountConnectionStatePayload {
+  let parsedPayload: Partial<AccountConnectionStatePayload>;
+
+  try {
+    parsedPayload = JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as Partial<AccountConnectionStatePayload>;
+  } catch {
+    throw createAccountConnectionError({
+      statusCode: 400,
+      reason: 'invalid_state',
+      clientMessage: 'Callback de conexão inválido.',
+    });
+  }
+
+  if (
+    parsedPayload.purpose !== 'account_connection' ||
+    (parsedPayload.mode !== 'link' && parsedPayload.mode !== 'reauth') ||
+    !isSocialOAuthProvider(parsedPayload.provider) ||
+    typeof parsedPayload.userId !== 'string' ||
+    parsedPayload.userId.length === 0 ||
+    typeof parsedPayload.nonce !== 'string' ||
+    parsedPayload.nonce.length === 0 ||
+    typeof parsedPayload.issuedAt !== 'number' ||
+    !Number.isFinite(parsedPayload.issuedAt)
+  ) {
+    throw createAccountConnectionError({
+      statusCode: 400,
+      reason: 'invalid_state',
+      clientMessage: 'Callback de conexão inválido.',
+    });
+  }
+
+  return {
+    purpose: 'account_connection',
+    mode: parsedPayload.mode,
+    provider: parsedPayload.provider,
+    userId: parsedPayload.userId,
+    expectedExternalId: parsedPayload.expectedExternalId,
+    nonce: parsedPayload.nonce,
+    issuedAt: parsedPayload.issuedAt,
+  };
+}
+
+function createConnectionState(input: {
+  provider: SocialAuthProvider;
+  userId: string;
+  mode: AccountConnectionMode;
+  expectedExternalId?: string;
+}): { state: string; nonce: string } {
+  const nonce = randomUUID();
+  const encodedPayload = encodeStatePayload({
+    purpose: 'account_connection',
+    mode: input.mode,
+    provider: input.provider,
+    userId: input.userId,
+    expectedExternalId: input.expectedExternalId,
+    nonce,
+    issuedAt: Date.now(),
+  });
+
+  return {
+    nonce,
+    state: `${encodedPayload}.${signState(encodedPayload)}`,
+  };
+}
+
+function verifyStateValue(
+  state: string,
+  provider: SocialAuthProvider,
+  mode: AccountConnectionMode,
+): AccountConnectionStatePayload {
+  const segments = state.split('.');
+
+  if (segments.length !== 2 || !segments[0] || !segments[1]) {
+    throw createAccountConnectionError({
+      statusCode: 400,
+      reason: 'invalid_state',
+      clientMessage: 'Callback de conexão inválido.',
+      provider,
+    });
+  }
+
+  const [encodedPayload, receivedSignature] = segments;
+  const expectedSignature = signState(encodedPayload);
+  const receivedBuffer = Buffer.from(receivedSignature, 'utf8');
+  const expectedBuffer = Buffer.from(expectedSignature, 'utf8');
+
+  if (
+    receivedBuffer.length !== expectedBuffer.length ||
+    !timingSafeEqual(receivedBuffer, expectedBuffer)
+  ) {
+    throw createAccountConnectionError({
+      statusCode: 400,
+      reason: 'invalid_state',
+      clientMessage: 'Callback de conexão inválido.',
+      provider,
+    });
+  }
+
+  const payload = decodeStatePayload(encodedPayload);
+
+  if (
+    payload.provider !== provider ||
+    payload.mode !== mode ||
+    Date.now() - payload.issuedAt > ACCOUNT_CONNECTION_STATE_TTL_MS
+  ) {
+    throw createAccountConnectionError({
+      statusCode: 400,
+      reason: 'invalid_state',
+      clientMessage: 'Callback de conexão inválido ou expirado.',
+      provider,
+    });
+  }
+
+  return payload;
+}
+
+function normalizePlatform(provider: string): Platform {
+  const normalizedProvider = provider.trim().toUpperCase();
+  const knownProvider = listProviderDefinitions().find(
+    (definition) => definition.provider === normalizedProvider,
+  );
+
+  if (!knownProvider) {
+    throw createAccountConnectionError({
+      statusCode: 400,
+      reason: 'unsupported_provider',
+      clientMessage: 'Provider de conta não suportado.',
+    });
+  }
+
+  return knownProvider.provider;
+}
+
+function normalizeOAuthProvider(provider: string): SocialAuthProvider {
+  const normalizedProvider = normalizePlatform(provider);
+  const definition = getProviderDefinition(normalizedProvider);
+
+  if (
+    !isSocialOAuthProvider(normalizedProvider) ||
+    definition.status === 'UNAVAILABLE' ||
+    !definition.capabilities.includes('OAUTH_CONNECT')
+  ) {
+    throw createAccountConnectionError({
+      statusCode: 400,
+      reason: 'unsupported_provider',
+      clientMessage: 'Provider não suporta conexão OAuth neste momento.',
+      provider: normalizedProvider,
+    });
+  }
+
+  return normalizedProvider;
+}
+
+function toPublicAccount(account: ConnectedAccountRecord, canUnlink: boolean): PublicConnectedAccount {
+  const definition = getProviderDefinition(account.provider);
+
+  return {
+    provider: account.provider,
+    displayName: definition.displayName,
+    externalId: account.externalId,
+    connectionType: account.connectionType,
+    status: account.status,
+    dataSource: account.dataSource,
+    connected: account.status === 'CONNECTED',
+    needsReauth: account.status === 'NEEDS_REAUTH',
+    experimental: account.status === 'UNAVAILABLE' || account.dataSource === 'EXPERIMENTAL',
+    canUnlink,
+    capabilities: definition.capabilities,
+    lastSyncAt: account.lastSyncAt?.toISOString() ?? null,
+    createdAt: account.createdAt.toISOString(),
+    updatedAt: account.updatedAt.toISOString(),
+  };
+}
+
+function hasViablePasswordLogin(user: User): boolean {
+  return !user.email.toLowerCase().endsWith(`@${SOCIAL_PLACEHOLDER_EMAIL_DOMAIN}`);
+}
+
+function canUnlinkAccount(input: {
+  account: ConnectedAccountRecord;
+  accounts: ConnectedAccountRecord[];
+  user: User | null;
+}): boolean {
+  if (input.account.status === 'UNAVAILABLE') {
+    return false;
+  }
+
+  if (input.account.connectionType !== 'SOCIAL_LOGIN') {
+    return true;
+  }
+
+  if (input.user && hasViablePasswordLogin(input.user)) {
+    return true;
+  }
+
+  return input.accounts.some(
+    (candidate) => candidate.connectionType === 'SOCIAL_LOGIN' &&
+      candidate.provider !== input.account.provider &&
+      candidate.status === 'CONNECTED',
+  );
+}
+
+function mapProviderFailure(error: unknown, provider: SocialAuthProvider): never {
+  if (error instanceof AccountConnectionError) {
+    throw error;
+  }
+
+  if (error instanceof IntegrationError) {
+    throw createAccountConnectionError({
+      statusCode: error.statusCode,
+      reason: error.reason === 'invalid_request' ? 'invalid_request' : 'provider_unavailable',
+      clientMessage: error.clientMessage,
+      provider,
+    });
+  }
+
+  throw createAccountConnectionError({
+    statusCode: 503,
+    reason: 'provider_unavailable',
+    clientMessage: 'Provider indisponível no momento.',
+    provider,
+  });
+}
+
+function buildIdentityMetadata(identity: SocialAuthProviderIdentity): Prisma.InputJsonObject {
+  return {
+    ...identity.metadata,
+    email: identity.email,
+    emailVerified: identity.emailVerified,
+    displayName: identity.displayName,
+    username: identity.username,
+    avatarUrl: identity.avatarUrl,
+    source: 'account_connection',
+  };
+}
+
+export function createAccountConnectionService(
+  dependencies: AccountConnectionDependencies = {},
+): AccountConnectionService {
+  const users = dependencies.users ?? userRepository;
+  const repository = dependencies.repository ?? createConnectedAccountRepository();
+  const connectedAccountService = dependencies.connectedAccountService ?? createConnectedAccountService();
+  const stateStore = dependencies.stateStore ?? createInMemorySocialOAuthStateStore();
+  const providerClients = {
+    GOOGLE: dependencies.providerClients?.GOOGLE ?? googleSocialOAuthClient,
+    DISCORD: dependencies.providerClients?.DISCORD ?? discordSocialOAuthClient,
+  };
+
+  async function exchangeIdentity(
+    provider: SocialAuthProvider,
+    code: string,
+  ): Promise<SocialAuthProviderIdentity> {
+    try {
+      const identity = await providerClients[provider].exchangeCodeForIdentity(code);
+
+      if (identity.provider !== provider) {
+        throw createAccountConnectionError({
+          statusCode: 400,
+          reason: 'invalid_request',
+          clientMessage: 'Identidade externa inválida.',
+          provider,
+        });
+      }
+
+      return identity;
+    } catch (error) {
+      mapProviderFailure(error, provider);
+    }
+  }
+
+  async function assertCanRemoveAccount(
+    userId: string,
+    account: ConnectedAccountRecord,
+  ): Promise<void> {
+    if (account.connectionType !== 'SOCIAL_LOGIN') {
+      return;
+    }
+
+    const user = await users.findById(userId);
+
+    if (!user) {
+      throw createAccountConnectionError({
+        statusCode: 404,
+        reason: 'not_connected',
+        clientMessage: 'Usuário não encontrado.',
+        provider: account.provider,
+      });
+    }
+
+    if (hasViablePasswordLogin(user)) {
+      return;
+    }
+
+    const accounts = await repository.listByUser(userId);
+    const remainingSocialLoginCount = accounts.filter(
+      (candidate) => candidate.connectionType === 'SOCIAL_LOGIN' &&
+        candidate.provider !== account.provider &&
+        candidate.status === 'CONNECTED',
+    ).length;
+
+    if (remainingSocialLoginCount === 0) {
+      throw createAccountConnectionError({
+        statusCode: 409,
+        reason: 'unsafe_unlink',
+        clientMessage: 'Não é possível remover o último método de login da conta.',
+        provider: account.provider,
+      });
+    }
+  }
+
+  async function startOAuthFlow(input: {
+    userId: string;
+    provider: string;
+    mode: AccountConnectionMode;
+    expectedExternalId?: string;
+  }): Promise<AccountConnectionStartResult> {
+    const provider = normalizeOAuthProvider(input.provider);
+    const { state, nonce } = createConnectionState({
+      userId: input.userId,
+      provider,
+      mode: input.mode,
+      expectedExternalId: input.expectedExternalId,
+    });
+    const authorizationUrl = providerClients[provider].createAuthorizationUrl({ state, nonce });
+
+    await stateStore.store(state, ACCOUNT_CONNECTION_STATE_TTL_MS);
+
+    return {
+      provider,
+      authorizationUrl,
+    };
+  }
+
+  async function completeOAuthCallback(input: {
+    provider: string;
+    code?: string;
+    state?: string;
+    providerError?: string;
+    mode: AccountConnectionMode;
+  }): Promise<{ provider: SocialAuthProvider; identity: SocialAuthProviderIdentity; statePayload: AccountConnectionStatePayload }> {
+    const provider = normalizeOAuthProvider(input.provider);
+
+    if (input.providerError) {
+      throw createAccountConnectionError({
+        statusCode: 400,
+        reason: 'invalid_request',
+        clientMessage: 'Conexão cancelada ou negada pelo provider.',
+        provider,
+      });
+    }
+
+    if (!input.code || !input.state) {
+      throw createAccountConnectionError({
+        statusCode: 400,
+        reason: 'invalid_request',
+        clientMessage: 'Callback de conexão inválido.',
+        provider,
+      });
+    }
+
+    const statePayload = verifyStateValue(input.state, provider, input.mode);
+
+    if (!await stateStore.consume(input.state)) {
+      throw createAccountConnectionError({
+        statusCode: 400,
+        reason: 'invalid_state',
+        clientMessage: 'Callback de conexão inválido ou expirado.',
+        provider,
+      });
+    }
+
+    return {
+      provider,
+      identity: await exchangeIdentity(provider, input.code),
+      statePayload,
+    };
+  }
+
+  return {
+    async listConnectedAccounts(userId): Promise<{ accounts: PublicConnectedAccount[] }> {
+      const accounts = await repository.listByUser(userId);
+      const user = await users.findById(userId);
+
+      return {
+        accounts: accounts.map((account) => toPublicAccount(account, canUnlinkAccount({
+          account,
+          accounts,
+          user,
+        }))),
+      };
+    },
+
+    async startLink(input): Promise<AccountConnectionStartResult> {
+      return startOAuthFlow({
+        userId: input.userId,
+        provider: input.provider,
+        mode: 'link',
+      });
+    },
+
+    async completeLink(input): Promise<AccountConnectionCallbackResult> {
+      const { provider, identity, statePayload } = await completeOAuthCallback({
+        ...input,
+        mode: 'link',
+      });
+      const existingIdentity = await repository.findByProviderExternalId(provider, identity.externalId);
+
+      if (existingIdentity && existingIdentity.userId !== statePayload.userId) {
+        throw createAccountConnectionError({
+          statusCode: 409,
+          reason: 'identity_conflict',
+          clientMessage: 'Esta identidade externa já está vinculada a outro usuário.',
+          provider,
+        });
+      }
+
+      const existingUserProvider = await repository.findByUserProvider(statePayload.userId, provider);
+
+      if (existingUserProvider && existingUserProvider.externalId !== identity.externalId) {
+        throw createAccountConnectionError({
+          statusCode: 409,
+          reason: 'identity_conflict',
+          clientMessage: 'Este usuário já possui outra identidade vinculada para este provider.',
+          provider,
+        });
+      }
+
+      try {
+        await connectedAccountService.connectExternalIdentity({
+          userId: statePayload.userId,
+          provider,
+          externalId: identity.externalId,
+          connectionType: 'SOCIAL_LOGIN',
+          status: 'CONNECTED',
+          dataSource: getProviderDefinition(provider).dataSource,
+          accessToken: identity.accessToken,
+          refreshToken: identity.refreshToken,
+          metadata: buildIdentityMetadata(identity),
+          lastSyncAt: new Date(),
+        });
+      } catch (error) {
+        if (error instanceof ConnectedAccountConflictError) {
+          throw createAccountConnectionError({
+            statusCode: 409,
+            reason: 'identity_conflict',
+            clientMessage: 'Esta identidade externa já está vinculada a outro usuário.',
+            provider,
+          });
+        }
+
+        throw error;
+      }
+
+      return {
+        provider,
+        externalId: identity.externalId,
+        status: 'CONNECTED',
+        connectionType: 'SOCIAL_LOGIN',
+        message: `${getProviderDefinition(provider).displayName} vinculado com sucesso.`,
+      };
+    },
+
+    async unlink(input): Promise<{ message: string; provider: Platform }> {
+      const provider = normalizePlatform(input.provider);
+      const account = await repository.findByUserProvider(input.userId, provider);
+
+      if (!account) {
+        throw createAccountConnectionError({
+          statusCode: 404,
+          reason: 'not_connected',
+          clientMessage: 'Conta externa não encontrada.',
+          provider,
+        });
+      }
+
+      await assertCanRemoveAccount(input.userId, account);
+      await repository.deleteByUserProvider(input.userId, provider);
+
+      return {
+        provider,
+        message: `${getProviderDefinition(provider).displayName} desconectado com sucesso.`,
+      };
+    },
+
+    async startReauth(input): Promise<AccountConnectionStartResult> {
+      const provider = normalizeOAuthProvider(input.provider);
+      const account = await repository.findByUserProvider(input.userId, provider);
+
+      if (!account) {
+        throw createAccountConnectionError({
+          statusCode: 404,
+          reason: 'not_connected',
+          clientMessage: 'Conta externa não encontrada.',
+          provider,
+        });
+      }
+
+      if (account.status !== 'NEEDS_REAUTH') {
+        throw createAccountConnectionError({
+          statusCode: 400,
+          reason: 'invalid_request',
+          clientMessage: 'Esta conta não precisa de reconexão.',
+          provider,
+        });
+      }
+
+      return startOAuthFlow({
+        userId: input.userId,
+        provider,
+        mode: 'reauth',
+        expectedExternalId: account.externalId,
+      });
+    },
+
+    async completeReauth(input): Promise<AccountConnectionCallbackResult> {
+      const { provider, identity, statePayload } = await completeOAuthCallback({
+        ...input,
+        mode: 'reauth',
+      });
+      const expectedExternalId = statePayload.expectedExternalId;
+
+      if (!expectedExternalId || identity.externalId !== expectedExternalId) {
+        throw createAccountConnectionError({
+          statusCode: 409,
+          reason: 'identity_conflict',
+          clientMessage: 'A identidade retornada pelo provider não corresponde à conta original.',
+          provider,
+        });
+      }
+
+      const account = await repository.findByUserProvider(statePayload.userId, provider);
+
+      if (!account || account.externalId !== expectedExternalId) {
+        throw createAccountConnectionError({
+          statusCode: account ? 409 : 404,
+          reason: account ? 'identity_conflict' : 'not_connected',
+          clientMessage: account
+            ? 'A conta original mudou desde o início da reconexão.'
+            : 'Conta externa não encontrada.',
+          provider,
+        });
+      }
+
+      if (account.status !== 'NEEDS_REAUTH') {
+        throw createAccountConnectionError({
+          statusCode: 400,
+          reason: 'invalid_request',
+          clientMessage: 'Esta conta não precisa de reconexão.',
+          provider,
+        });
+      }
+
+      await connectedAccountService.connectExternalIdentity({
+        userId: statePayload.userId,
+        provider,
+        externalId: identity.externalId,
+        connectionType: account.connectionType,
+        status: 'CONNECTED',
+        dataSource: account.dataSource,
+        accessToken: identity.accessToken,
+        refreshToken: identity.refreshToken,
+        metadata: buildIdentityMetadata(identity),
+        lastSyncAt: new Date(),
+      });
+
+      return {
+        provider,
+        externalId: identity.externalId,
+        status: 'CONNECTED',
+        connectionType: account.connectionType,
+        message: `${getProviderDefinition(provider).displayName} reconectado com sucesso.`,
+      };
+    },
+  };
+}
