@@ -14,6 +14,7 @@ import {
   RefreshTokenRevokedError,
   RefreshTokenReuseError,
 } from '../../core/services/refresh-token.service';
+import { AccountConnectionError } from '../../core/services/account-connection.service';
 import { SocialAuthError } from '../../core/services/social-auth.service';
 import { AUTH_RATE_LIMIT_POLICIES } from '../../config/rate-limit';
 
@@ -47,6 +48,10 @@ const socialProviderParamsSchema = z.object({
   provider: z.string().min(1),
 });
 
+const accountConnectionProviderParamsSchema = z.object({
+  provider: z.string().min(1),
+});
+
 const socialCallbackSchema = z.object({
   code: z.string().min(1).optional(),
   state: z.string().min(1).optional(),
@@ -73,6 +78,37 @@ function replyWithSocialAuthError(error: unknown): { statusCode: number; payload
     error !== null &&
     'name' in error &&
     (error as { name?: unknown }).name === 'SocialAuthError' &&
+    'statusCode' in error &&
+    typeof (error as { statusCode?: unknown }).statusCode === 'number' &&
+    'clientMessage' in error &&
+    typeof (error as { clientMessage?: unknown }).clientMessage === 'string'
+  ) {
+    return {
+      statusCode: (error as { statusCode: number }).statusCode,
+      payload: {
+        message: (error as { clientMessage: string }).clientMessage,
+      },
+    };
+  }
+
+  throw error;
+}
+
+function replyWithAccountConnectionError(error: unknown): { statusCode: number; payload: { message: string } } {
+  if (error instanceof AccountConnectionError) {
+    return {
+      statusCode: error.statusCode,
+      payload: {
+        message: error.clientMessage,
+      },
+    };
+  }
+
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'name' in error &&
+    (error as { name?: unknown }).name === 'AccountConnectionError' &&
     'statusCode' in error &&
     typeof (error as { statusCode?: unknown }).statusCode === 'number' &&
     'clientMessage' in error &&
@@ -294,6 +330,232 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       } catch (error) {
         const socialError = replyWithSocialAuthError(error);
         return reply.status(socialError.statusCode).send(socialError.payload);
+      }
+    },
+  );
+
+  // ── GET /auth/connected-accounts ─────────────────────────
+  app.get(
+    '/connected-accounts',
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const resultPayload = await app.accountConnectionService.listConnectedAccounts(request.userId);
+
+      return reply.status(200).send(resultPayload);
+    },
+  );
+
+  // ── GET /auth/accounts/:provider/link/start ──────────────
+  app.get<{ Params: { provider: string } }>(
+    '/accounts/:provider/link/start',
+    {
+      preHandler: [app.authenticate],
+      config: {
+        rateLimit: AUTH_RATE_LIMIT_POLICIES.login,
+      },
+    },
+    async (request, reply) => {
+      const paramsResult = accountConnectionProviderParamsSchema.safeParse(request.params);
+
+      if (!paramsResult.success) {
+        return reply.status(400).send({ message: 'Provider de conta inválido.' });
+      }
+
+      try {
+        const resultPayload = await app.accountConnectionService.startLink({
+          userId: request.userId,
+          provider: paramsResult.data.provider,
+        });
+
+        request.log.info({
+          event: 'auth_account_link_started',
+          requestId: request.id,
+          method: request.method,
+          path: request.url,
+          provider: resultPayload.provider,
+          status: 200,
+          userId: request.userId,
+        }, 'Account link started');
+
+        return reply.status(200).send(resultPayload);
+      } catch (error) {
+        const accountError = replyWithAccountConnectionError(error);
+        return reply.status(accountError.statusCode).send(accountError.payload);
+      }
+    },
+  );
+
+  // ── GET /auth/accounts/:provider/link/callback ───────────
+  app.get<{
+    Params: { provider: string };
+    Querystring: { code?: string; state?: string; error?: string };
+  }>(
+    '/accounts/:provider/link/callback',
+    {
+      config: {
+        rateLimit: AUTH_RATE_LIMIT_POLICIES.login,
+      },
+    },
+    async (request, reply) => {
+      const paramsResult = accountConnectionProviderParamsSchema.safeParse(request.params);
+
+      if (!paramsResult.success) {
+        return reply.status(400).send({ message: 'Provider de conta inválido.' });
+      }
+
+      const queryResult = socialCallbackSchema.safeParse(request.query);
+
+      if (!queryResult.success) {
+        return reply.status(400).send({ message: 'Callback de conexão inválido.' });
+      }
+
+      try {
+        const resultPayload = await app.accountConnectionService.completeLink({
+          provider: paramsResult.data.provider,
+          code: queryResult.data.code,
+          state: queryResult.data.state,
+          providerError: queryResult.data.error,
+        });
+
+        request.log.info({
+          event: 'auth_account_link_succeeded',
+          requestId: request.id,
+          method: request.method,
+          path: request.url,
+          provider: resultPayload.provider,
+          status: 200,
+          connectionType: resultPayload.connectionType,
+        }, 'Account link succeeded');
+
+        return reply.status(200).send(resultPayload);
+      } catch (error) {
+        const accountError = replyWithAccountConnectionError(error);
+        return reply.status(accountError.statusCode).send(accountError.payload);
+      }
+    },
+  );
+
+  // ── DELETE /auth/accounts/:provider ──────────────────────
+  app.delete<{ Params: { provider: string } }>(
+    '/accounts/:provider',
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const paramsResult = accountConnectionProviderParamsSchema.safeParse(request.params);
+
+      if (!paramsResult.success) {
+        return reply.status(400).send({ message: 'Provider de conta inválido.' });
+      }
+
+      try {
+        const resultPayload = await app.accountConnectionService.unlink({
+          userId: request.userId,
+          provider: paramsResult.data.provider,
+        });
+
+        request.log.info({
+          event: 'auth_account_unlinked',
+          requestId: request.id,
+          method: request.method,
+          path: request.url,
+          provider: resultPayload.provider,
+          status: 200,
+          userId: request.userId,
+        }, 'Account unlinked');
+
+        return reply.status(200).send(resultPayload);
+      } catch (error) {
+        const accountError = replyWithAccountConnectionError(error);
+        return reply.status(accountError.statusCode).send(accountError.payload);
+      }
+    },
+  );
+
+  // ── GET /auth/accounts/:provider/reauth/start ────────────
+  app.get<{ Params: { provider: string } }>(
+    '/accounts/:provider/reauth/start',
+    {
+      preHandler: [app.authenticate],
+      config: {
+        rateLimit: AUTH_RATE_LIMIT_POLICIES.login,
+      },
+    },
+    async (request, reply) => {
+      const paramsResult = accountConnectionProviderParamsSchema.safeParse(request.params);
+
+      if (!paramsResult.success) {
+        return reply.status(400).send({ message: 'Provider de conta inválido.' });
+      }
+
+      try {
+        const resultPayload = await app.accountConnectionService.startReauth({
+          userId: request.userId,
+          provider: paramsResult.data.provider,
+        });
+
+        request.log.info({
+          event: 'auth_account_reauth_started',
+          requestId: request.id,
+          method: request.method,
+          path: request.url,
+          provider: resultPayload.provider,
+          status: 200,
+          userId: request.userId,
+        }, 'Account reauth started');
+
+        return reply.status(200).send(resultPayload);
+      } catch (error) {
+        const accountError = replyWithAccountConnectionError(error);
+        return reply.status(accountError.statusCode).send(accountError.payload);
+      }
+    },
+  );
+
+  // ── GET /auth/accounts/:provider/reauth/callback ─────────
+  app.get<{
+    Params: { provider: string };
+    Querystring: { code?: string; state?: string; error?: string };
+  }>(
+    '/accounts/:provider/reauth/callback',
+    {
+      config: {
+        rateLimit: AUTH_RATE_LIMIT_POLICIES.login,
+      },
+    },
+    async (request, reply) => {
+      const paramsResult = accountConnectionProviderParamsSchema.safeParse(request.params);
+
+      if (!paramsResult.success) {
+        return reply.status(400).send({ message: 'Provider de conta inválido.' });
+      }
+
+      const queryResult = socialCallbackSchema.safeParse(request.query);
+
+      if (!queryResult.success) {
+        return reply.status(400).send({ message: 'Callback de reconexão inválido.' });
+      }
+
+      try {
+        const resultPayload = await app.accountConnectionService.completeReauth({
+          provider: paramsResult.data.provider,
+          code: queryResult.data.code,
+          state: queryResult.data.state,
+          providerError: queryResult.data.error,
+        });
+
+        request.log.info({
+          event: 'auth_account_reauth_succeeded',
+          requestId: request.id,
+          method: request.method,
+          path: request.url,
+          provider: resultPayload.provider,
+          status: 200,
+          connectionType: resultPayload.connectionType,
+        }, 'Account reauth succeeded');
+
+        return reply.status(200).send(resultPayload);
+      } catch (error) {
+        const accountError = replyWithAccountConnectionError(error);
+        return reply.status(accountError.statusCode).send(accountError.payload);
       }
     },
   );
