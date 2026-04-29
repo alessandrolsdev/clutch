@@ -6,6 +6,7 @@ import {
   type SocialAuthProviderClient,
 } from '@/core/services/social-auth.service';
 import { ConnectedAccountConflictError } from '@/core/services/connected-account.service';
+import { IntegrationError } from '@/infra/integrations/integration.errors';
 
 const baseUser = {
   id: 'user-id-1',
@@ -118,6 +119,36 @@ describe('social auth service', () => {
     });
   });
 
+  it('rejeita callback cancelado pelo provider sem chamar troca de token', async () => {
+    const dependencies = createDependencies();
+    const service = createSocialAuthService(dependencies);
+    const state = await issueState(service, dependencies, 'GOOGLE');
+
+    await expect(service.completeCallback({
+      provider: 'google',
+      state,
+      providerError: 'access_denied',
+    })).rejects.toMatchObject({
+      statusCode: 400,
+      reason: 'invalid_request',
+      clientMessage: 'Login social cancelado ou negado pelo provider.',
+    });
+
+    expect(dependencies.providerClients.GOOGLE.exchangeCodeForIdentity).not.toHaveBeenCalled();
+  });
+
+  it('rejeita callback sem code ou state material', async () => {
+    const service = createSocialAuthService(createDependencies());
+
+    await expect(service.completeCallback({
+      provider: 'google',
+      state: 'state-only',
+    })).rejects.toMatchObject({
+      statusCode: 400,
+      reason: 'invalid_request',
+    });
+  });
+
   it('emite login para o owner quando a identidade externa ja existe', async () => {
     const dependencies = createDependencies();
     const service = createSocialAuthService(dependencies);
@@ -140,6 +171,32 @@ describe('social auth service', () => {
     expect(result.user).toMatchObject({ id: 'user-id-1', username: 'clutchplayer' });
     expect(result.isNewUser).toBe(false);
     expect(dependencies.users.create).not.toHaveBeenCalled();
+    expect(dependencies.connectedAccountService.connectExternalIdentity).not.toHaveBeenCalled();
+  });
+
+  it('mapeia identidade externa existente sem owner para conflito de dominio', async () => {
+    const dependencies = createDependencies();
+    const service = createSocialAuthService(dependencies);
+    const state = await issueState(service, dependencies, 'DISCORD');
+    dependencies.connectedAccounts.findByProviderExternalId.mockResolvedValue({
+      id: 'identity-id-1',
+      userId: 'missing-user-id',
+      provider: 'DISCORD',
+      externalId: 'discord-external-id',
+      status: 'CONNECTED',
+    });
+    dependencies.users.findById.mockResolvedValue(null);
+
+    await expect(service.completeCallback({
+      provider: 'discord',
+      code: 'oauth-code',
+      state,
+    })).rejects.toMatchObject({
+      statusCode: 409,
+      reason: 'identity_conflict',
+      clientMessage: 'Identidade social vinculada a uma conta indisponível.',
+    });
+
     expect(dependencies.connectedAccountService.connectExternalIdentity).not.toHaveBeenCalled();
   });
 
@@ -245,6 +302,44 @@ describe('social auth service', () => {
     expect(dependencies.connectedAccountService.connectExternalIdentity).not.toHaveBeenCalled();
   });
 
+  it('bloqueia outro login social do mesmo provider ja vinculado ao usuario', async () => {
+    const dependencies = createDependencies();
+    const service = createSocialAuthService(dependencies);
+    const state = await issueState(service, dependencies, 'GOOGLE');
+    dependencies.connectedAccounts.findByProviderExternalId.mockResolvedValue(null);
+    dependencies.connectedAccounts.findByUserProvider.mockResolvedValue({
+      id: 'account-id-1',
+      userId: 'new-user-id',
+      provider: 'GOOGLE',
+      externalId: 'other-google-external-id',
+      connectionType: 'SOCIAL_LOGIN',
+      status: 'CONNECTED',
+      dataSource: 'OFFICIAL',
+      metadata: null,
+      createdAt: new Date('2026-04-28T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-28T00:00:00.000Z'),
+      lastSyncAt: null,
+    });
+    dependencies.users.findByEmail.mockResolvedValue(null);
+    dependencies.users.findByUsername.mockResolvedValue(null);
+    dependencies.users.create.mockResolvedValue({
+      ...baseUser,
+      id: 'new-user-id',
+    });
+
+    await expect(service.completeCallback({
+      provider: 'google',
+      code: 'oauth-code',
+      state,
+    })).rejects.toMatchObject({
+      statusCode: 409,
+      reason: 'identity_conflict',
+      clientMessage: 'Este usuário já possui outro login social vinculado para este provider.',
+    });
+
+    expect(dependencies.connectedAccountService.connectExternalIdentity).not.toHaveBeenCalled();
+  });
+
   it('cria usuario social isolado quando email esta ausente', async () => {
     const dependencies = createDependencies();
     const service = createSocialAuthService(dependencies);
@@ -312,6 +407,78 @@ describe('social auth service', () => {
     })).rejects.toMatchObject({
       statusCode: 400,
       reason: 'invalid_state',
+    });
+  });
+
+  it('rejeita identidade retornada por provider diferente do callback', async () => {
+    const dependencies = createDependencies();
+    const service = createSocialAuthService(dependencies);
+    const state = await issueState(service, dependencies, 'GOOGLE');
+    dependencies.providerClients.GOOGLE.exchangeCodeForIdentity = vi.fn().mockResolvedValue({
+      provider: 'DISCORD',
+      externalId: 'discord-external-id',
+      email: null,
+      emailVerified: false,
+      displayName: 'Discord Player',
+      username: 'discordplayer',
+      avatarUrl: null,
+      accessToken: 'discord-access-token',
+      refreshToken: null,
+      metadata: {},
+    });
+
+    await expect(service.completeCallback({
+      provider: 'google',
+      code: 'oauth-code',
+      state,
+    })).rejects.toMatchObject({
+      statusCode: 400,
+      reason: 'invalid_request',
+      clientMessage: 'Identidade social inválida.',
+    });
+  });
+
+  it('mapeia erro invalido do provider para erro de dominio sem vazar code', async () => {
+    const dependencies = createDependencies();
+    const service = createSocialAuthService(dependencies);
+    const state = await issueState(service, dependencies, 'GOOGLE');
+    dependencies.providerClients.GOOGLE.exchangeCodeForIdentity = vi.fn().mockRejectedValue(
+      new IntegrationError(
+        'google',
+        400,
+        'invalid_request',
+        'Autorização Google inválida ou expirada.',
+        'oauth-code=secret-code',
+      ),
+    );
+
+    await expect(service.completeCallback({
+      provider: 'google',
+      code: 'secret-code',
+      state,
+    })).rejects.toMatchObject({
+      statusCode: 400,
+      reason: 'invalid_request',
+      clientMessage: 'Autorização Google inválida ou expirada.',
+    });
+  });
+
+  it('mapeia falha inesperada do provider para indisponibilidade social', async () => {
+    const dependencies = createDependencies();
+    const service = createSocialAuthService(dependencies);
+    const state = await issueState(service, dependencies, 'DISCORD');
+    dependencies.providerClients.DISCORD.exchangeCodeForIdentity = vi.fn().mockRejectedValue(
+      new Error('provider secret leaked internally'),
+    );
+
+    await expect(service.completeCallback({
+      provider: 'discord',
+      code: 'oauth-code',
+      state,
+    })).rejects.toMatchObject({
+      statusCode: 503,
+      reason: 'provider_unavailable',
+      clientMessage: 'Login Discord indisponível no momento.',
     });
   });
 
