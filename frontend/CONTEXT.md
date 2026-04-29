@@ -45,6 +45,8 @@ Este arquivo descreve o estado real atual do frontend do CLUTCH, os contratos qu
 - `POST /api/auth/logout`
 - `GET /api/auth/me`
 - `GET /api/auth/presence-token`
+- `GET /api/auth/accounts/[provider]/link/callback`
+- `GET /api/auth/accounts/[provider]/reauth/callback`
 
 ### Proxy
 - `GET|POST|PUT|PATCH|DELETE /api/[...path]`
@@ -102,6 +104,12 @@ Esse catch-all encaminha chamadas para o backend real e, quando existe `clutch_s
 - `GET /integrations/igdb/search`
 - `GET /integrations/discord/auth`
 - `GET /integrations/discord/callback`
+- `GET /auth/connected-accounts`
+- `GET /auth/accounts/:provider/link/start`
+- `GET /auth/accounts/:provider/link/callback`
+- `DELETE /auth/accounts/:provider`
+- `GET /auth/accounts/:provider/reauth/start`
+- `GET /auth/accounts/:provider/reauth/callback`
 
 ### Observacao importante
 - o frontend usa Discord OAuth real via backend, mas nao consome diretamente a rota interna de ingestao de presence Discord

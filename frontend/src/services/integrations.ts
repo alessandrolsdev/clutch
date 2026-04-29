@@ -6,6 +6,13 @@ import {
   epicConnectResponseSchema,
   igdbSearchRequestSchema,
   igdbSearchResponseSchema,
+  accountConnectionStartResponseSchema,
+  accountUnlinkResponseSchema,
+  connectedAccountsResponseSchema,
+  type AccountConnectionStartResponse,
+  type AccountUnlinkResponse,
+  type ConnectedAccountsResponse,
+  type ConnectedAccountProvider,
   steamConnectRequestSchema,
   steamConnectResponseSchema,
   steamSyncResponseSchema,
@@ -192,4 +199,74 @@ export async function searchIgdbGame(query: string): Promise<IgdbSearchResponse>
   }
 
   return igdbSearchResponseSchema.parse(responsePayload);
+}
+
+export async function fetchConnectedAccounts(): Promise<ConnectedAccountsResponse> {
+  const response = await apiRequest('/auth/connected-accounts', {
+    method: 'GET',
+  });
+  const responsePayload = await readJson(response);
+
+  if (!response.ok) {
+    throw new IntegrationsRequestError(
+      response.status,
+      resolveErrorMessage(responsePayload, 'Nao foi possivel carregar as contas conectadas agora.'),
+    );
+  }
+
+  return connectedAccountsResponseSchema.parse(responsePayload);
+}
+
+export async function startAccountLink(
+  provider: ConnectedAccountProvider,
+): Promise<AccountConnectionStartResponse> {
+  const response = await apiRequest(`/auth/accounts/${provider.toLowerCase()}/link/start`, {
+    method: 'GET',
+  });
+  const responsePayload = await readJson(response);
+
+  if (!response.ok) {
+    throw new IntegrationsRequestError(
+      response.status,
+      resolveErrorMessage(responsePayload, 'Nao foi possivel iniciar a conexao agora.'),
+    );
+  }
+
+  return accountConnectionStartResponseSchema.parse(responsePayload);
+}
+
+export async function startAccountReauth(
+  provider: ConnectedAccountProvider,
+): Promise<AccountConnectionStartResponse> {
+  const response = await apiRequest(`/auth/accounts/${provider.toLowerCase()}/reauth/start`, {
+    method: 'GET',
+  });
+  const responsePayload = await readJson(response);
+
+  if (!response.ok) {
+    throw new IntegrationsRequestError(
+      response.status,
+      resolveErrorMessage(responsePayload, 'Nao foi possivel iniciar a reconexao agora.'),
+    );
+  }
+
+  return accountConnectionStartResponseSchema.parse(responsePayload);
+}
+
+export async function unlinkConnectedAccount(
+  provider: ConnectedAccountProvider,
+): Promise<AccountUnlinkResponse> {
+  const response = await apiRequest(`/auth/accounts/${provider.toLowerCase()}`, {
+    method: 'DELETE',
+  });
+  const responsePayload = await readJson(response);
+
+  if (!response.ok) {
+    throw new IntegrationsRequestError(
+      response.status,
+      resolveErrorMessage(responsePayload, 'Nao foi possivel desconectar esta conta agora.'),
+    );
+  }
+
+  return accountUnlinkResponseSchema.parse(responsePayload);
 }

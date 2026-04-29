@@ -35,6 +35,10 @@ import { IntegrationError } from '../../infra/integrations/integration.errors';
 const ACCOUNT_CONNECTION_STATE_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_DEVELOPMENT_STATE_SECRET = 'clutch-account-connection-dev-secret';
 const SOCIAL_PLACEHOLDER_EMAIL_DOMAIN = 'users.clutch.local';
+const ACCOUNT_CONNECTION_CALLBACK_PATHS: Record<AccountConnectionMode, string> = {
+  link: 'link',
+  reauth: 'reauth',
+};
 
 export type AccountConnectionMode = 'link' | 'reauth';
 
@@ -53,6 +57,14 @@ export type PublicConnectedAccount = {
   lastSyncAt: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type PublicConnectedAccountProvider = {
+  provider: Platform;
+  displayName: string;
+  status: PlatformIntegrationStatus;
+  dataSource: ConnectedAccountRecord['dataSource'];
+  capabilities: string[];
 };
 
 export type AccountConnectionStartResult = {
@@ -99,7 +111,10 @@ export class AccountConnectionError extends Error {
 }
 
 export type AccountConnectionService = {
-  listConnectedAccounts(userId: string): Promise<{ accounts: PublicConnectedAccount[] }>;
+  listConnectedAccounts(userId: string): Promise<{
+    accounts: PublicConnectedAccount[];
+    providers: PublicConnectedAccountProvider[];
+  }>;
   startLink(input: { userId: string; provider: string }): Promise<AccountConnectionStartResult>;
   completeLink(input: {
     provider: string;
@@ -336,6 +351,60 @@ function normalizeOAuthProvider(provider: string): SocialAuthProvider {
   return normalizedProvider;
 }
 
+function getDefaultSocialRedirectUri(provider: SocialAuthProvider): string | undefined {
+  if (provider === 'GOOGLE') {
+    return process.env['GOOGLE_REDIRECT_URI']?.trim();
+  }
+
+  return process.env['DISCORD_SOCIAL_REDIRECT_URI']?.trim();
+}
+
+function getExplicitAccountConnectionRedirectUri(
+  provider: SocialAuthProvider,
+  mode: AccountConnectionMode,
+): string | undefined {
+  return process.env[`${provider}_ACCOUNT_${mode.toUpperCase()}_REDIRECT_URI`]?.trim();
+}
+
+function deriveAccountConnectionRedirectUri(
+  provider: SocialAuthProvider,
+  mode: AccountConnectionMode,
+): string | undefined {
+  const defaultRedirectUri = getDefaultSocialRedirectUri(provider);
+
+  if (!defaultRedirectUri) {
+    return undefined;
+  }
+
+  try {
+    const parsedUrl = new URL(defaultRedirectUri);
+    const providerSlug = provider.toLowerCase();
+    const callbackMode = ACCOUNT_CONNECTION_CALLBACK_PATHS[mode];
+    const nextPathname = parsedUrl.pathname.replace(
+      `/auth/social/${providerSlug}/callback`,
+      `/auth/accounts/${providerSlug}/${callbackMode}/callback`,
+    );
+
+    if (nextPathname === parsedUrl.pathname) {
+      return undefined;
+    }
+
+    parsedUrl.pathname = nextPathname;
+
+    return parsedUrl.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveAccountConnectionRedirectUri(
+  provider: SocialAuthProvider,
+  mode: AccountConnectionMode,
+): string | undefined {
+  return getExplicitAccountConnectionRedirectUri(provider, mode)
+    ?? deriveAccountConnectionRedirectUri(provider, mode);
+}
+
 function toPublicAccount(account: ConnectedAccountRecord, canUnlink: boolean): PublicConnectedAccount {
   const definition = getProviderDefinition(account.provider);
 
@@ -355,6 +424,20 @@ function toPublicAccount(account: ConnectedAccountRecord, canUnlink: boolean): P
     createdAt: account.createdAt.toISOString(),
     updatedAt: account.updatedAt.toISOString(),
   };
+}
+
+function listPublicProviders(accounts: ConnectedAccountRecord[]): PublicConnectedAccountProvider[] {
+  const accountProviders = new Set(accounts.map((account) => account.provider));
+
+  return listProviderDefinitions()
+    .filter((definition) => definition.status !== 'UNAVAILABLE' || accountProviders.has(definition.provider))
+    .map((definition) => ({
+      provider: definition.provider,
+      displayName: definition.displayName,
+      status: definition.status,
+      dataSource: definition.dataSource,
+      capabilities: definition.capabilities,
+    }));
 }
 
 function hasViablePasswordLogin(user: User): boolean {
@@ -434,9 +517,10 @@ export function createAccountConnectionService(
   async function exchangeIdentity(
     provider: SocialAuthProvider,
     code: string,
+    redirectUri?: string,
   ): Promise<SocialAuthProviderIdentity> {
     try {
-      const identity = await providerClients[provider].exchangeCodeForIdentity(code);
+      const identity = await providerClients[provider].exchangeCodeForIdentity(code, { redirectUri });
 
       if (identity.provider !== provider) {
         throw createAccountConnectionError({
@@ -506,7 +590,11 @@ export function createAccountConnectionService(
       mode: input.mode,
       expectedExternalId: input.expectedExternalId,
     });
-    const authorizationUrl = providerClients[provider].createAuthorizationUrl({ state, nonce });
+    const authorizationUrl = providerClients[provider].createAuthorizationUrl({
+      state,
+      nonce,
+      redirectUri: resolveAccountConnectionRedirectUri(provider, input.mode),
+    });
 
     await stateStore.store(state, ACCOUNT_CONNECTION_STATE_TTL_MS);
 
@@ -556,17 +644,25 @@ export function createAccountConnectionService(
 
     return {
       provider,
-      identity: await exchangeIdentity(provider, input.code),
+      identity: await exchangeIdentity(
+        provider,
+        input.code,
+        resolveAccountConnectionRedirectUri(provider, input.mode),
+      ),
       statePayload,
     };
   }
 
   return {
-    async listConnectedAccounts(userId): Promise<{ accounts: PublicConnectedAccount[] }> {
+    async listConnectedAccounts(userId): Promise<{
+      accounts: PublicConnectedAccount[];
+      providers: PublicConnectedAccountProvider[];
+    }> {
       const accounts = await repository.listByUser(userId);
       const user = await users.findById(userId);
 
       return {
+        providers: listPublicProviders(accounts),
         accounts: accounts.map((account) => toPublicAccount(account, canUnlinkAccount({
           account,
           accounts,
