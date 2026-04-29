@@ -52,8 +52,8 @@ const profileFixture: ProfileResponse = {
     updatedAt: '2026-03-29T22:15:00.000Z',
   },
   platformIntegrations: [
-    { platform: 'STEAM', metadata: null },
-    { platform: 'EPIC', metadata: null },
+    { platform: 'STEAM', displayName: 'Steam', connectionType: 'CONNECTED_ACCOUNT' },
+    { platform: 'EPIC', displayName: 'Epic Games', connectionType: 'CONNECTED_ACCOUNT' },
   ],
   gameLibrary: [
     {

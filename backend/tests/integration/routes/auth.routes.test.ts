@@ -942,6 +942,23 @@ describe('Auth Routes', () => {
           provider: 'GOOGLE',
           message: 'Google desconectado com sucesso.',
         }),
+        updateVisibility: vi.fn().mockResolvedValue({
+          provider: 'GOOGLE',
+          displayName: 'Google',
+          externalId: 'google-external-id',
+          connectionType: 'SOCIAL_LOGIN',
+          status: 'CONNECTED',
+          dataSource: 'OFFICIAL',
+          publicProfileVisible: true,
+          connected: true,
+          needsReauth: false,
+          experimental: false,
+          canUnlink: true,
+          capabilities: ['SOCIAL_LOGIN', 'OAUTH_CONNECT'],
+          lastSyncAt: null,
+          createdAt: '2026-04-28T00:00:00.000Z',
+          updatedAt: '2026-04-28T00:00:00.000Z',
+        }),
         startReauth: vi.fn().mockResolvedValue({
           provider: 'DISCORD',
           authorizationUrl: 'https://discord.com/oauth2/authorize?state=signed-state',
@@ -967,6 +984,7 @@ describe('Auth Routes', () => {
             connectionType: 'CONNECTED_ACCOUNT',
             status: 'CONNECTED',
             dataSource: 'OFFICIAL',
+            publicProfileVisible: false,
             connected: true,
             needsReauth: false,
             experimental: false,
@@ -1169,6 +1187,71 @@ describe('Auth Routes', () => {
       expect(response.statusCode).toBe(409);
       expect(response.json()).toMatchObject({
         message: 'Não é possível remover o último método de login da conta.',
+      });
+      await app.close();
+    });
+
+    it('atualiza visibilidade de conta conectada autenticada', async () => {
+      const accountConnectionService = createAccountConnectionService();
+      const app = await buildApp({ accountConnectionService });
+      const token = generateTestToken(app);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/auth/connected-accounts/google/visibility',
+        headers: { Authorization: `Bearer ${token}` },
+        payload: { publicProfileVisible: true },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        provider: 'GOOGLE',
+        publicProfileVisible: true,
+      });
+      expect(accountConnectionService.updateVisibility).toHaveBeenCalledWith({
+        userId: 'user-id-1',
+        provider: 'google',
+        publicProfileVisible: true,
+      });
+      await app.close();
+    });
+
+    it('bloqueia update de visibilidade sem autenticacao', async () => {
+      const accountConnectionService = createAccountConnectionService();
+      const app = await buildApp({ accountConnectionService });
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/auth/connected-accounts/google/visibility',
+        payload: { publicProfileVisible: true },
+      });
+
+      expect(response.statusCode).toBe(401);
+      expect(accountConnectionService.updateVisibility).not.toHaveBeenCalled();
+      await app.close();
+    });
+
+    it('retorna erro coerente quando visibilidade publica e bloqueada', async () => {
+      const accountConnectionService = createAccountConnectionService();
+      accountConnectionService.updateVisibility.mockRejectedValue({
+        name: 'AccountConnectionError',
+        statusCode: 409,
+        reason: 'visibility_not_allowed',
+        clientMessage: 'Apenas contas ativas e oficiais podem aparecer publicamente.',
+      });
+      const app = await buildApp({ accountConnectionService });
+      const token = generateTestToken(app);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/auth/connected-accounts/epic/visibility',
+        headers: { Authorization: `Bearer ${token}` },
+        payload: { publicProfileVisible: true },
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({
+        message: 'Apenas contas ativas e oficiais podem aparecer publicamente.',
       });
       await app.close();
     });

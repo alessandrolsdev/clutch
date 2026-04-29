@@ -90,6 +90,7 @@ export const connectedAccountSchema = z.object({
   connectionType: connectedAccountConnectionTypeSchema,
   status: connectedAccountStatusSchema,
   dataSource: connectedAccountDataSourceSchema,
+  publicProfileVisible: z.boolean(),
   connected: z.boolean(),
   needsReauth: z.boolean(),
   experimental: z.boolean(),
@@ -131,6 +132,10 @@ export const accountUnlinkResponseSchema = z.object({
   message: z.string().min(1),
 });
 
+export const connectedAccountVisibilityUpdateRequestSchema = z.object({
+  publicProfileVisible: z.boolean(),
+});
+
 export type SteamConnectValues = z.infer<typeof steamConnectRequestSchema>;
 export type SteamConnectResponse = z.infer<typeof steamConnectResponseSchema>;
 export type SteamSyncResponse = z.infer<typeof steamSyncResponseSchema>;
@@ -148,3 +153,4 @@ export type ConnectedAccountsResponse = z.infer<typeof connectedAccountsResponse
 export type AccountConnectionStartResponse = z.infer<typeof accountConnectionStartResponseSchema>;
 export type AccountConnectionCallbackResponse = z.infer<typeof accountConnectionCallbackResponseSchema>;
 export type AccountUnlinkResponse = z.infer<typeof accountUnlinkResponseSchema>;
+export type ConnectedAccountVisibilityUpdateValues = z.infer<typeof connectedAccountVisibilityUpdateRequestSchema>;

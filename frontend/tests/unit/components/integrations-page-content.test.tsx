@@ -91,14 +91,20 @@ describe('IntegrationsPageContent', () => {
         updatedAt: '2026-03-29T22:15:00.000Z',
       },
       platformIntegrations: [
-        { platform: 'STEAM', metadata: null },
-        { platform: 'EPIC', metadata: null },
+        {
+          platform: 'STEAM',
+          displayName: 'Steam',
+          connectionType: 'CONNECTED_ACCOUNT',
+        },
+        {
+          platform: 'EPIC',
+          displayName: 'Epic Games',
+          connectionType: 'CONNECTED_ACCOUNT',
+        },
         {
           platform: 'DISCORD',
-          metadata: {
-            username: 'clutchplayer',
-            globalName: 'CLUTCH Guild',
-          },
+          displayName: 'Discord',
+          connectionType: 'CONNECTED_ACCOUNT',
         },
       ],
       gameLibrary: [
@@ -131,7 +137,8 @@ describe('IntegrationsPageContent', () => {
       screen.getByRole('heading', { name: /vinculo discord e presence bridge/i }),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /reconectar discord/i })).toBeInTheDocument();
-    expect(screen.getByText(/conta vinculada: clutch guild/i)).toBeInTheDocument();
+    expect(screen.queryByText(/conta vinculada: clutch guild/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/clutchplayer/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/ainda fora do contrato frontend atual/i)).not.toBeInTheDocument();
   });
 });

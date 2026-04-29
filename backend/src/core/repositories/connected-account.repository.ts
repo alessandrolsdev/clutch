@@ -17,6 +17,7 @@ export type ConnectedAccountRecord = {
   status: PlatformIntegrationStatus;
   dataSource: PlatformIntegrationDataSource;
   metadata: Prisma.JsonValue | null;
+  publicProfileVisible: boolean;
   createdAt: Date;
   updatedAt: Date;
   lastSyncAt: Date | null;
@@ -50,6 +51,12 @@ export type UpsertConnectedAccountInput = {
   lastSyncAt?: Date | null;
 };
 
+export type UpdateConnectedAccountVisibilityInput = {
+  userId: string;
+  provider: Platform;
+  publicProfileVisible: boolean;
+};
+
 function toConnectedAccountRecord(account: {
   id: string;
   userId: string;
@@ -59,6 +66,7 @@ function toConnectedAccountRecord(account: {
   status: PlatformIntegrationStatus;
   dataSource: PlatformIntegrationDataSource;
   metadata: Prisma.JsonValue | null;
+  publicProfileVisible: boolean;
   createdAt: Date;
   updatedAt: Date;
   lastSyncAt: Date | null;
@@ -72,6 +80,7 @@ function toConnectedAccountRecord(account: {
     status: account.status,
     dataSource: account.dataSource,
     metadata: account.metadata,
+    publicProfileVisible: account.publicProfileVisible,
     createdAt: account.createdAt,
     updatedAt: account.updatedAt,
     lastSyncAt: account.lastSyncAt,
@@ -87,6 +96,7 @@ export type ConnectedAccountRepository = {
   findByUserProvider(userId: string, provider: Platform): Promise<ConnectedAccountRecord | null>;
   upsertConnectedAccount(input: UpsertConnectedAccountInput): Promise<ConnectedAccountRecord>;
   deleteByUserProvider(userId: string, provider: Platform): Promise<ConnectedAccountRecord | null>;
+  updateVisibility(input: UpdateConnectedAccountVisibilityInput): Promise<ConnectedAccountRecord | null>;
 };
 
 export function createConnectedAccountRepository(): ConnectedAccountRepository {
@@ -222,6 +232,35 @@ export function createConnectedAccountRepository(): ConnectedAccountRepository {
       });
 
       return toConnectedAccountRecord(deletedAccount);
+    },
+
+    async updateVisibility(input: UpdateConnectedAccountVisibilityInput): Promise<ConnectedAccountRecord | null> {
+      const existingAccount = await prisma.platformIntegration.findUnique({
+        where: {
+          userId_platform: {
+            userId: input.userId,
+            platform: input.provider,
+          },
+        },
+      });
+
+      if (!existingAccount) {
+        return null;
+      }
+
+      const updatedAccount = await prisma.platformIntegration.update({
+        where: {
+          userId_platform: {
+            userId: input.userId,
+            platform: input.provider,
+          },
+        },
+        data: {
+          publicProfileVisible: input.publicProfileVisible,
+        },
+      });
+
+      return toConnectedAccountRecord(updatedAccount);
     },
   };
 }

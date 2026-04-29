@@ -52,6 +52,10 @@ const accountConnectionProviderParamsSchema = z.object({
   provider: z.string().min(1),
 });
 
+const accountVisibilityUpdateSchema = z.object({
+  publicProfileVisible: z.boolean(),
+});
+
 const socialCallbackSchema = z.object({
   code: z.string().min(1).optional(),
   state: z.string().min(1).optional(),
@@ -461,6 +465,52 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           status: 200,
           userId: request.userId,
         }, 'Account unlinked');
+
+        return reply.status(200).send(resultPayload);
+      } catch (error) {
+        const accountError = replyWithAccountConnectionError(error);
+        return reply.status(accountError.statusCode).send(accountError.payload);
+      }
+    },
+  );
+
+  // ── PATCH /auth/connected-accounts/:provider/visibility ──
+  app.patch<{
+    Params: { provider: string };
+    Body: { publicProfileVisible?: unknown };
+  }>(
+    '/connected-accounts/:provider/visibility',
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const paramsResult = accountConnectionProviderParamsSchema.safeParse(request.params);
+
+      if (!paramsResult.success) {
+        return reply.status(400).send({ message: 'Provider de conta inválido.' });
+      }
+
+      const bodyResult = accountVisibilityUpdateSchema.safeParse(request.body);
+
+      if (!bodyResult.success) {
+        return reply.status(400).send({ message: 'Preferência de visibilidade inválida.' });
+      }
+
+      try {
+        const resultPayload = await app.accountConnectionService.updateVisibility({
+          userId: request.userId,
+          provider: paramsResult.data.provider,
+          publicProfileVisible: bodyResult.data.publicProfileVisible,
+        });
+
+        request.log.info({
+          event: 'auth_connected_account_visibility_updated',
+          requestId: request.id,
+          method: request.method,
+          path: `/auth/connected-accounts/${resultPayload.provider.toLowerCase()}/visibility`,
+          provider: resultPayload.provider,
+          publicProfileVisible: resultPayload.publicProfileVisible,
+          status: 200,
+          userId: request.userId,
+        }, 'Connected account visibility updated');
 
         return reply.status(200).send(resultPayload);
       } catch (error) {
