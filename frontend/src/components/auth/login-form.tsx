@@ -23,7 +23,13 @@ const fieldClassName = 'space-y-2';
 
 export function LoginForm() {
   const router = useRouter();
-  const [serverError, setServerError] = useState<string | null>(null);
+  const [serverError, setServerError] = useState<string | null>(() => {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+
+    return new URLSearchParams(window.location.search).get('socialAuthError');
+  });
   const setSession = useAuthStore((state) => state.setSession);
 
   const {
@@ -105,6 +111,29 @@ export function LoginForm() {
         ) : null}
 
         <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2" aria-label="Login social">
+            <Link
+              href="/api/auth/social/google/start"
+              prefetch={false}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-control border border-border bg-[var(--button-background)] px-control-x text-sm font-medium text-primary transition hover:border-accent-cyan hover:text-accent-cyan focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-background-primary"
+            >
+              Continuar com Google
+            </Link>
+            <Link
+              href="/api/auth/social/discord/start"
+              prefetch={false}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-control border border-border bg-[var(--button-background)] px-control-x text-sm font-medium text-primary transition hover:border-accent-cyan hover:text-accent-cyan focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-background-primary"
+            >
+              Continuar com Discord
+            </Link>
+          </div>
+
+          <div className="flex items-center gap-3 text-xs font-medium uppercase text-secondary">
+            <span className="h-px flex-1 bg-border" />
+            <span>Email</span>
+            <span className="h-px flex-1 bg-border" />
+          </div>
+
           <label className={fieldClassName}>
             <span className="text-sm font-medium text-primary">Email</span>
             <Input

@@ -25,6 +25,7 @@ describe('provider registry', () => {
 
     expect(steam?.capabilities).toContain('CONNECTED_ACCOUNT');
     expect(steam?.capabilities).not.toContain('SOCIAL_LOGIN');
+    expect(google?.status).toBe('CONNECTED');
     expect(google?.capabilities).toEqual(
       expect.arrayContaining(['SOCIAL_LOGIN', 'OAUTH_CONNECT']),
     );
