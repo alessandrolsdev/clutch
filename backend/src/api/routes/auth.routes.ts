@@ -14,6 +14,7 @@ import {
   RefreshTokenRevokedError,
   RefreshTokenReuseError,
 } from '../../core/services/refresh-token.service';
+import { SocialAuthError } from '../../core/services/social-auth.service';
 import { AUTH_RATE_LIMIT_POLICIES } from '../../config/rate-limit';
 
 // ─────────────────────────────────────────────────────────────
@@ -41,6 +42,52 @@ const loginSchema = z.object({
   email:    z.string().email('Email inválido'),
   password: z.string().min(1, 'Senha obrigatória'),
 });
+
+const socialProviderParamsSchema = z.object({
+  provider: z.string().min(1),
+});
+
+const socialCallbackSchema = z.object({
+  code: z.string().min(1).optional(),
+  state: z.string().min(1).optional(),
+  error: z.string().min(1).optional(),
+}).refine(
+  (input) => Boolean(input.error) || (Boolean(input.code) && Boolean(input.state)),
+  {
+    message: 'Callback social inválido.',
+  },
+);
+
+function replyWithSocialAuthError(error: unknown): { statusCode: number; payload: { message: string } } {
+  if (error instanceof SocialAuthError) {
+    return {
+      statusCode: error.statusCode,
+      payload: {
+        message: error.clientMessage,
+      },
+    };
+  }
+
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'name' in error &&
+    (error as { name?: unknown }).name === 'SocialAuthError' &&
+    'statusCode' in error &&
+    typeof (error as { statusCode?: unknown }).statusCode === 'number' &&
+    'clientMessage' in error &&
+    typeof (error as { clientMessage?: unknown }).clientMessage === 'string'
+  ) {
+    return {
+      statusCode: (error as { statusCode: number }).statusCode,
+      payload: {
+        message: (error as { clientMessage: string }).clientMessage,
+      },
+    };
+  }
+
+  throw error;
+}
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
   async function issueAuthSession(
@@ -156,6 +203,100 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       message:  'Acesso autorizado.',
     });
   });
+
+  // ── GET /auth/social/:provider/start ─────────────────────
+  app.get<{ Params: { provider: string } }>(
+    '/social/:provider/start',
+    {
+      config: {
+        rateLimit: AUTH_RATE_LIMIT_POLICIES.login,
+      },
+    },
+    async (request, reply) => {
+      const paramsResult = socialProviderParamsSchema.safeParse(request.params);
+
+      if (!paramsResult.success) {
+        return reply.status(400).send({ message: 'Provider social inválido.' });
+      }
+
+      try {
+        const resultPayload = await app.socialAuthService.startLogin(paramsResult.data.provider);
+
+        request.log.info({
+          event: 'auth_social_login_started',
+          requestId: request.id,
+          method: request.method,
+          path: request.url,
+          provider: resultPayload.provider,
+          status: 200,
+        }, 'Social auth login started');
+
+        return reply.status(200).send(resultPayload);
+      } catch (error) {
+        const socialError = replyWithSocialAuthError(error);
+        return reply.status(socialError.statusCode).send(socialError.payload);
+      }
+    },
+  );
+
+  // ── GET /auth/social/:provider/callback ──────────────────
+  app.get<{
+    Params: { provider: string };
+    Querystring: { code?: string; state?: string; error?: string };
+  }>(
+    '/social/:provider/callback',
+    {
+      config: {
+        rateLimit: AUTH_RATE_LIMIT_POLICIES.login,
+      },
+    },
+    async (request, reply) => {
+      const paramsResult = socialProviderParamsSchema.safeParse(request.params);
+
+      if (!paramsResult.success) {
+        return reply.status(400).send({ message: 'Provider social inválido.' });
+      }
+
+      const queryResult = socialCallbackSchema.safeParse(request.query);
+
+      if (!queryResult.success) {
+        return reply.status(400).send({ message: 'Callback social inválido.' });
+      }
+
+      try {
+        const socialResult = await app.socialAuthService.completeCallback({
+          provider: paramsResult.data.provider,
+          code: queryResult.data.code,
+          state: queryResult.data.state,
+          providerError: queryResult.data.error,
+          requestId: request.id,
+        });
+        const token = await issueAuthSession(socialResult.user, reply);
+
+        request.log.info({
+          event: 'auth_social_login_succeeded',
+          requestId: request.id,
+          method: request.method,
+          path: request.url,
+          provider: socialResult.provider,
+          status: 200,
+          userId: socialResult.user.id,
+          username: socialResult.user.username,
+          isNewUser: socialResult.isNewUser,
+        }, 'Social auth login succeeded');
+
+        return reply.status(200).send({
+          id: socialResult.user.id,
+          username: socialResult.user.username,
+          token,
+          message: 'Acesso autorizado.',
+        });
+      } catch (error) {
+        const socialError = replyWithSocialAuthError(error);
+        return reply.status(socialError.statusCode).send(socialError.payload);
+      }
+    },
+  );
 
   // ── POST /auth/refresh ───────────────────────────────────
   app.post('/refresh', {

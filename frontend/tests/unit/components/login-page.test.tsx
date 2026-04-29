@@ -53,9 +53,25 @@ describe('LoginPage', () => {
         screen.getByRole('heading', { name: /entre com sua conta do clutch/i }),
       ).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /entrar/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: /continuar com google/i }),
+      ).toHaveAttribute('href', '/api/auth/social/google/start');
+      expect(
+        screen.getByRole('link', { name: /continuar com discord/i }),
+      ).toHaveAttribute('href', '/api/auth/social/discord/start');
     },
     10000,
   );
+
+  it('shows social callback errors from the URL', () => {
+    window.history.pushState({}, '', '/login?socialAuthError=Callback%20social%20invalido');
+
+    render(<LoginPage />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Callback social invalido');
+
+    window.history.pushState({}, '', '/login');
+  });
 
   it('shows validation errors for empty fields', async () => {
     render(<LoginPage />);
