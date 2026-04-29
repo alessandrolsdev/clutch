@@ -1,5 +1,6 @@
-import { Profile } from '@prisma/client';
+import { Profile, type Platform, type PlatformIntegrationConnectionType } from '@prisma/client';
 import { prisma } from '../../infra/database/client';
+import { getProviderDefinition } from '../providers/provider-registry';
 
 // ─────────────────────────────────────────────────────────────
 // Profile Repository
@@ -40,8 +41,9 @@ export interface FullProfileRecord {
     updatedAt: Date;
   };
   platformIntegrations: Array<{
-    platform: string;
-    metadata: Record<string, unknown> | null;
+    platform: Platform;
+    displayName: string;
+    connectionType: PlatformIntegrationConnectionType;
   }>;
   gameLibrary: Array<{
     gameName: string;
@@ -74,7 +76,7 @@ export const profileRepository = {
   },
 
   async findFullProfileByUsername(username: string): Promise<FullProfileRecord | null> {
-    return prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
       where: { username },
       select: {
         id: true,
@@ -109,8 +111,16 @@ export const profileRepository = {
           },
         },
         platformIntegrations: {
-          where: { isActive: true },
-          select: { platform: true, metadata: true },
+          where: {
+            isActive: true,
+            publicProfileVisible: true,
+            status: 'CONNECTED',
+            dataSource: 'OFFICIAL',
+          },
+          select: {
+            platform: true,
+            connectionType: true,
+          },
         },
         gameLibrary: {
           orderBy: { lastPlayedAt: 'desc' },
@@ -123,7 +133,20 @@ export const profileRepository = {
           },
         },
       },
-    }) as Promise<FullProfileRecord | null>;
+    });
+
+    if (!user) {
+      return null;
+    }
+
+    return {
+      ...user,
+      platformIntegrations: user.platformIntegrations.map((integration) => ({
+        platform: integration.platform,
+        displayName: getProviderDefinition(integration.platform).displayName,
+        connectionType: integration.connectionType,
+      })),
+    } as FullProfileRecord;
   },
 
   async updateByUserId(userId: string, input: UpdateProfileInput): Promise<Profile> {

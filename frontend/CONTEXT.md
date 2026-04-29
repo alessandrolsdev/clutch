@@ -105,6 +105,7 @@ Esse catch-all encaminha chamadas para o backend real e, quando existe `clutch_s
 - `GET /integrations/discord/auth`
 - `GET /integrations/discord/callback`
 - `GET /auth/connected-accounts`
+- `PATCH /auth/connected-accounts/:provider/visibility`
 - `GET /auth/accounts/:provider/link/start`
 - `GET /auth/accounts/:provider/link/callback`
 - `DELETE /auth/accounts/:provider`

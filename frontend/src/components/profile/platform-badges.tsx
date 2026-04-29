@@ -9,6 +9,7 @@ const platformLabelByCode: Record<
   ProfileResponse['platformIntegrations'][number]['platform'],
   string
 > = {
+  GOOGLE: 'Google',
   STEAM: 'Steam',
   EPIC: 'Epic Games',
   DISCORD: 'Discord',
@@ -41,7 +42,8 @@ export function PlatformBadges({ integrations }: PlatformBadgesProps) {
         <div className="flex flex-wrap items-center gap-2">
           {platformCodes.map((platformCode) => (
             <Badge key={platformCode} tone="accent">
-              {platformLabelByCode[platformCode]}
+              {integrations.find((integration) => integration.platform === platformCode)?.displayName ??
+                platformLabelByCode[platformCode]}
             </Badge>
           ))}
         </div>

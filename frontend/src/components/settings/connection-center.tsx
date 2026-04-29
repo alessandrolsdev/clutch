@@ -16,6 +16,7 @@ import {
   startAccountLink,
   startAccountReauth,
   unlinkConnectedAccount,
+  updateConnectedAccountVisibility,
 } from '@/services/integrations';
 
 type ProviderDefinition = {
@@ -152,6 +153,7 @@ type ConnectionProviderRowProps = {
   onConnect(provider: ConnectedAccountProvider): void;
   onReauth(provider: ConnectedAccountProvider): void;
   onUnlink(provider: ConnectedAccountProvider): void;
+  onVisibilityChange(provider: ConnectedAccountProvider, publicProfileVisible: boolean): void;
 };
 
 function ConnectionProviderRow({
@@ -161,6 +163,7 @@ function ConnectionProviderRow({
   onConnect,
   onReauth,
   onUnlink,
+  onVisibilityChange,
 }: ConnectionProviderRowProps) {
   const isBusy = busyProvider === definition.provider;
   const canOAuthConnect = definition.capabilities.includes('OAUTH_CONNECT') && definition.status === 'CONNECTED';
@@ -168,6 +171,10 @@ function ConnectionProviderRow({
     (definition.capabilities.includes('LIBRARY_IMPORT') && !definition.capabilities.includes('OAUTH_CONNECT'));
   const canReauth = Boolean(account?.needsReauth) && canOAuthConnect;
   const canUnlink = Boolean(account?.canUnlink);
+  const canPublish = Boolean(account?.connected) &&
+    account?.status === 'CONNECTED' &&
+    !account.experimental &&
+    account.dataSource === 'OFFICIAL';
 
   return (
     <Card className="space-y-5" data-testid={`connection-provider-${definition.provider.toLowerCase()}`}>
@@ -207,6 +214,39 @@ function ConnectionProviderRow({
         <p className="rounded-control border border-status-afk/40 bg-[rgba(245,158,11,0.12)] px-control-x py-control-y text-sm text-primary">
           Esta conta precisa ser reconectada antes de voltar ao estado ativo.
         </p>
+      ) : null}
+
+      {account ? (
+        <div className="rounded-control border border-border bg-background-tertiary/40 px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-1">
+              <p className="text-xs uppercase tracking-[0.24em] text-secondary">
+                Visibilidade no perfil
+              </p>
+              <p className="text-sm text-secondary">
+                {account.publicProfileVisible
+                  ? 'Publica no perfil sem tokens, payload bruto ou identificador externo.'
+                  : 'Privada. Esta conta nao aparece no perfil publico.'}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={isBusy || (!account.publicProfileVisible && !canPublish)}
+              onClick={() => {
+                onVisibilityChange(definition.provider, !account.publicProfileVisible);
+              }}
+            >
+              {account.publicProfileVisible ? 'Tornar privada' : 'Tornar publica'}
+            </Button>
+          </div>
+
+          {!canPublish ? (
+            <p className="mt-2 text-xs leading-5 text-secondary">
+              Apenas contas ativas e oficiais podem ser promovidas no perfil publico.
+            </p>
+          ) : null}
+        </div>
       ) : null}
 
       {!account && canLegacyConnect ? (
@@ -361,6 +401,32 @@ export function ConnectionCenter({ onRedirect }: ConnectionCenterProps = {}) {
     },
   });
 
+  const visibilityMutation = useMutation({
+    mutationFn: (input: {
+      provider: ConnectedAccountProvider;
+      publicProfileVisible: boolean;
+    }) => updateConnectedAccountVisibility(input.provider, {
+      publicProfileVisible: input.publicProfileVisible,
+    }),
+    onMutate: ({ provider }) => {
+      setBusyProvider(provider);
+      setErrorMessage(null);
+      setFeedbackMessage(null);
+    },
+    onSuccess: async (account) => {
+      setFeedbackMessage(account.publicProfileVisible
+        ? `${account.displayName} agora aparece no perfil publico.`
+        : `${account.displayName} foi removido do perfil publico.`);
+      await queryClient.invalidateQueries({ queryKey: ['connected-accounts'] });
+    },
+    onError: (error) => {
+      setErrorMessage(resolveErrorMessage(error, 'Nao foi possivel atualizar a visibilidade agora.'));
+    },
+    onSettled: () => {
+      setBusyProvider(null);
+    },
+  });
+
   if (accountsQuery.isPending) {
     return (
       <Card className="space-y-4" data-testid="connection-center-loading">
@@ -434,6 +500,9 @@ export function ConnectionCenter({ onRedirect }: ConnectionCenterProps = {}) {
             }}
             onUnlink={(provider) => {
               unlinkMutation.mutate(provider);
+            }}
+            onVisibilityChange={(provider, publicProfileVisible) => {
+              visibilityMutation.mutate({ provider, publicProfileVisible });
             }}
           />
         ))}

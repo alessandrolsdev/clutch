@@ -136,8 +136,8 @@ describe('GamerCard', () => {
         profile={{
           ...profileFixture,
           platformIntegrations: [
-            { platform: 'STEAM', metadata: null },
-            { platform: 'DISCORD', metadata: null },
+            { platform: 'STEAM', displayName: 'Steam', connectionType: 'CONNECTED_ACCOUNT' },
+            { platform: 'DISCORD', displayName: 'Discord', connectionType: 'CONNECTED_ACCOUNT' },
           ],
         }}
       />,
