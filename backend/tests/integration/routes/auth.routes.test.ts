@@ -923,4 +923,305 @@ describe('Auth Routes', () => {
     });
   });
 
+  describe('account connection routes', () => {
+    function createAccountConnectionService() {
+      return {
+        listConnectedAccounts: vi.fn().mockResolvedValue({ accounts: [] }),
+        startLink: vi.fn().mockResolvedValue({
+          provider: 'GOOGLE',
+          authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth?state=signed-state',
+        }),
+        completeLink: vi.fn().mockResolvedValue({
+          provider: 'GOOGLE',
+          externalId: 'google-external-id',
+          status: 'CONNECTED',
+          connectionType: 'SOCIAL_LOGIN',
+          message: 'Google vinculado com sucesso.',
+        }),
+        unlink: vi.fn().mockResolvedValue({
+          provider: 'GOOGLE',
+          message: 'Google desconectado com sucesso.',
+        }),
+        startReauth: vi.fn().mockResolvedValue({
+          provider: 'DISCORD',
+          authorizationUrl: 'https://discord.com/oauth2/authorize?state=signed-state',
+        }),
+        completeReauth: vi.fn().mockResolvedValue({
+          provider: 'DISCORD',
+          externalId: 'discord-external-id',
+          status: 'CONNECTED',
+          connectionType: 'CONNECTED_ACCOUNT',
+          message: 'Discord reconectado com sucesso.',
+        }),
+      };
+    }
+
+    it('lista contas conectadas do usuario autenticado sem tokens', async () => {
+      const accountConnectionService = createAccountConnectionService();
+      accountConnectionService.listConnectedAccounts.mockResolvedValue({
+        accounts: [
+          {
+            provider: 'DISCORD',
+            displayName: 'Discord',
+            externalId: 'discord-external-id',
+            connectionType: 'CONNECTED_ACCOUNT',
+            status: 'CONNECTED',
+            dataSource: 'OFFICIAL',
+            connected: true,
+            needsReauth: false,
+            experimental: false,
+            canUnlink: true,
+            capabilities: ['SOCIAL_LOGIN', 'CONNECTED_ACCOUNT', 'OAUTH_CONNECT'],
+            lastSyncAt: null,
+            createdAt: '2026-04-28T00:00:00.000Z',
+            updatedAt: '2026-04-28T00:00:00.000Z',
+          },
+        ],
+      });
+      const app = await buildApp({ accountConnectionService });
+      const token = generateTestToken(app);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/connected-accounts',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        accounts: [
+          {
+            provider: 'DISCORD',
+            externalId: 'discord-external-id',
+            connected: true,
+          },
+        ],
+      });
+      expect(JSON.stringify(response.json())).not.toContain('accessToken');
+      expect(accountConnectionService.listConnectedAccounts).toHaveBeenCalledWith('user-id-1');
+      await app.close();
+    });
+
+    it('exige autenticacao para listar contas conectadas', async () => {
+      const accountConnectionService = createAccountConnectionService();
+      const app = await buildApp({ accountConnectionService });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/connected-accounts',
+      });
+
+      expect(response.statusCode).toBe(401);
+      expect(accountConnectionService.listConnectedAccounts).not.toHaveBeenCalled();
+      await app.close();
+    });
+
+    it('inicia linking autenticado para provider suportado', async () => {
+      const accountConnectionService = createAccountConnectionService();
+      const app = await buildApp({ accountConnectionService });
+      const token = generateTestToken(app);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/accounts/google/link/start',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        provider: 'GOOGLE',
+        authorizationUrl: expect.stringContaining('state=signed-state'),
+      });
+      expect(accountConnectionService.startLink).toHaveBeenCalledWith({
+        userId: 'user-id-1',
+        provider: 'google',
+      });
+      await app.close();
+    });
+
+    it('bloqueia start de linking sem autenticacao', async () => {
+      const accountConnectionService = createAccountConnectionService();
+      const app = await buildApp({ accountConnectionService });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/accounts/google/link/start',
+      });
+
+      expect(response.statusCode).toBe(401);
+      expect(accountConnectionService.startLink).not.toHaveBeenCalled();
+      await app.close();
+    });
+
+    it('retorna conflito de dominio no start de linking', async () => {
+      const accountConnectionService = createAccountConnectionService();
+      accountConnectionService.startLink.mockRejectedValue({
+        name: 'AccountConnectionError',
+        statusCode: 400,
+        reason: 'unsupported_provider',
+        clientMessage: 'Provider não suporta conexão OAuth neste momento.',
+      });
+      const app = await buildApp({ accountConnectionService });
+      const token = generateTestToken(app);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/accounts/steam/link/start',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({
+        message: 'Provider não suporta conexão OAuth neste momento.',
+      });
+      await app.close();
+    });
+
+    it('conclui callback de linking sem emitir sessao nova', async () => {
+      const accountConnectionService = createAccountConnectionService();
+      const app = await buildApp({ accountConnectionService });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/accounts/google/link/callback?code=oauth-code&state=signed-state',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        provider: 'GOOGLE',
+        externalId: 'google-external-id',
+        status: 'CONNECTED',
+        connectionType: 'SOCIAL_LOGIN',
+      });
+      expect(response.json()).not.toHaveProperty('token');
+      expect(response.headers['set-cookie']).toBeUndefined();
+      expect(accountConnectionService.completeLink).toHaveBeenCalledWith({
+        provider: 'google',
+        code: 'oauth-code',
+        state: 'signed-state',
+        providerError: undefined,
+      });
+      await app.close();
+    });
+
+    it('retorna erro coerente no callback de linking com identity conflict', async () => {
+      const accountConnectionService = createAccountConnectionService();
+      accountConnectionService.completeLink.mockRejectedValue({
+        name: 'AccountConnectionError',
+        statusCode: 409,
+        reason: 'identity_conflict',
+        clientMessage: 'Esta identidade externa já está vinculada a outro usuário.',
+      });
+      const app = await buildApp({ accountConnectionService });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/accounts/discord/link/callback?code=oauth-code&state=signed-state',
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({
+        message: 'Esta identidade externa já está vinculada a outro usuário.',
+      });
+      await app.close();
+    });
+
+    it('desconecta conta externa autenticada', async () => {
+      const accountConnectionService = createAccountConnectionService();
+      const app = await buildApp({ accountConnectionService });
+      const token = generateTestToken(app);
+
+      const response = await app.inject({
+        method: 'DELETE',
+        url: '/auth/accounts/google',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        provider: 'GOOGLE',
+        message: 'Google desconectado com sucesso.',
+      });
+      expect(accountConnectionService.unlink).toHaveBeenCalledWith({
+        userId: 'user-id-1',
+        provider: 'google',
+      });
+      await app.close();
+    });
+
+    it('bloqueia unlink inseguro com erro de dominio', async () => {
+      const accountConnectionService = createAccountConnectionService();
+      accountConnectionService.unlink.mockRejectedValue({
+        name: 'AccountConnectionError',
+        statusCode: 409,
+        reason: 'unsafe_unlink',
+        clientMessage: 'Não é possível remover o último método de login da conta.',
+      });
+      const app = await buildApp({ accountConnectionService });
+      const token = generateTestToken(app);
+
+      const response = await app.inject({
+        method: 'DELETE',
+        url: '/auth/accounts/google',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({
+        message: 'Não é possível remover o último método de login da conta.',
+      });
+      await app.close();
+    });
+
+    it('inicia reauth autenticado para conta que precisa reconectar', async () => {
+      const accountConnectionService = createAccountConnectionService();
+      const app = await buildApp({ accountConnectionService });
+      const token = generateTestToken(app);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/accounts/discord/reauth/start',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        provider: 'DISCORD',
+        authorizationUrl: expect.stringContaining('state=signed-state'),
+      });
+      expect(accountConnectionService.startReauth).toHaveBeenCalledWith({
+        userId: 'user-id-1',
+        provider: 'discord',
+      });
+      await app.close();
+    });
+
+    it('conclui reauth sem trocar sessao CLUTCH', async () => {
+      const accountConnectionService = createAccountConnectionService();
+      const app = await buildApp({ accountConnectionService });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/accounts/discord/reauth/callback?code=oauth-code&state=signed-state',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        provider: 'DISCORD',
+        externalId: 'discord-external-id',
+        status: 'CONNECTED',
+        connectionType: 'CONNECTED_ACCOUNT',
+      });
+      expect(response.json()).not.toHaveProperty('token');
+      expect(response.headers['set-cookie']).toBeUndefined();
+      expect(accountConnectionService.completeReauth).toHaveBeenCalledWith({
+        provider: 'discord',
+        code: 'oauth-code',
+        state: 'signed-state',
+        providerError: undefined,
+      });
+      await app.close();
+    });
+  });
+
 });
