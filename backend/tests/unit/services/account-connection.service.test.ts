@@ -134,6 +134,26 @@ describe('account connection service', () => {
     });
     expect(result.accounts[0]).not.toHaveProperty('accessToken');
     expect(result.accounts[0]).not.toHaveProperty('refreshToken');
+    expect(result.providers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'GOOGLE',
+          displayName: 'Google',
+          capabilities: expect.arrayContaining(['OAUTH_CONNECT']),
+        }),
+        expect.objectContaining({
+          provider: 'EPIC',
+          status: 'EXPERIMENTAL',
+        }),
+      ]),
+    );
+    expect(result.providers).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'MYANIMELIST',
+        }),
+      ]),
+    );
   });
 
   it('marca ultimo login social como nao removivel quando usuario nao tem senha local viavel', async () => {
@@ -166,6 +186,58 @@ describe('account connection service', () => {
         nonce: expect.any(String),
       }),
     );
+  });
+
+  it('usa callback de account linking quando deriva redirectUri do login social', async () => {
+    const previousRedirectUri = process.env['GOOGLE_REDIRECT_URI'];
+
+    try {
+      process.env['GOOGLE_REDIRECT_URI'] = 'http://localhost/api/auth/social/google/callback';
+      const dependencies = createDependencies();
+      const service = createAccountConnectionService(dependencies);
+
+      await service.startLink({ userId: 'user-id-1', provider: 'google' });
+
+      expect(dependencies.providerClients.GOOGLE.createAuthorizationUrl).toHaveBeenCalledWith(
+        expect.objectContaining({
+          redirectUri: 'http://localhost/api/auth/accounts/google/link/callback',
+        }),
+      );
+    } finally {
+      if (typeof previousRedirectUri === 'undefined') {
+        delete process.env['GOOGLE_REDIRECT_URI'];
+      } else {
+        process.env['GOOGLE_REDIRECT_URI'] = previousRedirectUri;
+      }
+    }
+  });
+
+  it('usa redirectUri explicito de reauth quando configurado para o fluxo', async () => {
+    const previousRedirectUri = process.env['DISCORD_ACCOUNT_REAUTH_REDIRECT_URI'];
+
+    try {
+      process.env['DISCORD_ACCOUNT_REAUTH_REDIRECT_URI'] = 'http://localhost/api/auth/accounts/discord/reauth/callback';
+      const dependencies = createDependencies();
+      dependencies.repository.findByUserProvider.mockResolvedValue(createAccount({
+        provider: 'DISCORD',
+        status: 'NEEDS_REAUTH',
+      }));
+      const service = createAccountConnectionService(dependencies);
+
+      await service.startReauth({ userId: 'user-id-1', provider: 'discord' });
+
+      expect(dependencies.providerClients.DISCORD.createAuthorizationUrl).toHaveBeenCalledWith(
+        expect.objectContaining({
+          redirectUri: 'http://localhost/api/auth/accounts/discord/reauth/callback',
+        }),
+      );
+    } finally {
+      if (typeof previousRedirectUri === 'undefined') {
+        delete process.env['DISCORD_ACCOUNT_REAUTH_REDIRECT_URI'];
+      } else {
+        process.env['DISCORD_ACCOUNT_REAUTH_REDIRECT_URI'] = previousRedirectUri;
+      }
+    }
   });
 
   it('rejeita linking para provider sem capability OAuth connect', async () => {

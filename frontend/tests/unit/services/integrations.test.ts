@@ -4,6 +4,11 @@ import {
   completeDiscordOAuth,
   connectEpic,
   connectSteam,
+  fetchConnectedAccounts,
+  startAccountLink,
+  startAccountReauth,
+  unlinkConnectedAccount,
+  IntegrationsRequestError,
   searchIgdbGame,
   startDiscordOAuth,
   syncSteamLibrary,
@@ -14,6 +19,23 @@ vi.mock('@/lib/api', () => ({
 }));
 
 const mockedApiRequest = vi.mocked(apiRequest);
+
+const connectedAccountPayload = {
+  provider: 'GOOGLE',
+  displayName: 'Google',
+  externalId: 'google-external-id',
+  connectionType: 'SOCIAL_LOGIN',
+  status: 'CONNECTED',
+  dataSource: 'OFFICIAL',
+  connected: true,
+  needsReauth: false,
+  experimental: false,
+  canUnlink: true,
+  capabilities: ['SOCIAL_LOGIN', 'OAUTH_CONNECT'],
+  lastSyncAt: null,
+  createdAt: '2026-04-29T10:00:00.000Z',
+  updatedAt: '2026-04-29T10:00:00.000Z',
+};
 
 describe('integrations service', () => {
   beforeEach(() => {
@@ -151,5 +173,114 @@ describe('integrations service', () => {
       '/integrations/igdb/search?q=Counter-Strike%202',
       { method: 'GET' },
     );
+  });
+
+  it('lista contas conectadas pelo contrato seguro', async () => {
+    mockedApiRequest.mockResolvedValue(new Response(
+      JSON.stringify({
+        providers: [
+          {
+            provider: 'GOOGLE',
+            displayName: 'Google',
+            status: 'CONNECTED',
+            dataSource: 'OFFICIAL',
+            capabilities: ['SOCIAL_LOGIN', 'OAUTH_CONNECT'],
+          },
+        ],
+        accounts: [connectedAccountPayload],
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    ));
+
+    const result = await fetchConnectedAccounts();
+
+    expect(result.accounts).toHaveLength(1);
+    expect(result.accounts[0]?.provider).toBe('GOOGLE');
+    expect(result.providers[0]?.provider).toBe('GOOGLE');
+    expect(JSON.stringify(result)).not.toContain('accessToken');
+    expect(mockedApiRequest).toHaveBeenCalledWith('/auth/connected-accounts', {
+      method: 'GET',
+    });
+  });
+
+  it('inicia linking de provider OAuth', async () => {
+    mockedApiRequest.mockResolvedValue(new Response(
+      JSON.stringify({
+        provider: 'DISCORD',
+        authorizationUrl: 'https://discord.com/oauth2/authorize?state=signed-state',
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    ));
+
+    const result = await startAccountLink('DISCORD');
+
+    expect(result.authorizationUrl).toContain('discord.com');
+    expect(mockedApiRequest).toHaveBeenCalledWith('/auth/accounts/discord/link/start', {
+      method: 'GET',
+    });
+  });
+
+  it('inicia reauth de provider OAuth', async () => {
+    mockedApiRequest.mockResolvedValue(new Response(
+      JSON.stringify({
+        provider: 'GOOGLE',
+        authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth?state=signed-state',
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    ));
+
+    const result = await startAccountReauth('GOOGLE');
+
+    expect(result.provider).toBe('GOOGLE');
+    expect(mockedApiRequest).toHaveBeenCalledWith('/auth/accounts/google/reauth/start', {
+      method: 'GET',
+    });
+  });
+
+  it('desconecta conta conectada', async () => {
+    mockedApiRequest.mockResolvedValue(new Response(
+      JSON.stringify({
+        provider: 'GOOGLE',
+        message: 'Google desconectado com sucesso.',
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    ));
+
+    const result = await unlinkConnectedAccount('GOOGLE');
+
+    expect(result.message).toBe('Google desconectado com sucesso.');
+    expect(mockedApiRequest).toHaveBeenCalledWith('/auth/accounts/google', {
+      method: 'DELETE',
+    });
+  });
+
+  it('mapeia erros de dominio sem expor payload sensivel', async () => {
+    mockedApiRequest.mockResolvedValue(new Response(
+      JSON.stringify({
+        message: 'Não é possível remover o último método de login da conta.',
+        accessToken: 'should-not-leak',
+      }),
+      {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    ));
+
+    await expect(unlinkConnectedAccount('GOOGLE')).rejects.toMatchObject({
+      status: 409,
+      message: 'Não é possível remover o último método de login da conta.',
+    } satisfies Partial<IntegrationsRequestError>);
   });
 });

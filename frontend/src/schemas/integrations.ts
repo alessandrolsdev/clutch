@@ -54,6 +54,83 @@ export const igdbSearchResponseSchema = z.object({
   games: z.array(igdbSearchGameSchema),
 });
 
+export const connectedAccountProviderSchema = z.enum([
+  'GOOGLE',
+  'DISCORD',
+  'STEAM',
+  'EPIC',
+  'MYANIMELIST',
+  'ANILIST',
+  'XBOX',
+  'PSN',
+  'RIOT',
+]);
+
+export const connectedAccountConnectionTypeSchema = z.enum(['SOCIAL_LOGIN', 'CONNECTED_ACCOUNT']);
+
+export const connectedAccountStatusSchema = z.enum([
+  'CONNECTED',
+  'NEEDS_REAUTH',
+  'DISCONNECTED',
+  'UNAVAILABLE',
+  'EXPERIMENTAL',
+]);
+
+export const connectedAccountDataSourceSchema = z.enum([
+  'OFFICIAL',
+  'MANUAL',
+  'EXPERIMENTAL',
+  'LOCAL_COMPANION',
+]);
+
+export const connectedAccountSchema = z.object({
+  provider: connectedAccountProviderSchema,
+  displayName: z.string().min(1),
+  externalId: z.string().min(1),
+  connectionType: connectedAccountConnectionTypeSchema,
+  status: connectedAccountStatusSchema,
+  dataSource: connectedAccountDataSourceSchema,
+  connected: z.boolean(),
+  needsReauth: z.boolean(),
+  experimental: z.boolean(),
+  canUnlink: z.boolean(),
+  capabilities: z.array(z.string()),
+  lastSyncAt: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const connectedAccountProviderDefinitionSchema = z.object({
+  provider: connectedAccountProviderSchema,
+  displayName: z.string().min(1),
+  status: connectedAccountStatusSchema,
+  dataSource: connectedAccountDataSourceSchema,
+  capabilities: z.array(z.string()),
+});
+
+export const connectedAccountsResponseSchema = z.object({
+  accounts: z.array(connectedAccountSchema),
+  providers: z.array(connectedAccountProviderDefinitionSchema).default([]),
+});
+
+export const accountConnectionStartResponseSchema = z.object({
+  provider: connectedAccountProviderSchema,
+  authorizationUrl: z.string().url(),
+});
+
+export const accountConnectionCallbackResponseSchema = z.object({
+  provider: connectedAccountProviderSchema,
+  externalId: z.string().min(1),
+  status: connectedAccountStatusSchema,
+  connectionType: connectedAccountConnectionTypeSchema,
+  message: z.string().min(1),
+});
+
+export const accountUnlinkResponseSchema = z.object({
+  provider: connectedAccountProviderSchema,
+  message: z.string().min(1),
+});
+
 export type SteamConnectValues = z.infer<typeof steamConnectRequestSchema>;
 export type SteamConnectResponse = z.infer<typeof steamConnectResponseSchema>;
 export type SteamSyncResponse = z.infer<typeof steamSyncResponseSchema>;
@@ -64,3 +141,10 @@ export type DiscordOAuthCallbackResponse = z.infer<typeof discordOAuthCallbackRe
 export type IgdbSearchValues = z.infer<typeof igdbSearchRequestSchema>;
 export type IgdbSearchGame = z.infer<typeof igdbSearchGameSchema>;
 export type IgdbSearchResponse = z.infer<typeof igdbSearchResponseSchema>;
+export type ConnectedAccountProvider = z.infer<typeof connectedAccountProviderSchema>;
+export type ConnectedAccount = z.infer<typeof connectedAccountSchema>;
+export type ConnectedAccountProviderDefinition = z.infer<typeof connectedAccountProviderDefinitionSchema>;
+export type ConnectedAccountsResponse = z.infer<typeof connectedAccountsResponseSchema>;
+export type AccountConnectionStartResponse = z.infer<typeof accountConnectionStartResponseSchema>;
+export type AccountConnectionCallbackResponse = z.infer<typeof accountConnectionCallbackResponseSchema>;
+export type AccountUnlinkResponse = z.infer<typeof accountUnlinkResponseSchema>;

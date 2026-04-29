@@ -69,10 +69,10 @@ function assertValidRedirectUri(provider: 'google' | 'discord', redirectUri: str
   }
 }
 
-function resolveGoogleOAuthConfig(): GoogleOAuthConfig {
+function resolveGoogleOAuthConfig(redirectUriOverride?: string): GoogleOAuthConfig {
   const clientId = process.env['GOOGLE_CLIENT_ID']?.trim();
   const clientSecret = process.env['GOOGLE_CLIENT_SECRET']?.trim();
-  const redirectUri = process.env['GOOGLE_REDIRECT_URI']?.trim();
+  const redirectUri = redirectUriOverride?.trim() || process.env['GOOGLE_REDIRECT_URI']?.trim();
 
   if (!clientId || !clientSecret || !redirectUri) {
     logIntegrationProviderEvent(
@@ -99,9 +99,9 @@ function resolveGoogleOAuthConfig(): GoogleOAuthConfig {
   };
 }
 
-function resolveDiscordSocialOAuthConfig(): DiscordSocialOAuthConfig {
+function resolveDiscordSocialOAuthConfig(redirectUriOverride?: string): DiscordSocialOAuthConfig {
   const clientId = process.env['DISCORD_CLIENT_ID']?.trim();
-  const redirectUri = process.env['DISCORD_SOCIAL_REDIRECT_URI']?.trim();
+  const redirectUri = redirectUriOverride?.trim() || process.env['DISCORD_SOCIAL_REDIRECT_URI']?.trim();
 
   if (!clientId || !redirectUri) {
     logIntegrationProviderEvent(
@@ -199,8 +199,8 @@ async function fetchGoogleUserInfo(accessToken: string): Promise<GoogleUserInfoR
   }
 }
 
-function buildGoogleAuthorizationUrl(state: string, nonce: string): string {
-  const config = resolveGoogleOAuthConfig();
+function buildGoogleAuthorizationUrl(state: string, nonce: string, redirectUri?: string): string {
+  const config = resolveGoogleOAuthConfig(redirectUri);
   const authorizationUrl = new URL(GOOGLE_AUTHORIZE_URL);
 
   authorizationUrl.searchParams.set('client_id', config.clientId);
@@ -214,8 +214,8 @@ function buildGoogleAuthorizationUrl(state: string, nonce: string): string {
   return authorizationUrl.toString();
 }
 
-function buildDiscordAuthorizationUrl(state: string): string {
-  const config = resolveDiscordSocialOAuthConfig();
+function buildDiscordAuthorizationUrl(state: string, redirectUri?: string): string {
+  const config = resolveDiscordSocialOAuthConfig(redirectUri);
   const authorizationUrl = new URL('https://discord.com/oauth2/authorize');
 
   authorizationUrl.searchParams.set('client_id', config.clientId);
@@ -257,12 +257,12 @@ function toDiscordIdentity(tokenSet: DiscordTokenSet, identity: {
 export const googleSocialOAuthClient: SocialAuthProviderClient = {
   provider: 'GOOGLE',
 
-  createAuthorizationUrl({ state, nonce }): string {
-    return buildGoogleAuthorizationUrl(state, nonce);
+  createAuthorizationUrl({ state, nonce, redirectUri }): string {
+    return buildGoogleAuthorizationUrl(state, nonce, redirectUri);
   },
 
-  async exchangeCodeForIdentity(code): Promise<SocialAuthProviderIdentity> {
-    const config = resolveGoogleOAuthConfig();
+  async exchangeCodeForIdentity(code, input): Promise<SocialAuthProviderIdentity> {
+    const config = resolveGoogleOAuthConfig(input?.redirectUri);
     const tokenSet = await exchangeGoogleCode(code, config);
     const userInfo = await fetchGoogleUserInfo(tokenSet.access_token);
 
@@ -302,12 +302,12 @@ export const googleSocialOAuthClient: SocialAuthProviderClient = {
 export const discordSocialOAuthClient: SocialAuthProviderClient = {
   provider: 'DISCORD',
 
-  createAuthorizationUrl({ state }): string {
-    return buildDiscordAuthorizationUrl(state);
+  createAuthorizationUrl({ state, redirectUri }): string {
+    return buildDiscordAuthorizationUrl(state, redirectUri);
   },
 
-  async exchangeCodeForIdentity(code): Promise<SocialAuthProviderIdentity> {
-    const config = resolveDiscordSocialOAuthConfig();
+  async exchangeCodeForIdentity(code, input): Promise<SocialAuthProviderIdentity> {
+    const config = resolveDiscordSocialOAuthConfig(input?.redirectUri);
     const tokenSet = await discordService.exchangeCodeWithRedirectUri(code, config.redirectUri);
     const identity = await discordService.getCurrentUser(tokenSet.accessToken);
 
