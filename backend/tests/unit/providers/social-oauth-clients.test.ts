@@ -87,4 +87,28 @@ describe('social OAuth provider clients', () => {
       }),
     );
   });
+
+  it('nao deriva username de email Google nao verificado', async () => {
+    vi.mocked(axios.post).mockResolvedValue({
+      data: {
+        access_token: 'google-access-token',
+        expires_in: 3600,
+        scope: 'openid email profile',
+        token_type: 'Bearer',
+      },
+    } as never);
+    vi.mocked(axios.get).mockResolvedValue({
+      data: {
+        sub: 'google-sub-123',
+        email: 'private.localpart@example.com',
+        email_verified: false,
+      },
+    } as never);
+
+    const identity = await googleSocialOAuthClient.exchangeCodeForIdentity('oauth-code');
+
+    expect(identity.externalId).toBe('google-sub-123');
+    expect(identity.emailVerified).toBe(false);
+    expect(identity.username).toBeNull();
+  });
 });

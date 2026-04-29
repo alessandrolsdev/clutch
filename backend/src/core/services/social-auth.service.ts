@@ -58,6 +58,11 @@ export type SocialAuthProviderClient = {
   exchangeCodeForIdentity(code: string): Promise<SocialAuthProviderIdentity>;
 };
 
+export type SocialOAuthStateStore = {
+  store(state: string, ttlMs: number): Promise<void>;
+  consume(state: string): Promise<boolean>;
+};
+
 export type SocialAuthService = {
   startLogin(provider: string): Promise<SocialAuthStartResult>;
   completeCallback(input: {
@@ -119,6 +124,7 @@ type SocialAuthDependencies = {
     'findByProviderExternalId' | 'findByUserProvider'
   >;
   connectedAccountService?: Pick<ConnectedAccountService, 'connectExternalIdentity'>;
+  stateStore?: SocialOAuthStateStore;
   hashPassword?: (rawPassword: string) => Promise<string>;
 };
 
@@ -252,6 +258,40 @@ export function createSocialOAuthState(provider: SocialAuthProvider): { state: s
   };
 }
 
+export function createInMemorySocialOAuthStateStore(): SocialOAuthStateStore {
+  const states = new Map<string, number>();
+
+  function pruneExpiredStates(): void {
+    const now = Date.now();
+
+    for (const [state, expiresAt] of states.entries()) {
+      if (expiresAt <= now) {
+        states.delete(state);
+      }
+    }
+  }
+
+  return {
+    async store(state, ttlMs): Promise<void> {
+      pruneExpiredStates();
+      states.set(state, Date.now() + ttlMs);
+    },
+
+    async consume(state): Promise<boolean> {
+      pruneExpiredStates();
+      const expiresAt = states.get(state);
+
+      if (!expiresAt || expiresAt <= Date.now()) {
+        states.delete(state);
+        return false;
+      }
+
+      states.delete(state);
+      return true;
+    },
+  };
+}
+
 function isSocialAuthProvider(value: unknown): value is SocialAuthProvider {
   return value === 'GOOGLE' || value === 'DISCORD';
 }
@@ -316,7 +356,7 @@ async function buildAvailableUsername(
   identity: SocialAuthProviderIdentity,
   users: SocialAuthUserGateway,
 ): Promise<string> {
-  const emailLocalPart = identity.email?.split('@')[0] ?? null;
+  const emailLocalPart = identity.emailVerified ? identity.email?.split('@')[0] ?? null : null;
   const base = sanitizeUsernameSeed(identity.username ?? identity.displayName ?? emailLocalPart);
   const existingBaseUser = await users.findByUsername(base);
 
@@ -367,6 +407,7 @@ export function createSocialAuthService(
   const users = dependencies.users ?? userRepository;
   const connectedAccounts = dependencies.connectedAccounts ?? createConnectedAccountRepository();
   const connectedAccountService = dependencies.connectedAccountService ?? createConnectedAccountService();
+  const stateStore = dependencies.stateStore ?? createInMemorySocialOAuthStateStore();
   const providerClients = {
     GOOGLE: dependencies.providerClients?.GOOGLE ?? googleSocialOAuthClient,
     DISCORD: dependencies.providerClients?.DISCORD ?? discordSocialOAuthClient,
@@ -383,10 +424,12 @@ export function createSocialAuthService(
       const existingEmailUser = await users.findByEmail(verifiedEmail);
 
       if (existingEmailUser) {
-        return {
-          user: existingEmailUser,
-          isNewUser: false,
-        };
+        throw createSocialAuthError({
+          statusCode: 409,
+          reason: 'identity_conflict',
+          clientMessage: 'Já existe uma conta com este email. Entre com senha e vincule o provider depois.',
+          provider: identity.provider,
+        });
       }
     }
 
@@ -412,10 +455,13 @@ export function createSocialAuthService(
       const socialProvider = normalizeSocialAuthProvider(provider);
       const client = providerClients[socialProvider];
       const { state, nonce } = createSocialOAuthState(socialProvider);
+      const authorizationUrl = client.createAuthorizationUrl({ state, nonce });
+
+      await stateStore.store(state, SOCIAL_STATE_TTL_MS);
 
       return {
         provider: socialProvider,
-        authorizationUrl: client.createAuthorizationUrl({ state, nonce }),
+        authorizationUrl,
       };
     },
 
@@ -441,6 +487,15 @@ export function createSocialAuthService(
       }
 
       verifyStateValue(input.state, socialProvider);
+
+      if (!await stateStore.consume(input.state)) {
+        throw createSocialAuthError({
+          statusCode: 400,
+          reason: 'invalid_state',
+          clientMessage: 'Callback social inválido ou expirado.',
+          provider: socialProvider,
+        });
+      }
 
       let identity: SocialAuthProviderIdentity;
 

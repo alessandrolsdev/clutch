@@ -10,7 +10,7 @@ import {
   logServerEvent,
 } from '@/lib/server/logger';
 import { loginBackendResponseSchema } from '@/schemas/auth';
-import { buildApiUrl } from '@/services/http/client';
+import { buildApiUrl, buildPublicAppUrl } from '@/services/http/client';
 
 type RouteContext = {
   params: Promise<{
@@ -48,8 +48,8 @@ function resolveMessage(payload: unknown, fallback: string): string {
   return fallback;
 }
 
-function redirectToLoginWithError(request: NextRequest, message: string): NextResponse {
-  const redirectUrl = new URL('/login', request.url);
+function redirectToLoginWithError(message: string): NextResponse {
+  const redirectUrl = new URL(buildPublicAppUrl('/login'));
   redirectUrl.searchParams.set('socialAuthError', message);
   return NextResponse.redirect(redirectUrl);
 }
@@ -79,31 +79,22 @@ export async function GET(request: NextRequest, context: RouteContext): Promise<
       ...serializeServerError(error),
     });
 
-    return redirectToLoginWithError(
-      request,
-      'Nao foi possivel concluir o login social agora.',
-    );
+    return redirectToLoginWithError('Nao foi possivel concluir o login social agora.');
   }
 
   const payload = await readJsonBody(backendResponse);
 
   if (!backendResponse.ok) {
-    return redirectToLoginWithError(
-      request,
-      resolveMessage(payload, 'Nao foi possivel concluir o login social agora.'),
-    );
+    return redirectToLoginWithError(resolveMessage(payload, 'Nao foi possivel concluir o login social agora.'));
   }
 
   const sessionResult = loginBackendResponseSchema.safeParse(payload);
 
   if (!sessionResult.success) {
-    return redirectToLoginWithError(
-      request,
-      'Resposta invalida do backend de login social.',
-    );
+    return redirectToLoginWithError('Resposta invalida do backend de login social.');
   }
 
-  const redirectUrl = new URL('/feed', request.url);
+  const redirectUrl = new URL(buildPublicAppUrl('/feed'));
   const response = NextResponse.redirect(redirectUrl);
 
   setAccessSessionCookie(response, sessionResult.data.token);
