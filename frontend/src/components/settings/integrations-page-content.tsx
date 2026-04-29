@@ -1,6 +1,8 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'next/navigation';
+import { ConnectionCenter } from '@/components/settings/connection-center';
 import { DiscordIntegrationCard } from '@/components/settings/discord-integration-card';
 import { EpicIntegrationCard } from '@/components/settings/epic-integration-card';
 import { IgdbSearchCard } from '@/components/settings/igdb-search-card';
@@ -58,7 +60,10 @@ function IntegrationsErrorState({ message }: { message: string }) {
 
 export function IntegrationsPageContent() {
   const { user, status } = useAuth();
+  const searchParams = useSearchParams();
   const username = user?.username ?? null;
+  const connectionStatus = searchParams.get('connectionStatus');
+  const connectionMessage = searchParams.get('connectionMessage');
 
   const profileQuery = useQuery({
     queryKey: ['profile', username],
@@ -101,6 +106,20 @@ export function IntegrationsPageContent() {
       />
 
       <SettingsNav />
+
+      {connectionMessage ? (
+        <div
+          className={
+            connectionStatus === 'success'
+              ? 'rounded-control border border-status-online/40 bg-[rgba(16,185,129,0.12)] px-control-x py-control-y text-sm text-primary'
+              : 'rounded-control border border-status-afk/40 bg-[rgba(245,158,11,0.12)] px-control-x py-control-y text-sm text-primary'
+          }
+        >
+          {connectionMessage}
+        </div>
+      ) : null}
+
+      <ConnectionCenter />
 
       <div className="grid gap-section xl:grid-cols-2">
         <SteamIntegrationCard
