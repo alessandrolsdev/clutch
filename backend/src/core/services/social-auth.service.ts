@@ -54,8 +54,8 @@ export type SocialAuthProviderIdentity = {
 
 export type SocialAuthProviderClient = {
   provider: SocialAuthProvider;
-  createAuthorizationUrl(input: { state: string; nonce: string }): string;
-  exchangeCodeForIdentity(code: string): Promise<SocialAuthProviderIdentity>;
+  createAuthorizationUrl(input: { state: string; nonce: string; redirectUri?: string }): string;
+  exchangeCodeForIdentity(code: string, input?: { redirectUri?: string }): Promise<SocialAuthProviderIdentity>;
 };
 
 export type SocialOAuthStateStore = {

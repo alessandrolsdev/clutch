@@ -8,6 +8,7 @@ import { fetchProfileByUsername } from '@/services/profile';
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/settings/integrations',
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock('@/hooks/use-auth', () => ({
@@ -25,6 +26,10 @@ vi.mock('@/services/profile', () => ({
       this.status = status;
     }
   },
+}));
+
+vi.mock('@/components/settings/connection-center', () => ({
+  ConnectionCenter: () => <div data-testid="connection-center" />,
 }));
 
 const mockedUseAuth = vi.mocked(useAuth);
