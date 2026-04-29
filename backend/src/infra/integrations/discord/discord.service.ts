@@ -245,8 +245,9 @@ export const discordService = {
     return validateStateValue(state, config.clientSecret);
   },
 
-  async exchangeCode(code: string): Promise<DiscordTokenSet> {
+  async exchangeCodeWithRedirectUri(code: string, redirectUri: string): Promise<DiscordTokenSet> {
     const config = resolveDiscordOAuthConfig();
+    assertValidRedirectUri(redirectUri);
 
     try {
       const response = await axios.post<DiscordTokenResponse>(
@@ -256,7 +257,7 @@ export const discordService = {
           client_secret: config.clientSecret,
           grant_type: 'authorization_code',
           code,
-          redirect_uri: config.redirectUri,
+          redirect_uri: redirectUri,
         }).toString(),
         {
           headers: {
@@ -296,6 +297,11 @@ export const discordService = {
         { targetUrl: DISCORD_TOKEN_URL },
       );
     }
+  },
+
+  async exchangeCode(code: string): Promise<DiscordTokenSet> {
+    const config = resolveDiscordOAuthConfig();
+    return this.exchangeCodeWithRedirectUri(code, config.redirectUri);
   },
 
   async getCurrentUser(accessToken: string): Promise<DiscordIdentity> {

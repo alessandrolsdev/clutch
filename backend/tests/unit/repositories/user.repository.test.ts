@@ -127,7 +127,7 @@ describe('userRepository', () => {
           username:      'clutchplayer',
           email:         'player@clutch.gg',
           password_hash: 'password123',
-          profile:  { create: { displayName: 'clutchplayer' } },
+          profile:  { create: { displayName: 'clutchplayer', avatarUrl: null } },
           stats:    { create: { level: 1, xp: 0 } },
           presence: { create: { status: 'OFFLINE' } },
         }),

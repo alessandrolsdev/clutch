@@ -11,6 +11,8 @@ export interface CreateUserInput {
   username: string;
   email:    string;
   password: string;
+  displayName?: string | null;
+  avatarUrl?: string | null;
 }
 
 export const userRepository = {
@@ -43,7 +45,8 @@ export const userRepository = {
         password_hash: input.password,
         profile: {
           create: {
-            displayName: input.username,
+            displayName: input.displayName ?? input.username,
+            avatarUrl: input.avatarUrl ?? null,
           },
         },
         stats: {
