@@ -50,4 +50,10 @@ describe('provider registry', () => {
     expect(epic.capabilities).not.toContain('SOCIAL_LOGIN');
     expect(epic.capabilities).not.toContain('OAUTH_CONNECT');
   });
+
+  it('falha explicitamente para provider nao registrado', () => {
+    expect(() => getProviderDefinition('TWITCH' as never)).toThrowError(
+      'Provider TWITCH não está registrado.',
+    );
+  });
 });

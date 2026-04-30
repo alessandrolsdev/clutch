@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createSocialAuthService,
   SocialAuthError,
@@ -81,6 +81,10 @@ async function issueState(
 }
 
 describe('social auth service', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('inicia login social para provider suportado com state assinado', async () => {
     const dependencies = createDependencies();
     const service = createSocialAuthService(dependencies);
@@ -147,6 +151,27 @@ describe('social auth service', () => {
       statusCode: 400,
       reason: 'invalid_request',
     });
+  });
+
+  it('rejeita callback com state expirado antes de trocar token', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-29T12:00:00.000Z'));
+    const dependencies = createDependencies();
+    const service = createSocialAuthService(dependencies);
+    const state = await issueState(service, dependencies, 'GOOGLE');
+
+    vi.setSystemTime(new Date('2026-04-29T12:11:00.000Z'));
+
+    await expect(service.completeCallback({
+      provider: 'google',
+      code: 'oauth-code',
+      state,
+    })).rejects.toMatchObject({
+      statusCode: 400,
+      reason: 'invalid_state',
+      clientMessage: 'Callback social inválido ou expirado.',
+    });
+    expect(dependencies.providerClients.GOOGLE.exchangeCodeForIdentity).not.toHaveBeenCalled();
   });
 
   it('emite login para o owner quando a identidade externa ja existe', async () => {

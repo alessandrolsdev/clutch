@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Platform, User } from '@prisma/client';
 import {
   AccountConnectionError,
@@ -112,6 +112,10 @@ async function issueState(
 }
 
 describe('account connection service', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('lista contas conectadas sem expor tokens', async () => {
     const dependencies = createDependencies();
     dependencies.repository.listByUser.mockResolvedValue([
@@ -305,6 +309,27 @@ describe('account connection service', () => {
     expect(dependencies.connectedAccountService.connectExternalIdentity).not.toHaveBeenCalled();
   });
 
+  it('rejeita callback de linking com state expirado antes de trocar token', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-29T12:00:00.000Z'));
+    const dependencies = createDependencies();
+    const service = createAccountConnectionService(dependencies);
+    const state = await issueState(service, dependencies, 'GOOGLE');
+
+    vi.setSystemTime(new Date('2026-04-29T12:11:00.000Z'));
+
+    await expect(service.completeLink({
+      provider: 'google',
+      code: 'oauth-code',
+      state,
+    })).rejects.toMatchObject({
+      statusCode: 400,
+      reason: 'invalid_state',
+      clientMessage: 'Callback de conexão inválido ou expirado.',
+    });
+    expect(dependencies.providerClients.GOOGLE.exchangeCodeForIdentity).not.toHaveBeenCalled();
+  });
+
   it('mapeia corrida de ownership externo para erro de dominio', async () => {
     const dependencies = createDependencies();
     const service = createAccountConnectionService(dependencies);
@@ -424,6 +449,26 @@ describe('account connection service', () => {
     });
   });
 
+  it('remove conta apenas pelo userId autenticado e provider solicitado', async () => {
+    const dependencies = createDependencies();
+    dependencies.repository.findByUserProvider.mockResolvedValue(createAccount({
+      provider: 'DISCORD',
+      userId: 'user-id-1',
+      connectionType: 'CONNECTED_ACCOUNT',
+    }));
+    dependencies.repository.deleteByUserProvider.mockResolvedValue(createAccount({
+      provider: 'DISCORD',
+      userId: 'user-id-1',
+      connectionType: 'CONNECTED_ACCOUNT',
+    }));
+    const service = createAccountConnectionService(dependencies);
+
+    await service.unlink({ userId: 'user-id-1', provider: 'discord' });
+
+    expect(dependencies.repository.findByUserProvider).toHaveBeenCalledWith('user-id-1', 'DISCORD');
+    expect(dependencies.repository.deleteByUserProvider).toHaveBeenCalledWith('user-id-1', 'DISCORD');
+  });
+
   it('bloqueia visibilidade publica para conta que precisa reconectar', async () => {
     const dependencies = createDependencies();
     dependencies.repository.findByUserProvider.mockResolvedValue(createAccount({
@@ -495,6 +540,18 @@ describe('account connection service', () => {
 
     expect(result.provider).toBe('DISCORD');
     expect(result.authorizationUrl).toBe('https://provider.test/discord/authorize');
+  });
+
+  it('bloqueia reauth para conta inexistente', async () => {
+    const service = createAccountConnectionService(createDependencies());
+
+    await expect(service.startReauth({
+      userId: 'user-id-1',
+      provider: 'discord',
+    })).rejects.toMatchObject({
+      statusCode: 404,
+      reason: 'not_connected',
+    });
   });
 
   it('rejeita reauth para provider sem OAuth connect', async () => {

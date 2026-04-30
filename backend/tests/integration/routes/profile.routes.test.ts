@@ -143,7 +143,11 @@ describe('Profile Routes', () => {
       });
       expect(JSON.stringify(response.json())).not.toContain('externalId');
       expect(JSON.stringify(response.json())).not.toContain('accessToken');
+      expect(JSON.stringify(response.json())).not.toContain('refreshToken');
       expect(JSON.stringify(response.json())).not.toContain('metadata');
+      expect(JSON.stringify(response.json())).not.toContain('rawProfile');
+      expect(JSON.stringify(response.json())).not.toContain('state');
+      expect(JSON.stringify(response.json())).not.toContain('secret');
       await app.close();
     });
 
