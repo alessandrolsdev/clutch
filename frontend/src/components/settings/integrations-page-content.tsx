@@ -11,6 +11,7 @@ import { SteamIntegrationCard } from '@/components/settings/steam-integration-ca
 import { Card } from '@/components/ui/card';
 import { SectionHeading } from '@/components/ui/section-heading';
 import { useAuth } from '@/hooks/use-auth';
+import { fetchConnectedAccounts } from '@/services/integrations';
 import { fetchProfileByUsername, ProfileRequestError } from '@/services/profile';
 
 function IntegrationsLoadingState() {
@@ -53,12 +54,28 @@ export function IntegrationsPageContent() {
     queryFn: () => fetchProfileByUsername(username as string),
     enabled: status === 'authenticated' && typeof username === 'string',
   });
+  const connectedAccountsQuery = useQuery({
+    queryKey: ['connected-accounts'],
+    queryFn: fetchConnectedAccounts,
+    enabled: status === 'authenticated',
+  });
 
-  if (status === 'loading' || profileQuery.isPending) {
+  if (
+    status === 'loading' ||
+    profileQuery.isPending ||
+    (status === 'authenticated' && connectedAccountsQuery.isPending)
+  ) {
     return <IntegrationsLoadingState />;
   }
 
-  if (status !== 'authenticated' || !username || profileQuery.isError || !profileQuery.data) {
+  if (
+    status !== 'authenticated' ||
+    !username ||
+    profileQuery.isError ||
+    connectedAccountsQuery.isError ||
+    !profileQuery.data ||
+    !connectedAccountsQuery.data
+  ) {
     const errorMessage =
       profileQuery.error instanceof ProfileRequestError
         ? profileQuery.error.message
@@ -70,7 +87,9 @@ export function IntegrationsPageContent() {
   const steamGames = profileQuery.data.gameLibrary.filter((game) => game.platform === 'STEAM');
   const epicGames = profileQuery.data.gameLibrary.filter((game) => game.platform === 'EPIC');
   const connectedPlatforms = new Set(
-    profileQuery.data.platformIntegrations.map((integration) => integration.platform),
+    connectedAccountsQuery.data.accounts
+      .filter((account) => account.connected)
+      .map((account) => account.provider),
   );
 
   return (
@@ -103,7 +122,10 @@ export function IntegrationsPageContent() {
           isConnected={connectedPlatforms.has('STEAM')}
           importedPreviewCount={steamGames.length}
           onRefreshStatus={async () => {
-            await profileQuery.refetch();
+            await Promise.all([
+              profileQuery.refetch(),
+              connectedAccountsQuery.refetch(),
+            ]);
           }}
         />
 
@@ -111,7 +133,10 @@ export function IntegrationsPageContent() {
           isConnected={connectedPlatforms.has('EPIC')}
           importedPreviewCount={epicGames.length}
           onRefreshStatus={async () => {
-            await profileQuery.refetch();
+            await Promise.all([
+              profileQuery.refetch(),
+              connectedAccountsQuery.refetch(),
+            ]);
           }}
         />
 

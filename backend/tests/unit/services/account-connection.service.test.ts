@@ -152,12 +152,17 @@ describe('account connection service', () => {
           provider: 'EPIC',
           status: 'EXPERIMENTAL',
         }),
+        expect.objectContaining({
+          provider: 'MYANIMELIST',
+          status: 'UNAVAILABLE',
+          capabilities: ['CONNECTED_ACCOUNT'],
+        }),
       ]),
     );
     expect(result.providers).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          provider: 'MYANIMELIST',
+          provider: 'ANILIST',
         }),
       ]),
     );
@@ -253,6 +258,14 @@ describe('account connection service', () => {
     await expect(service.startLink({
       userId: 'user-id-1',
       provider: 'steam',
+    })).rejects.toMatchObject({
+      statusCode: 400,
+      reason: 'unsupported_provider',
+    });
+
+    await expect(service.startLink({
+      userId: 'user-id-1',
+      provider: 'myanimelist',
     })).rejects.toMatchObject({
       statusCode: 400,
       reason: 'unsupported_provider',

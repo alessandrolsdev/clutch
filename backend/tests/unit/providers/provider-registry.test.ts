@@ -31,13 +31,14 @@ describe('provider registry', () => {
     );
   });
 
-  it('mantem providers futuros indisponiveis sem remover capabilities declaradas', () => {
+  it('mantem MyAnimeList planejado sem declarar OAuth antes do client real', () => {
     const myAnimeList = getProviderDefinition('MYANIMELIST');
 
     expect(myAnimeList.status).toBe('UNAVAILABLE');
-    expect(myAnimeList.capabilities).toEqual(
-      expect.arrayContaining(['CONNECTED_ACCOUNT', 'OAUTH_CONNECT']),
-    );
+    expect(myAnimeList.visibleInConnectionCenter).toBe(true);
+    expect(myAnimeList.capabilities).toContain('CONNECTED_ACCOUNT');
+    expect(myAnimeList.capabilities).not.toContain('OAUTH_CONNECT');
+    expect(myAnimeList.capabilities).not.toContain('SOCIAL_LOGIN');
   });
 
   it('mantem Epic como provider experimental sem login social', () => {

@@ -18,6 +18,7 @@ export type ProviderDefinition = {
   dataSource: PlatformIntegrationDataSource;
   status: PlatformIntegrationStatus;
   capabilities: ProviderCapability[];
+  visibleInConnectionCenter?: boolean;
 };
 
 const PROVIDER_DEFINITIONS: readonly ProviderDefinition[] = [
@@ -27,6 +28,7 @@ const PROVIDER_DEFINITIONS: readonly ProviderDefinition[] = [
     dataSource: 'OFFICIAL',
     status: 'CONNECTED',
     capabilities: ['SOCIAL_LOGIN', 'OAUTH_CONNECT'],
+    visibleInConnectionCenter: true,
   },
   {
     provider: 'DISCORD',
@@ -34,6 +36,7 @@ const PROVIDER_DEFINITIONS: readonly ProviderDefinition[] = [
     dataSource: 'OFFICIAL',
     status: 'CONNECTED',
     capabilities: ['SOCIAL_LOGIN', 'CONNECTED_ACCOUNT', 'OAUTH_CONNECT', 'PRESENCE_INGESTION'],
+    visibleInConnectionCenter: true,
   },
   {
     provider: 'STEAM',
@@ -41,6 +44,7 @@ const PROVIDER_DEFINITIONS: readonly ProviderDefinition[] = [
     dataSource: 'OFFICIAL',
     status: 'CONNECTED',
     capabilities: ['CONNECTED_ACCOUNT', 'LIBRARY_IMPORT'],
+    visibleInConnectionCenter: true,
   },
   {
     provider: 'EPIC',
@@ -48,13 +52,15 @@ const PROVIDER_DEFINITIONS: readonly ProviderDefinition[] = [
     dataSource: 'EXPERIMENTAL',
     status: 'EXPERIMENTAL',
     capabilities: ['CONNECTED_ACCOUNT', 'TOKEN_CONNECT', 'LIBRARY_IMPORT'],
+    visibleInConnectionCenter: true,
   },
   {
     provider: 'MYANIMELIST',
     displayName: 'MyAnimeList',
     dataSource: 'OFFICIAL',
     status: 'UNAVAILABLE',
-    capabilities: ['CONNECTED_ACCOUNT', 'OAUTH_CONNECT'],
+    capabilities: ['CONNECTED_ACCOUNT'],
+    visibleInConnectionCenter: true,
   },
   {
     provider: 'ANILIST',

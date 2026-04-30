@@ -45,7 +45,7 @@ describe('Integrations Routes', () => {
       const response = await app.inject({
         method: 'POST',
         url: '/integrations/steam/connect',
-        payload: { steamId: '76561198000000000' },
+        payload: { steamId: ' 76561198000000000 ' },
       });
 
       expect(response.statusCode).toBe(401);
@@ -84,7 +84,7 @@ describe('Integrations Routes', () => {
         method: 'POST',
         url: '/integrations/steam/connect',
         headers: { Authorization: `Bearer ${token}` },
-        payload: { steamId: '76561198000000000' },
+        payload: { steamId: ' 76561198000000000 ' },
       });
 
       expect(response.statusCode).toBe(200);
