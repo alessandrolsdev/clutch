@@ -68,6 +68,10 @@ function createDependencies() {
       GOOGLE: createProviderClient('GOOGLE'),
       DISCORD: createProviderClient('DISCORD'),
     },
+    steamClient: {
+      createAuthorizationUrl: vi.fn().mockReturnValue('https://steamcommunity.com/openid/login?openid.mode=checkid_setup'),
+      verifyCallback: vi.fn().mockResolvedValue({ steamId: '76561198000000000' }),
+    },
     users: {
       findById: vi.fn().mockResolvedValue(baseUser),
     },
@@ -109,6 +113,29 @@ async function issueState(
   }
 
   return lastCall[0].state;
+}
+
+async function issueSteamState(
+  service: ReturnType<typeof createAccountConnectionService>,
+  dependencies: ReturnType<typeof createDependencies>,
+): Promise<string> {
+  await service.startLink({ userId: 'user-id-1', provider: 'steam' });
+
+  const createAuthorizationUrl = vi.mocked(dependencies.steamClient.createAuthorizationUrl);
+  const lastCall = createAuthorizationUrl.mock.calls.at(-1);
+
+  if (!lastCall) {
+    throw new Error('Expected Steam account connection state to be issued.');
+  }
+
+  const returnTo = new URL(lastCall[0].returnTo);
+  const state = returnTo.searchParams.get('state');
+
+  if (!state) {
+    throw new Error('Expected Steam returnTo to include state.');
+  }
+
+  return state;
 }
 
 describe('account connection service', () => {
@@ -252,16 +279,31 @@ describe('account connection service', () => {
     }
   });
 
-  it('rejeita linking para provider sem capability OAuth connect', async () => {
-    const service = createAccountConnectionService(createDependencies());
+  it('inicia linking Steam por OpenID sem tratar como login social', async () => {
+    const dependencies = createDependencies();
+    const service = createAccountConnectionService(dependencies);
 
-    await expect(service.startLink({
+    const result = await service.startLink({
       userId: 'user-id-1',
       provider: 'steam',
-    })).rejects.toMatchObject({
-      statusCode: 400,
-      reason: 'unsupported_provider',
     });
+
+    expect(result).toMatchObject({
+      provider: 'STEAM',
+      authorizationUrl: 'https://steamcommunity.com/openid/login?openid.mode=checkid_setup',
+    });
+    expect(dependencies.steamClient.createAuthorizationUrl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        returnTo: expect.stringContaining('/api/auth/accounts/steam/link/callback?state='),
+        realm: 'http://localhost',
+      }),
+    );
+    expect(dependencies.providerClients.GOOGLE.createAuthorizationUrl).not.toHaveBeenCalled();
+    expect(dependencies.providerClients.DISCORD.createAuthorizationUrl).not.toHaveBeenCalled();
+  });
+
+  it('rejeita linking para provider sem capability de browser connect', async () => {
+    const service = createAccountConnectionService(createDependencies());
 
     await expect(service.startLink({
       userId: 'user-id-1',
@@ -301,6 +343,47 @@ describe('account connection service', () => {
     );
   });
 
+  it('conecta Steam via OpenID como conta conectada oficial', async () => {
+    const dependencies = createDependencies();
+    const service = createAccountConnectionService(dependencies);
+    const state = await issueSteamState(service, dependencies);
+
+    const result = await service.completeLink({
+      provider: 'steam',
+      state,
+      openIdParams: {
+        'openid.mode': 'id_res',
+      },
+    });
+
+    expect(result).toMatchObject({
+      provider: 'STEAM',
+      externalId: '76561198000000000',
+      status: 'CONNECTED',
+      connectionType: 'CONNECTED_ACCOUNT',
+      message: 'Steam verificada e conectada com sucesso.',
+    });
+    expect(dependencies.steamClient.verifyCallback).toHaveBeenCalledWith(
+      { 'openid.mode': 'id_res' },
+      { expectedReturnTo: expect.stringContaining(`/api/auth/accounts/steam/link/callback?state=${encodeURIComponent(state)}`) },
+    );
+    expect(dependencies.connectedAccountService.connectExternalIdentity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user-id-1',
+        provider: 'STEAM',
+        externalId: '76561198000000000',
+        connectionType: 'CONNECTED_ACCOUNT',
+        status: 'CONNECTED',
+        dataSource: 'OFFICIAL',
+        metadata: expect.objectContaining({
+          source: 'steam_openid',
+          ownershipProof: 'openid',
+          ownershipVerifiedAt: expect.any(String),
+        }),
+      }),
+    );
+  });
+
   it('bloqueia linking quando identidade externa pertence a outro usuario', async () => {
     const dependencies = createDependencies();
     const service = createAccountConnectionService(dependencies);
@@ -318,6 +401,82 @@ describe('account connection service', () => {
     })).rejects.toMatchObject({
       statusCode: 409,
       reason: 'identity_conflict',
+    });
+    expect(dependencies.connectedAccountService.connectExternalIdentity).not.toHaveBeenCalled();
+  });
+
+  it('bloqueia Steam OpenID quando SteamID64 pertence a outro usuario', async () => {
+    const dependencies = createDependencies();
+    const service = createAccountConnectionService(dependencies);
+    const state = await issueSteamState(service, dependencies);
+    dependencies.repository.findByProviderExternalId.mockResolvedValueOnce(createAccount({
+      provider: 'STEAM',
+      externalId: '76561198000000000',
+      userId: 'other-user-id',
+    }));
+
+    await expect(service.completeLink({
+      provider: 'steam',
+      state,
+      openIdParams: { 'openid.mode': 'id_res' },
+    })).rejects.toMatchObject({
+      statusCode: 409,
+      reason: 'identity_conflict',
+    });
+    expect(dependencies.connectedAccountService.connectExternalIdentity).not.toHaveBeenCalled();
+  });
+
+  it('atualiza Steam existente do mesmo usuario sem duplicar ownership', async () => {
+    const dependencies = createDependencies();
+    const service = createAccountConnectionService(dependencies);
+    const state = await issueSteamState(service, dependencies);
+    dependencies.repository.findByProviderExternalId.mockResolvedValueOnce(createAccount({
+      provider: 'STEAM',
+      externalId: '76561198000000000',
+      userId: 'user-id-1',
+    }));
+    dependencies.repository.findByUserProvider.mockResolvedValueOnce(createAccount({
+      provider: 'STEAM',
+      externalId: '76561198000000000',
+      userId: 'user-id-1',
+      connectionType: 'CONNECTED_ACCOUNT',
+    }));
+
+    await expect(service.completeLink({
+      provider: 'steam',
+      state,
+      openIdParams: { 'openid.mode': 'id_res' },
+    })).resolves.toMatchObject({
+      provider: 'STEAM',
+      externalId: '76561198000000000',
+    });
+    expect(dependencies.connectedAccountService.connectExternalIdentity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'STEAM',
+        externalId: '76561198000000000',
+      }),
+    );
+  });
+
+  it('bloqueia Steam OpenID quando usuario ja possui SteamID64 diferente', async () => {
+    const dependencies = createDependencies();
+    const service = createAccountConnectionService(dependencies);
+    const state = await issueSteamState(service, dependencies);
+    dependencies.repository.findByUserProvider.mockResolvedValueOnce(createAccount({
+      provider: 'STEAM',
+      externalId: '76561198099999999',
+      userId: 'user-id-1',
+      connectionType: 'CONNECTED_ACCOUNT',
+    }));
+
+    await expect(service.completeLink({
+      provider: 'steam',
+      state,
+      openIdParams: { 'openid.mode': 'id_res' },
+    })).rejects.toMatchObject({
+      statusCode: 409,
+      reason: 'identity_conflict',
+      clientMessage: 'Este usuário já possui outra identidade Steam vinculada.',
     });
     expect(dependencies.connectedAccountService.connectExternalIdentity).not.toHaveBeenCalled();
   });

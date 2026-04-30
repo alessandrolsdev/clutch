@@ -24,7 +24,9 @@ describe('provider registry', () => {
     const google = providers.find((provider) => provider.provider === 'GOOGLE');
 
     expect(steam?.capabilities).toContain('CONNECTED_ACCOUNT');
+    expect(steam?.capabilities).toContain('OPENID_CONNECT');
     expect(steam?.capabilities).not.toContain('SOCIAL_LOGIN');
+    expect(steam?.capabilities).not.toContain('OAUTH_CONNECT');
     expect(google?.status).toBe('CONNECTED');
     expect(google?.capabilities).toEqual(
       expect.arrayContaining(['SOCIAL_LOGIN', 'OAUTH_CONNECT']),

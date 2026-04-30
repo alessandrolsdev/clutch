@@ -22,6 +22,7 @@ type PlatformIntegrationPlatform = 'STEAM' | 'EPIC';
 
 type PersistedIntegration = {
   externalId: string;
+  dataSource: PlatformIntegrationDataSource;
   accessToken?: string | null;
 };
 
@@ -102,6 +103,7 @@ export function createPrismaIntegrationsPersistence(): IntegrationsPersistence {
 
       return {
         externalId: integration.externalId,
+        dataSource: integration.dataSource,
         accessToken: integration.accessToken,
       };
     },
@@ -213,7 +215,22 @@ export function createIntegrationsService(dependencies?: {
         );
       }
 
-      await persistence.upsertPlatformIntegration(userId, 'STEAM', { externalId: normalizedSteamId });
+      const existingSteamIntegration = await persistence.findPlatformIntegration(userId, 'STEAM');
+      const hasOfficialOwnershipProof = existingSteamIntegration?.dataSource === 'OFFICIAL';
+
+      if (hasOfficialOwnershipProof && existingSteamIntegration.externalId !== normalizedSteamId) {
+        throw createIntegrationError(
+          'steam',
+          409,
+          'conflict',
+          'A conta Steam verificada já usa outro SteamID. Use o fluxo verificado pela Steam para trocar a conta.',
+        );
+      }
+
+      await persistence.upsertPlatformIntegration(userId, 'STEAM', {
+        externalId: normalizedSteamId,
+        dataSource: hasOfficialOwnershipProof ? 'OFFICIAL' : 'MANUAL',
+      });
 
       let games: SteamGame[] = [];
       let libraryImportSkipped = false;

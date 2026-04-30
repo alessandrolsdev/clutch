@@ -47,7 +47,7 @@ describe('SteamIntegrationCard', () => {
     mockedSyncSteamLibrary.mockReset();
   });
 
-  it('connects steam with the form payload', async () => {
+  it('connects steam manually with the fallback form payload', async () => {
     mockedConnectSteam.mockResolvedValue({
       message: 'Steam conectado. 2 jogos importados.',
       imported: 2,
@@ -58,7 +58,9 @@ describe('SteamIntegrationCard', () => {
     fireEvent.change(screen.getByLabelText(/steamid/i), {
       target: { value: '76561198000000000' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /conectar steam/i }));
+    expect(screen.getByText(/nao prova ownership da conta/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /vincular steamid manualmente/i }));
 
     await waitFor(() => {
       expect(mockedConnectSteam).toHaveBeenCalled();

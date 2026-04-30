@@ -4,7 +4,8 @@
 
 - Steam Web Sign-In usa OpenID 2.0, nao OAuth2 comum.
 - A identidade forte para ownership externo e o SteamID64 retornado pela Claimed ID no formato `https://steamcommunity.com/openid/id/<steamid>`.
-- O CLUTCH ainda usa o fluxo legado de formulario com SteamID informado pelo usuario, mas persiste esse SteamID64 como `PlatformIntegration.externalId` via `ConnectedAccountService`.
+- O fluxo principal de conexao Steam deve usar Steam OpenID via navegador para provar ownership antes de persistir `PlatformIntegration.externalId` via `ConnectedAccountService`.
+- O formulario manual com SteamID permanece apenas como fallback de importacao/dados publicos e persiste `dataSource=MANUAL`; ele nao prova ownership da conta Steam.
 - A importacao de biblioteca usa `IPlayerService/GetOwnedGames` com `STEAM_API_KEY`, `include_appinfo=true` e `include_played_free_games=true`.
 - Quando a Steam nao retorna jogos por biblioteca privada ou detalhes nao visiveis, o CLUTCH trata como lista vazia e mantem a conexao, sem expor API key ou payload bruto ao frontend.
 - O contrato atual nao diferencia com confianca biblioteca realmente vazia, biblioteca privada e resposta sem jogos por regra de visibilidade da Steam. A UI deve comunicar esse fallback sem transformar a ausencia de jogos em erro fatal.

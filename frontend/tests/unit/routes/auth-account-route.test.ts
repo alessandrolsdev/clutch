@@ -51,6 +51,49 @@ describe('auth account connection frontend routes', () => {
     );
   });
 
+  it('redireciona callback Steam OpenID sem propagar query sensivel', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const backendUrl = new URL(String(input));
+
+      expect(backendUrl.origin).toBe('http://backend.test');
+      expect(backendUrl.pathname).toBe('/auth/accounts/steam/link/callback');
+      expect(backendUrl.searchParams.get('state')).toBe('signed-state');
+      expect(backendUrl.searchParams.get('openid.mode')).toBe('id_res');
+      expect(backendUrl.searchParams.get('openid.claimed_id')).toBe(
+        'https://steamcommunity.com/openid/id/76561198000000000',
+      );
+
+      return new Response(
+        JSON.stringify({
+          provider: 'STEAM',
+          externalId: '76561198000000000',
+          status: 'CONNECTED',
+          connectionType: 'CONNECTED_ACCOUNT',
+          message: 'Steam verificada e conectada com sucesso.',
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      );
+    }) as typeof fetch);
+
+    const response = await completeAccountLink(
+      new NextRequest(
+        'http://localhost/api/auth/accounts/steam/link/callback?state=signed-state&openid.mode=id_res&openid.claimed_id=https%3A%2F%2Fsteamcommunity.com%2Fopenid%2Fid%2F76561198000000000',
+      ),
+      { params: Promise.resolve({ provider: 'steam' }) },
+    );
+    const location = response.headers.get('location') ?? '';
+
+    expect(response.status).toBe(307);
+    expect(location).toContain('connectionStatus=success');
+    expect(location).toContain('Steam+verificada');
+    expect(location).not.toContain('signed-state');
+    expect(location).not.toContain('openid');
+    expect(location).not.toContain('76561198000000000');
+  });
+
   it('redireciona erro de linking sem expor payload sensivel', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(
       JSON.stringify({

@@ -8,6 +8,7 @@ export type ProviderCapability =
   | 'SOCIAL_LOGIN'
   | 'CONNECTED_ACCOUNT'
   | 'OAUTH_CONNECT'
+  | 'OPENID_CONNECT'
   | 'TOKEN_CONNECT'
   | 'LIBRARY_IMPORT'
   | 'PRESENCE_INGESTION';
@@ -43,7 +44,7 @@ const PROVIDER_DEFINITIONS: readonly ProviderDefinition[] = [
     displayName: 'Steam',
     dataSource: 'OFFICIAL',
     status: 'CONNECTED',
-    capabilities: ['CONNECTED_ACCOUNT', 'LIBRARY_IMPORT'],
+    capabilities: ['CONNECTED_ACCOUNT', 'OPENID_CONNECT', 'LIBRARY_IMPORT'],
     visibleInConnectionCenter: true,
   },
   {
