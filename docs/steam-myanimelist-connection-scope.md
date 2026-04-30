@@ -7,6 +7,7 @@
 - O CLUTCH ainda usa o fluxo legado de formulario com SteamID informado pelo usuario, mas persiste esse SteamID64 como `PlatformIntegration.externalId` via `ConnectedAccountService`.
 - A importacao de biblioteca usa `IPlayerService/GetOwnedGames` com `STEAM_API_KEY`, `include_appinfo=true` e `include_played_free_games=true`.
 - Quando a Steam nao retorna jogos por biblioteca privada ou detalhes nao visiveis, o CLUTCH trata como lista vazia e mantem a conexao, sem expor API key ou payload bruto ao frontend.
+- O contrato atual nao diferencia com confianca biblioteca realmente vazia, biblioteca privada e resposta sem jogos por regra de visibilidade da Steam. A UI deve comunicar esse fallback sem transformar a ausencia de jogos em erro fatal.
 
 ## MyAnimeList
 

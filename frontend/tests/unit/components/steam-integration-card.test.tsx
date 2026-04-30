@@ -22,7 +22,7 @@ vi.mock('@/services/integrations', () => ({
 const mockedConnectSteam = vi.mocked(connectSteam);
 const mockedSyncSteamLibrary = vi.mocked(syncSteamLibrary);
 
-function renderSteamIntegrationCard() {
+function renderSteamIntegrationCard(options: { importedPreviewCount?: number } = {}) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -34,7 +34,7 @@ function renderSteamIntegrationCard() {
     <QueryClientProvider client={queryClient}>
       <SteamIntegrationCard
         isConnected
-        importedPreviewCount={3}
+        importedPreviewCount={options.importedPreviewCount ?? 3}
         onRefreshStatus={vi.fn().mockResolvedValue(undefined)}
       />
     </QueryClientProvider>,
@@ -82,5 +82,11 @@ describe('SteamIntegrationCard', () => {
     await waitFor(() => {
       expect(mockedSyncSteamLibrary).toHaveBeenCalled();
     });
+  });
+
+  it('mostra fallback honesto quando a conexao Steam nao tem jogos visiveis', () => {
+    renderSteamIntegrationCard({ importedPreviewCount: 0 });
+
+    expect(screen.getByText(/biblioteca vazia, biblioteca privada/i)).toBeInTheDocument();
   });
 });
