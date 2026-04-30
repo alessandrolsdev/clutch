@@ -49,6 +49,7 @@ export type PublicConnectedAccount = {
   connectionType: PlatformIntegrationConnectionType;
   status: PlatformIntegrationStatus;
   dataSource: ConnectedAccountRecord['dataSource'];
+  publicProfileVisible: boolean;
   connected: boolean;
   needsReauth: boolean;
   experimental: boolean;
@@ -87,7 +88,8 @@ export type AccountConnectionErrorReason =
   | 'provider_unavailable'
   | 'identity_conflict'
   | 'not_connected'
-  | 'unsafe_unlink';
+  | 'unsafe_unlink'
+  | 'visibility_not_allowed';
 
 export class AccountConnectionError extends Error {
   readonly statusCode: number;
@@ -123,6 +125,11 @@ export type AccountConnectionService = {
     providerError?: string;
   }): Promise<AccountConnectionCallbackResult>;
   unlink(input: { userId: string; provider: string }): Promise<{ message: string; provider: Platform }>;
+  updateVisibility(input: {
+    userId: string;
+    provider: string;
+    publicProfileVisible: boolean;
+  }): Promise<PublicConnectedAccount>;
   startReauth(input: { userId: string; provider: string }): Promise<AccountConnectionStartResult>;
   completeReauth(input: {
     provider: string;
@@ -141,7 +148,11 @@ type AccountConnectionDependencies = {
   users?: AccountConnectionUserGateway;
   repository?: Pick<
     ConnectedAccountRepository,
-    'listByUser' | 'findByProviderExternalId' | 'findByUserProvider' | 'deleteByUserProvider'
+    | 'listByUser'
+    | 'findByProviderExternalId'
+    | 'findByUserProvider'
+    | 'deleteByUserProvider'
+    | 'updateVisibility'
   >;
   connectedAccountService?: Pick<ConnectedAccountService, 'connectExternalIdentity'>;
   stateStore?: SocialOAuthStateStore;
@@ -415,6 +426,7 @@ function toPublicAccount(account: ConnectedAccountRecord, canUnlink: boolean): P
     connectionType: account.connectionType,
     status: account.status,
     dataSource: account.dataSource,
+    publicProfileVisible: account.publicProfileVisible,
     connected: account.status === 'CONNECTED',
     needsReauth: account.status === 'NEEDS_REAUTH',
     experimental: account.status === 'UNAVAILABLE' || account.dataSource === 'EXPERIMENTAL',
@@ -466,6 +478,10 @@ function canUnlinkAccount(input: {
       candidate.provider !== input.account.provider &&
       candidate.status === 'CONNECTED',
   );
+}
+
+function canPublishAccount(account: ConnectedAccountRecord): boolean {
+  return account.status === 'CONNECTED' && account.dataSource === 'OFFICIAL';
 }
 
 function mapProviderFailure(error: unknown, provider: SocialAuthProvider): never {
@@ -761,6 +777,53 @@ export function createAccountConnectionService(
         provider,
         message: `${getProviderDefinition(provider).displayName} desconectado com sucesso.`,
       };
+    },
+
+    async updateVisibility(input): Promise<PublicConnectedAccount> {
+      const provider = normalizePlatform(input.provider);
+      const account = await repository.findByUserProvider(input.userId, provider);
+
+      if (!account) {
+        throw createAccountConnectionError({
+          statusCode: 404,
+          reason: 'not_connected',
+          clientMessage: 'Conta externa não encontrada.',
+          provider,
+        });
+      }
+
+      if (input.publicProfileVisible && !canPublishAccount(account)) {
+        throw createAccountConnectionError({
+          statusCode: 409,
+          reason: 'visibility_not_allowed',
+          clientMessage: 'Apenas contas ativas e oficiais podem aparecer publicamente.',
+          provider,
+        });
+      }
+
+      const updatedAccount = await repository.updateVisibility({
+        userId: input.userId,
+        provider,
+        publicProfileVisible: input.publicProfileVisible,
+      });
+
+      if (!updatedAccount) {
+        throw createAccountConnectionError({
+          statusCode: 404,
+          reason: 'not_connected',
+          clientMessage: 'Conta externa não encontrada.',
+          provider,
+        });
+      }
+
+      const accounts = await repository.listByUser(input.userId);
+      const user = await users.findById(input.userId);
+
+      return toPublicAccount(updatedAccount, canUnlinkAccount({
+        account: updatedAccount,
+        accounts,
+        user,
+      }));
     },
 
     async startReauth(input): Promise<AccountConnectionStartResult> {

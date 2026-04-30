@@ -8,6 +8,7 @@ export const profilePresenceStatusSchema = z.enum([
 ]);
 
 export const profileIntegrationPlatformSchema = z.enum([
+  'GOOGLE',
   'STEAM',
   'EPIC',
   'DISCORD',
@@ -76,7 +77,8 @@ export const profileResponseSchema = z.object({
   platformIntegrations: z.array(
     z.object({
       platform: profileIntegrationPlatformSchema,
-      metadata: z.record(z.unknown()).nullable(),
+      displayName: z.string().min(1),
+      connectionType: z.enum(['SOCIAL_LOGIN', 'CONNECTED_ACCOUNT']),
     }),
   ),
   gameLibrary: z.array(

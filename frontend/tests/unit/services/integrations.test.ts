@@ -8,6 +8,7 @@ import {
   startAccountLink,
   startAccountReauth,
   unlinkConnectedAccount,
+  updateConnectedAccountVisibility,
   IntegrationsRequestError,
   searchIgdbGame,
   startDiscordOAuth,
@@ -27,6 +28,7 @@ const connectedAccountPayload = {
   connectionType: 'SOCIAL_LOGIN',
   status: 'CONNECTED',
   dataSource: 'OFFICIAL',
+  publicProfileVisible: false,
   connected: true,
   needsReauth: false,
   experimental: false,
@@ -263,6 +265,29 @@ describe('integrations service', () => {
     expect(result.message).toBe('Google desconectado com sucesso.');
     expect(mockedApiRequest).toHaveBeenCalledWith('/auth/accounts/google', {
       method: 'DELETE',
+    });
+  });
+
+  it('atualiza visibilidade publica de conta conectada', async () => {
+    mockedApiRequest.mockResolvedValue(new Response(
+      JSON.stringify({
+        ...connectedAccountPayload,
+        publicProfileVisible: true,
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    ));
+
+    const result = await updateConnectedAccountVisibility('GOOGLE', {
+      publicProfileVisible: true,
+    });
+
+    expect(result.publicProfileVisible).toBe(true);
+    expect(mockedApiRequest).toHaveBeenCalledWith('/auth/connected-accounts/google/visibility', {
+      method: 'PATCH',
+      body: { publicProfileVisible: true },
     });
   });
 

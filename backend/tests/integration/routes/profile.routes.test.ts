@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { buildApp, generateTestToken } from '../../helpers/build-app';
+import type { FullProfileRecord } from '@/core/repositories/profile.repository';
 
 vi.mock('@/core/repositories/profile.repository', () => ({
   profileRepository: {
@@ -37,12 +38,18 @@ const mockUser = {
   password_hash: 'hash', isActive: true, createdAt: new Date(), updatedAt: new Date(),
 };
 
-const mockFullProfile = {
+const mockFullProfile: FullProfileRecord = {
   id: 'user-id-1', username: 'clutchplayer', createdAt: new Date(),
   profile: { displayName: 'Clutch Player', bio: null, avatarUrl: null, bannerUrl: null, accentColor: '#FF5500', badges: [] },
   stats: { level: 5, xp: 1200, reputation: 80, friendCount: 12, postCount: 34 },
   presence: { status: 'ONLINE', currentGame: null, gameDetails: null, platform: null, updatedAt: new Date() },
-  platformIntegrations: [], gameLibrary: [],
+  platformIntegrations: [
+    {
+      platform: 'STEAM',
+      displayName: 'Steam',
+      connectionType: 'CONNECTED_ACCOUNT',
+    },
+  ], gameLibrary: [],
 };
 
 const mockSocialContinuity = {
@@ -101,6 +108,13 @@ describe('Profile Routes', () => {
       expect(response.statusCode).toBe(200);
       expect(response.json()).toMatchObject({
         username: 'clutchplayer',
+        platformIntegrations: [
+          {
+            platform: 'STEAM',
+            displayName: 'Steam',
+            connectionType: 'CONNECTED_ACCOUNT',
+          },
+        ],
         socialContinuity: {
           currentStreakDays: 3,
           activeFriendOffensiveCount: 1,
@@ -127,6 +141,9 @@ describe('Profile Routes', () => {
           completedCount: 1,
         },
       });
+      expect(JSON.stringify(response.json())).not.toContain('externalId');
+      expect(JSON.stringify(response.json())).not.toContain('accessToken');
+      expect(JSON.stringify(response.json())).not.toContain('metadata');
       await app.close();
     });
 

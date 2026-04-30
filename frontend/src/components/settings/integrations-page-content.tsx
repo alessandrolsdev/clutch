@@ -13,23 +13,6 @@ import { SectionHeading } from '@/components/ui/section-heading';
 import { useAuth } from '@/hooks/use-auth';
 import { fetchProfileByUsername, ProfileRequestError } from '@/services/profile';
 
-function resolveDiscordLinkedAccountLabel(metadata: Record<string, unknown> | null): string | null {
-  if (!metadata) {
-    return null;
-  }
-
-  const globalName =
-    typeof metadata.globalName === 'string' && metadata.globalName.length > 0
-      ? metadata.globalName
-      : null;
-  const username =
-    typeof metadata.username === 'string' && metadata.username.length > 0
-      ? metadata.username
-      : null;
-
-  return globalName ?? username;
-}
-
 function IntegrationsLoadingState() {
   return (
     <div className="space-y-4" data-testid="settings-integrations-loading">
@@ -89,12 +72,6 @@ export function IntegrationsPageContent() {
   const connectedPlatforms = new Set(
     profileQuery.data.platformIntegrations.map((integration) => integration.platform),
   );
-  const discordIntegration =
-    profileQuery.data.platformIntegrations.find((integration) => integration.platform === 'DISCORD') ??
-    null;
-  const discordLinkedAccountLabel = resolveDiscordLinkedAccountLabel(
-    discordIntegration?.metadata ?? null,
-  );
 
   return (
     <div className="space-y-section" data-testid="settings-integrations-success">
@@ -140,7 +117,7 @@ export function IntegrationsPageContent() {
 
         <DiscordIntegrationCard
           isConnected={connectedPlatforms.has('DISCORD')}
-          linkedAccountLabel={discordLinkedAccountLabel}
+          linkedAccountLabel={null}
         />
       </div>
 
