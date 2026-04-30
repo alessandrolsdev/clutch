@@ -67,6 +67,31 @@ const socialCallbackSchema = z.object({
   },
 );
 
+const accountConnectionCallbackSchema = z.object({
+  code: z.string().min(1).optional(),
+  state: z.string().min(1).optional(),
+  error: z.string().min(1).optional(),
+}).passthrough().refine(
+  (input) => Boolean(input.error) ||
+    (Boolean(input.code) && Boolean(input.state)) ||
+    (Boolean(input.state) && typeof input['openid.mode'] === 'string'),
+  {
+    message: 'Callback de conexão inválido.',
+  },
+);
+
+function toStringQueryRecord(input: Record<string, unknown>): Record<string, string | undefined> {
+  const output: Record<string, string | undefined> = {};
+
+  for (const [key, value] of Object.entries(input)) {
+    if (typeof value === 'string') {
+      output[key] = value;
+    }
+  }
+
+  return output;
+}
+
 function replyWithSocialAuthError(error: unknown): { statusCode: number; payload: { message: string } } {
   if (error instanceof SocialAuthError) {
     return {
@@ -282,7 +307,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   // ── GET /auth/social/:provider/callback ──────────────────
   app.get<{
     Params: { provider: string };
-    Querystring: { code?: string; state?: string; error?: string };
+    Querystring: Record<string, string | undefined>;
   }>(
     '/social/:provider/callback',
     {
@@ -407,18 +432,20 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(400).send({ message: 'Provider de conta inválido.' });
       }
 
-      const queryResult = socialCallbackSchema.safeParse(request.query);
+      const queryResult = accountConnectionCallbackSchema.safeParse(request.query);
 
       if (!queryResult.success) {
         return reply.status(400).send({ message: 'Callback de conexão inválido.' });
       }
 
       try {
+        const queryValues = toStringQueryRecord(queryResult.data);
         const resultPayload = await app.accountConnectionService.completeLink({
           provider: paramsResult.data.provider,
-          code: queryResult.data.code,
-          state: queryResult.data.state,
-          providerError: queryResult.data.error,
+          code: queryValues['code'],
+          state: queryValues['state'],
+          providerError: queryValues['error'],
+          openIdParams: queryValues,
         });
 
         request.log.info({

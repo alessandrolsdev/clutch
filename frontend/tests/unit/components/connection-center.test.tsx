@@ -89,7 +89,7 @@ const providerDefinitions: ConnectedAccountProviderDefinition[] = [
     displayName: 'Steam',
     status: 'CONNECTED',
     dataSource: 'OFFICIAL',
-    capabilities: ['CONNECTED_ACCOUNT', 'LIBRARY_IMPORT'],
+    capabilities: ['CONNECTED_ACCOUNT', 'OPENID_CONNECT', 'LIBRARY_IMPORT'],
   },
   {
     provider: 'EPIC',
@@ -150,6 +150,7 @@ describe('ConnectionCenter', () => {
 
     expect(screen.getByRole('button', { name: /conectar google/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /conectar discord/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /verificar com steam/i })).toBeInTheDocument();
   });
 
   it('renderiza MyAnimeList como planejado sem acao de conexao falsa', async () => {
@@ -169,7 +170,7 @@ describe('ConnectionCenter', () => {
     expect(mockedStartAccountLink).not.toHaveBeenCalled();
   });
 
-  it('renderiza Steam pelo provider registry sem acao OAuth indevida', async () => {
+  it('renderiza Steam pelo provider registry com acao OpenID sem social login', async () => {
     mockedFetchConnectedAccounts.mockResolvedValue({
       providers: providerDefinitions,
       accounts: [],
@@ -180,9 +181,10 @@ describe('ConnectionCenter', () => {
     const steamCard = await screen.findByTestId('connection-provider-steam');
 
     expect(steamCard).toHaveTextContent('Steam');
-    expect(steamCard).toHaveTextContent(/SteamID publica/i);
-    expect(steamCard).toHaveTextContent(/formulario especifico/i);
-    expect(within(steamCard).queryByRole('button', { name: /conectar steam/i })).not.toBeInTheDocument();
+    expect(steamCard).toHaveTextContent(/verificacao de ownership via steam/i);
+    expect(steamCard).toHaveTextContent('Conta conectada');
+    expect(within(steamCard).getByRole('button', { name: /verificar com steam/i })).toBeInTheDocument();
+    expect(steamCard).not.toHaveTextContent('Login social');
   });
 
   it('mostra erro de carregamento', async () => {
@@ -218,6 +220,56 @@ describe('ConnectionCenter', () => {
       expect(mockedStartAccountLink.mock.calls[0]?.[0]).toBe('GOOGLE');
     });
     expect(onRedirect).toHaveBeenCalledWith('https://accounts.google.com/o/oauth2/v2/auth?state=signed-state');
+  });
+
+  it('inicia Steam OpenID pelo Connection Center', async () => {
+    const onRedirect = vi.fn();
+    mockedFetchConnectedAccounts.mockResolvedValue({
+      providers: providerDefinitions,
+      accounts: [],
+    });
+    mockedStartAccountLink.mockResolvedValue({
+      provider: 'STEAM',
+      authorizationUrl: 'https://steamcommunity.com/openid/login?openid.mode=checkid_setup',
+    });
+
+    renderWithQuery(<ConnectionCenter onRedirect={onRedirect} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /verificar com steam/i }));
+
+    await waitFor(() => {
+      expect(mockedStartAccountLink).toHaveBeenCalledWith('STEAM', expect.anything());
+    });
+    expect(onRedirect).toHaveBeenCalledWith('https://steamcommunity.com/openid/login?openid.mode=checkid_setup');
+  });
+
+  it('permite verificar ownership Steam de conta ja conectada', async () => {
+    const onRedirect = vi.fn();
+    mockedFetchConnectedAccounts.mockResolvedValue({
+      providers: providerDefinitions,
+      accounts: [
+        createAccount({
+          provider: 'STEAM',
+          displayName: 'Steam',
+          externalId: '76561198000000000',
+          connectionType: 'CONNECTED_ACCOUNT',
+          capabilities: ['CONNECTED_ACCOUNT', 'OPENID_CONNECT', 'LIBRARY_IMPORT'],
+        }),
+      ],
+    });
+    mockedStartAccountLink.mockResolvedValue({
+      provider: 'STEAM',
+      authorizationUrl: 'https://steamcommunity.com/openid/login?openid.mode=checkid_setup',
+    });
+
+    renderWithQuery(<ConnectionCenter onRedirect={onRedirect} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /verificar ownership steam/i }));
+
+    await waitFor(() => {
+      expect(mockedStartAccountLink).toHaveBeenCalledWith('STEAM', expect.anything());
+    });
+    expect(onRedirect).toHaveBeenCalledWith('https://steamcommunity.com/openid/login?openid.mode=checkid_setup');
   });
 
   it('mostra NEEDS_REAUTH com CTA de reconectar', async () => {

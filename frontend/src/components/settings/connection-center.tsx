@@ -42,7 +42,7 @@ const PROVIDER_COPY: Partial<Record<ConnectedAccountProvider, {
     connectionTypeLabel: 'Login social ou conta conectada',
   },
   STEAM: {
-    description: 'Biblioteca de jogos e sincronizacao pela SteamID publica.',
+    description: 'Verificacao de ownership via Steam e importacao de biblioteca quando os dados estiverem visiveis.',
     connectionTypeLabel: 'Conta conectada',
   },
   EPIC: {
@@ -189,9 +189,12 @@ function ConnectionProviderRow({
 }: ConnectionProviderRowProps) {
   const isBusy = busyProvider === definition.provider;
   const canOAuthConnect = definition.capabilities.includes('OAUTH_CONNECT') && definition.status === 'CONNECTED';
+  const canOpenIdConnect = definition.capabilities.includes('OPENID_CONNECT') && definition.status === 'CONNECTED';
+  const canBrowserConnect = canOAuthConnect || canOpenIdConnect;
   const canLegacyConnect = definition.capabilities.includes('TOKEN_CONNECT') ||
-    (definition.capabilities.includes('LIBRARY_IMPORT') && !definition.capabilities.includes('OAUTH_CONNECT'));
+    (definition.capabilities.includes('LIBRARY_IMPORT') && !canBrowserConnect);
   const canReauth = Boolean(account?.needsReauth) && canOAuthConnect;
+  const canVerifyOwnership = Boolean(account) && canOpenIdConnect;
   const canUnlink = Boolean(account?.canUnlink);
   const canPublish = Boolean(account?.connected) &&
     account?.status === 'CONNECTED' &&
@@ -280,7 +283,7 @@ function ConnectionProviderRow({
       ) : null}
 
       <div className="flex flex-wrap items-center gap-3">
-        {!account && canOAuthConnect ? (
+        {!account && canBrowserConnect ? (
           <Button
             type="button"
             disabled={isBusy}
@@ -288,7 +291,20 @@ function ConnectionProviderRow({
               onConnect(definition.provider);
             }}
           >
-            {isBusy ? 'Abrindo...' : `Conectar ${definition.name}`}
+            {isBusy ? 'Abrindo...' : canOpenIdConnect ? `Verificar com ${definition.name}` : `Conectar ${definition.name}`}
+          </Button>
+        ) : null}
+
+        {canVerifyOwnership ? (
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={isBusy}
+            onClick={() => {
+              onConnect(definition.provider);
+            }}
+          >
+            {isBusy ? 'Abrindo...' : `Verificar ownership ${definition.name}`}
           </Button>
         ) : null}
 
@@ -318,7 +334,7 @@ function ConnectionProviderRow({
         ) : null}
       </div>
 
-      {!account && !canOAuthConnect && !canLegacyConnect ? (
+      {!account && !canBrowserConnect && !canLegacyConnect ? (
         <p className="text-sm text-secondary">
           Provider registrado, mas indisponivel para conexao nesta versao.
         </p>

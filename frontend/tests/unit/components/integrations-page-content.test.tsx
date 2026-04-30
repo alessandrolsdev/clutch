@@ -212,7 +212,7 @@ describe('IntegrationsPageContent', () => {
       expect(screen.getByTestId('settings-integrations-success')).toBeInTheDocument();
     });
 
-    expect(screen.getByText(/biblioteca steam/i)).toBeInTheDocument();
+    expect(screen.getByText(/fallback manual steam/i)).toBeInTheDocument();
     expect(screen.getByText(/biblioteca epic games/i)).toBeInTheDocument();
     expect(screen.getByText(/^discord$/i)).toBeInTheDocument();
     expect(

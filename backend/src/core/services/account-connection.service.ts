@@ -29,6 +29,11 @@ import {
   discordSocialOAuthClient,
   googleSocialOAuthClient,
 } from '../../infra/integrations/social/social-oauth.clients';
+import {
+  steamOpenIdClient,
+  type SteamOpenIdCallbackParams,
+  type SteamOpenIdClient,
+} from '../../infra/integrations/steam/steam-openid.client';
 import { userRepository } from '../repositories/user.repository';
 import { IntegrationError } from '../../infra/integrations/integration.errors';
 
@@ -41,6 +46,7 @@ const ACCOUNT_CONNECTION_CALLBACK_PATHS: Record<AccountConnectionMode, string> =
 };
 
 export type AccountConnectionMode = 'link' | 'reauth';
+type BrowserAccountConnectionProvider = SocialAuthProvider | 'STEAM';
 
 export type PublicConnectedAccount = {
   provider: Platform;
@@ -69,12 +75,12 @@ export type PublicConnectedAccountProvider = {
 };
 
 export type AccountConnectionStartResult = {
-  provider: SocialAuthProvider;
+  provider: BrowserAccountConnectionProvider;
   authorizationUrl: string;
 };
 
 export type AccountConnectionCallbackResult = {
-  provider: SocialAuthProvider;
+  provider: BrowserAccountConnectionProvider;
   externalId: string;
   status: PlatformIntegrationStatus;
   connectionType: PlatformIntegrationConnectionType;
@@ -123,6 +129,7 @@ export type AccountConnectionService = {
     code?: string;
     state?: string;
     providerError?: string;
+    openIdParams?: SteamOpenIdCallbackParams;
   }): Promise<AccountConnectionCallbackResult>;
   unlink(input: { userId: string; provider: string }): Promise<{ message: string; provider: Platform }>;
   updateVisibility(input: {
@@ -145,6 +152,7 @@ type AccountConnectionUserGateway = {
 
 type AccountConnectionDependencies = {
   providerClients?: Partial<Record<SocialAuthProvider, SocialAuthProviderClient>>;
+  steamClient?: SteamOpenIdClient;
   users?: AccountConnectionUserGateway;
   repository?: Pick<
     ConnectedAccountRepository,
@@ -161,7 +169,7 @@ type AccountConnectionDependencies = {
 type AccountConnectionStatePayload = {
   purpose: 'account_connection';
   mode: AccountConnectionMode;
-  provider: SocialAuthProvider;
+  provider: BrowserAccountConnectionProvider;
   userId: string;
   expectedExternalId?: string;
   nonce: string;
@@ -209,6 +217,10 @@ function isSocialOAuthProvider(value: unknown): value is SocialAuthProvider {
   return value === 'GOOGLE' || value === 'DISCORD';
 }
 
+function isBrowserAccountConnectionProvider(value: unknown): value is BrowserAccountConnectionProvider {
+  return isSocialOAuthProvider(value) || value === 'STEAM';
+}
+
 function decodeStatePayload(value: string): AccountConnectionStatePayload {
   let parsedPayload: Partial<AccountConnectionStatePayload>;
 
@@ -225,7 +237,7 @@ function decodeStatePayload(value: string): AccountConnectionStatePayload {
   if (
     parsedPayload.purpose !== 'account_connection' ||
     (parsedPayload.mode !== 'link' && parsedPayload.mode !== 'reauth') ||
-    !isSocialOAuthProvider(parsedPayload.provider) ||
+    !isBrowserAccountConnectionProvider(parsedPayload.provider) ||
     typeof parsedPayload.userId !== 'string' ||
     parsedPayload.userId.length === 0 ||
     typeof parsedPayload.nonce !== 'string' ||
@@ -252,7 +264,7 @@ function decodeStatePayload(value: string): AccountConnectionStatePayload {
 }
 
 function createConnectionState(input: {
-  provider: SocialAuthProvider;
+  provider: BrowserAccountConnectionProvider;
   userId: string;
   mode: AccountConnectionMode;
   expectedExternalId?: string;
@@ -276,7 +288,7 @@ function createConnectionState(input: {
 
 function verifyStateValue(
   state: string,
-  provider: SocialAuthProvider,
+  provider: BrowserAccountConnectionProvider,
   mode: AccountConnectionMode,
 ): AccountConnectionStatePayload {
   const segments = state.split('.');
@@ -360,6 +372,97 @@ function normalizeOAuthProvider(provider: string): SocialAuthProvider {
   }
 
   return normalizedProvider;
+}
+
+function normalizeSteamOpenIdProvider(provider: string): 'STEAM' {
+  const normalizedProvider = normalizePlatform(provider);
+  const definition = getProviderDefinition(normalizedProvider);
+
+  if (
+    normalizedProvider !== 'STEAM' ||
+    definition.status === 'UNAVAILABLE' ||
+    !definition.capabilities.includes('OPENID_CONNECT')
+  ) {
+    throw createAccountConnectionError({
+      statusCode: 400,
+      reason: 'unsupported_provider',
+      clientMessage: 'Provider não suporta conexão OpenID neste momento.',
+      provider: normalizedProvider,
+    });
+  }
+
+  return 'STEAM';
+}
+
+function assertSafePublicUrl(value: string): URL {
+  let parsedUrl: URL;
+
+  try {
+    parsedUrl = new URL(value);
+  } catch {
+    throw createAccountConnectionError({
+      statusCode: 503,
+      reason: 'provider_unavailable',
+      clientMessage: 'Conexão Steam indisponível no runtime atual.',
+      provider: 'STEAM',
+    });
+  }
+
+  if (!['http:', 'https:'].includes(parsedUrl.protocol) || parsedUrl.username || parsedUrl.password) {
+    throw createAccountConnectionError({
+      statusCode: 503,
+      reason: 'provider_unavailable',
+      clientMessage: 'Conexão Steam indisponível no runtime atual.',
+      provider: 'STEAM',
+    });
+  }
+
+  return parsedUrl;
+}
+
+function resolveSteamOpenIdBaseReturnUrl(): string {
+  const explicitReturnUrl = process.env['STEAM_OPENID_RETURN_URL']?.trim();
+
+  if (explicitReturnUrl) {
+    return assertSafePublicUrl(explicitReturnUrl).toString();
+  }
+
+  const publicAppUrl = process.env['PUBLIC_APP_URL']?.trim()
+    ?? process.env['APP_PUBLIC_URL']?.trim()
+    ?? process.env['FRONTEND_PUBLIC_URL']?.trim()
+    ?? process.env['NEXT_PUBLIC_APP_URL']?.trim();
+
+  if (publicAppUrl) {
+    return assertSafePublicUrl(new URL('/api/auth/accounts/steam/link/callback', publicAppUrl).toString()).toString();
+  }
+
+  if (process.env['NODE_ENV'] === 'production') {
+    throw createAccountConnectionError({
+      statusCode: 503,
+      reason: 'provider_unavailable',
+      clientMessage: 'Conexão Steam indisponível no runtime atual.',
+      provider: 'STEAM',
+    });
+  }
+
+  return 'http://localhost/api/auth/accounts/steam/link/callback';
+}
+
+function resolveSteamOpenIdReturnTo(state: string): string {
+  const returnUrl = assertSafePublicUrl(resolveSteamOpenIdBaseReturnUrl());
+  returnUrl.searchParams.set('state', state);
+
+  return returnUrl.toString();
+}
+
+function resolveSteamOpenIdRealm(returnTo: string): string {
+  const explicitRealm = process.env['STEAM_OPENID_REALM']?.trim();
+
+  if (explicitRealm) {
+    return assertSafePublicUrl(explicitRealm).origin;
+  }
+
+  return assertSafePublicUrl(returnTo).origin;
 }
 
 function getDefaultSocialRedirectUri(provider: SocialAuthProvider): string | undefined {
@@ -487,7 +590,7 @@ function canPublishAccount(account: ConnectedAccountRecord): boolean {
   return account.status === 'CONNECTED' && account.dataSource === 'OFFICIAL';
 }
 
-function mapProviderFailure(error: unknown, provider: SocialAuthProvider): never {
+function mapProviderFailure(error: unknown, provider: BrowserAccountConnectionProvider): never {
   if (error instanceof AccountConnectionError) {
     throw error;
   }
@@ -532,6 +635,7 @@ export function createAccountConnectionService(
     GOOGLE: dependencies.providerClients?.GOOGLE ?? googleSocialOAuthClient,
     DISCORD: dependencies.providerClients?.DISCORD ?? discordSocialOAuthClient,
   };
+  const steamClient = dependencies.steamClient ?? steamOpenIdClient;
 
   async function exchangeIdentity(
     provider: SocialAuthProvider,
@@ -623,6 +727,30 @@ export function createAccountConnectionService(
     };
   }
 
+  async function startSteamOpenIdFlow(input: {
+    userId: string;
+    provider: string;
+  }): Promise<AccountConnectionStartResult> {
+    const provider = normalizeSteamOpenIdProvider(input.provider);
+    const { state } = createConnectionState({
+      userId: input.userId,
+      provider,
+      mode: 'link',
+    });
+    const returnTo = resolveSteamOpenIdReturnTo(state);
+    const authorizationUrl = steamClient.createAuthorizationUrl({
+      returnTo,
+      realm: resolveSteamOpenIdRealm(returnTo),
+    });
+
+    await stateStore.store(state, ACCOUNT_CONNECTION_STATE_TTL_MS);
+
+    return {
+      provider,
+      authorizationUrl,
+    };
+  }
+
   async function completeOAuthCallback(input: {
     provider: string;
     code?: string;
@@ -672,6 +800,59 @@ export function createAccountConnectionService(
     };
   }
 
+  async function completeSteamOpenIdCallback(input: {
+    provider: string;
+    state?: string;
+    providerError?: string;
+    openIdParams?: SteamOpenIdCallbackParams;
+  }): Promise<{ provider: 'STEAM'; externalId: string; statePayload: AccountConnectionStatePayload }> {
+    const provider = normalizeSteamOpenIdProvider(input.provider);
+
+    if (input.providerError) {
+      throw createAccountConnectionError({
+        statusCode: 400,
+        reason: 'invalid_request',
+        clientMessage: 'Conexão Steam cancelada ou negada.',
+        provider,
+      });
+    }
+
+    if (!input.state) {
+      throw createAccountConnectionError({
+        statusCode: 400,
+        reason: 'invalid_request',
+        clientMessage: 'Callback Steam inválido.',
+        provider,
+      });
+    }
+
+    const statePayload = verifyStateValue(input.state, provider, 'link');
+
+    if (!await stateStore.consume(input.state)) {
+      throw createAccountConnectionError({
+        statusCode: 400,
+        reason: 'invalid_state',
+        clientMessage: 'Callback Steam inválido ou expirado.',
+        provider,
+      });
+    }
+
+    try {
+      const verification = await steamClient.verifyCallback(
+        input.openIdParams ?? {},
+        { expectedReturnTo: resolveSteamOpenIdReturnTo(input.state) },
+      );
+
+      return {
+        provider,
+        externalId: verification.steamId,
+        statePayload,
+      };
+    } catch (error) {
+      mapProviderFailure(error, provider);
+    }
+  }
+
   return {
     async listConnectedAccounts(userId): Promise<{
       accounts: PublicConnectedAccount[];
@@ -691,6 +872,10 @@ export function createAccountConnectionService(
     },
 
     async startLink(input): Promise<AccountConnectionStartResult> {
+      if (normalizePlatform(input.provider) === 'STEAM') {
+        return startSteamOpenIdFlow(input);
+      }
+
       return startOAuthFlow({
         userId: input.userId,
         provider: input.provider,
@@ -699,6 +884,66 @@ export function createAccountConnectionService(
     },
 
     async completeLink(input): Promise<AccountConnectionCallbackResult> {
+      if (normalizePlatform(input.provider) === 'STEAM') {
+        const { provider, externalId, statePayload } = await completeSteamOpenIdCallback(input);
+        const existingIdentity = await repository.findByProviderExternalId(provider, externalId);
+
+        if (existingIdentity && existingIdentity.userId !== statePayload.userId) {
+          throw createAccountConnectionError({
+            statusCode: 409,
+            reason: 'identity_conflict',
+            clientMessage: 'Esta identidade externa já está vinculada a outro usuário.',
+            provider,
+          });
+        }
+
+        const existingUserProvider = await repository.findByUserProvider(statePayload.userId, provider);
+
+        if (existingUserProvider && existingUserProvider.externalId !== externalId) {
+          throw createAccountConnectionError({
+            statusCode: 409,
+            reason: 'identity_conflict',
+            clientMessage: 'Este usuário já possui outra identidade Steam vinculada.',
+            provider,
+          });
+        }
+
+        try {
+          await connectedAccountService.connectExternalIdentity({
+            userId: statePayload.userId,
+            provider,
+            externalId,
+            connectionType: 'CONNECTED_ACCOUNT',
+            status: 'CONNECTED',
+            dataSource: getProviderDefinition(provider).dataSource,
+            metadata: {
+              source: 'steam_openid',
+              ownershipProof: 'openid',
+              ownershipVerifiedAt: new Date().toISOString(),
+            },
+          });
+        } catch (error) {
+          if (error instanceof ConnectedAccountConflictError) {
+            throw createAccountConnectionError({
+              statusCode: 409,
+              reason: 'identity_conflict',
+              clientMessage: 'Esta identidade externa já está vinculada a outro usuário.',
+              provider,
+            });
+          }
+
+          throw error;
+        }
+
+        return {
+          provider,
+          externalId,
+          status: 'CONNECTED',
+          connectionType: 'CONNECTED_ACCOUNT',
+          message: 'Steam verificada e conectada com sucesso.',
+        };
+      }
+
       const { provider, identity, statePayload } = await completeOAuthCallback({
         ...input,
         mode: 'link',
