@@ -1153,6 +1153,31 @@ describe('Auth Routes', () => {
       await app.close();
     });
 
+    it('bloqueia callback MyAnimeList sem code ou state antes de chamar service', async () => {
+      const accountConnectionService = createAccountConnectionService();
+      const app = await buildApp({ accountConnectionService });
+
+      const withoutCode = await app.inject({
+        method: 'GET',
+        url: '/auth/accounts/myanimelist/link/callback?state=signed-state',
+      });
+      const withoutState = await app.inject({
+        method: 'GET',
+        url: '/auth/accounts/myanimelist/link/callback?code=oauth-code',
+      });
+
+      expect(withoutCode.statusCode).toBe(400);
+      expect(withoutCode.json()).toMatchObject({
+        message: 'Callback de conexão inválido.',
+      });
+      expect(withoutState.statusCode).toBe(400);
+      expect(withoutState.json()).toMatchObject({
+        message: 'Callback de conexão inválido.',
+      });
+      expect(accountConnectionService.completeLink).not.toHaveBeenCalled();
+      await app.close();
+    });
+
     it('conclui callback Steam OpenID repassando parametros sem emitir sessao nova', async () => {
       const accountConnectionService = createAccountConnectionService();
       accountConnectionService.completeLink.mockResolvedValueOnce({
