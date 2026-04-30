@@ -105,6 +105,47 @@ describe('myAnimeListListClient', () => {
     ]);
   });
 
+  it('ignora status desconhecido sem quebrar os demais itens da pagina inicial', async () => {
+    vi.mocked(axios.get).mockResolvedValueOnce({
+      data: {
+        data: [
+          {
+            node: { id: 1, title: 'Valid Anime' },
+            list_status: { status: 'watching', num_episodes_watched: 3 },
+          },
+          {
+            node: { id: 2, title: 'Unknown Status Anime' },
+            list_status: { status: 'rewatching_later' },
+          },
+        ],
+        paging: { next: 'https://api.myanimelist.net/v2/users/@me/animelist?offset=50' },
+      },
+    });
+
+    const result = await myAnimeListListClient.fetchAnimeList('mal-access-token');
+
+    expect(axios.get).toHaveBeenCalledWith(
+      'https://api.myanimelist.net/v2/users/@me/animelist',
+      expect.objectContaining({
+        params: expect.objectContaining({
+          limit: 50,
+          offset: 0,
+        }),
+      }),
+    );
+    expect(result).toEqual([
+      {
+        id: '1',
+        title: 'Valid Anime',
+        kind: 'ANIME',
+        coverUrl: null,
+        status: 'watching',
+        progress: 3,
+        score: null,
+      },
+    ]);
+  });
+
   it('mapeia 401/403 como reauth sem vazar token', async () => {
     vi.mocked(axios.get).mockRejectedValueOnce({
       response: { status: 401 },
@@ -115,6 +156,26 @@ describe('myAnimeListListClient', () => {
       statusCode: 401,
       reason: 'invalid_credentials',
       clientMessage: 'MyAnimeList precisa ser reconectado antes da importação.',
+    });
+  });
+
+  it('traduz rate limit sem vazar authorization header ou payload bruto', async () => {
+    vi.mocked(axios.get).mockRejectedValueOnce({
+      response: {
+        status: 429,
+        data: {
+          error: 'rate_limited',
+          access_token: 'mal-access-token',
+        },
+      },
+      config: { headers: { Authorization: 'Bearer mal-access-token' } },
+    });
+
+    await expect(myAnimeListListClient.fetchMangaList('mal-access-token')).rejects.toMatchObject({
+      statusCode: 503,
+      reason: 'upstream_unavailable',
+      clientMessage: 'Listas MyAnimeList indisponíveis no momento.',
+      message: expect.not.stringContaining('mal-access-token'),
     });
   });
 });
