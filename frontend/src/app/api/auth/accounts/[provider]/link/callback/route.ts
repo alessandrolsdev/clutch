@@ -18,6 +18,8 @@ type ErrorResponse = {
   message?: string;
 };
 
+const SENSITIVE_ERROR_MESSAGE_PATTERN = /\b(?:code|state|token|access[_-]?token|refresh[_-]?token|secret|cookie|authorization)\b|bearer\s+/iu;
+
 async function readJsonBody(response: Response): Promise<unknown> {
   const text = await response.text();
 
@@ -37,6 +39,10 @@ function resolveMessage(payload: unknown, fallback: string): string {
     const message = (payload as ErrorResponse).message;
 
     if (typeof message === 'string' && message.length > 0) {
+      if (SENSITIVE_ERROR_MESSAGE_PATTERN.test(message)) {
+        return fallback;
+      }
+
       return message;
     }
   }

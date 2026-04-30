@@ -100,6 +100,30 @@ describe('auth social frontend routes', () => {
       'http://localhost/login?socialAuthError=Callback+social+inv%C3%A1lido.',
     );
   });
+
+  it('nao propaga code, state ou token no redirect final de erro social', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({
+        message: 'Falha OAuth code=oauth-code state=signed-state token=provider-token',
+      }),
+      {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    )) as typeof fetch);
+
+    const response = await completeSocialLogin(
+      new NextRequest('http://localhost/api/auth/social/google/callback?code=oauth-code&state=signed-state'),
+      { params: Promise.resolve({ provider: 'google' }) },
+    );
+    const location = response.headers.get('location') ?? '';
+
+    expect(response.status).toBe(307);
+    expect(location).toContain('socialAuthError=Nao+foi+possivel+concluir+o+login+social+agora.');
+    expect(location).not.toContain('oauth-code');
+    expect(location).not.toContain('signed-state');
+    expect(location).not.toContain('provider-token');
+  });
 });
 
 afterEach(() => {
