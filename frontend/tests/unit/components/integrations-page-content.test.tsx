@@ -4,6 +4,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { IntegrationsPageContent } from '@/components/settings/integrations-page-content';
 import { useAuth } from '@/hooks/use-auth';
+import { fetchConnectedAccounts } from '@/services/integrations';
 import { fetchProfileByUsername } from '@/services/profile';
 
 vi.mock('next/navigation', () => ({
@@ -28,12 +29,30 @@ vi.mock('@/services/profile', () => ({
   },
 }));
 
+vi.mock('@/services/integrations', () => ({
+  connectEpic: vi.fn(),
+  connectSteam: vi.fn(),
+  fetchConnectedAccounts: vi.fn(),
+  startDiscordOAuth: vi.fn(),
+  syncSteamLibrary: vi.fn(),
+  IntegrationsRequestError: class IntegrationsRequestError extends Error {
+    public readonly status: number;
+
+    constructor(status: number, message: string) {
+      super(message);
+      this.name = 'IntegrationsRequestError';
+      this.status = status;
+    }
+  },
+}));
+
 vi.mock('@/components/settings/connection-center', () => ({
   ConnectionCenter: () => <div data-testid="connection-center" />,
 }));
 
 const mockedUseAuth = vi.mocked(useAuth);
 const mockedFetchProfileByUsername = vi.mocked(fetchProfileByUsername);
+const mockedFetchConnectedAccounts = vi.mocked(fetchConnectedAccounts);
 
 function renderWithQuery(ui: ReactElement) {
   const queryClient = new QueryClient({
@@ -52,6 +71,7 @@ describe('IntegrationsPageContent', () => {
   beforeEach(() => {
     mockedUseAuth.mockReset();
     mockedFetchProfileByUsername.mockReset();
+    mockedFetchConnectedAccounts.mockReset();
   });
 
   it('renders integrations status including discord connection state', async () => {
@@ -90,23 +110,7 @@ describe('IntegrationsPageContent', () => {
         platform: 'PC',
         updatedAt: '2026-03-29T22:15:00.000Z',
       },
-      platformIntegrations: [
-        {
-          platform: 'STEAM',
-          displayName: 'Steam',
-          connectionType: 'CONNECTED_ACCOUNT',
-        },
-        {
-          platform: 'EPIC',
-          displayName: 'Epic Games',
-          connectionType: 'CONNECTED_ACCOUNT',
-        },
-        {
-          platform: 'DISCORD',
-          displayName: 'Discord',
-          connectionType: 'CONNECTED_ACCOUNT',
-        },
-      ],
+      platformIntegrations: [],
       gameLibrary: [
         {
           gameName: 'Counter-Strike 2',
@@ -122,6 +126,84 @@ describe('IntegrationsPageContent', () => {
         strongestFriendOffensive: null,
       },
       otakuShowcase: null,
+    });
+    mockedFetchConnectedAccounts.mockResolvedValue({
+      providers: [
+        {
+          provider: 'STEAM',
+          displayName: 'Steam',
+          status: 'CONNECTED',
+          dataSource: 'OFFICIAL',
+          capabilities: ['CONNECTED_ACCOUNT', 'LIBRARY_IMPORT'],
+        },
+        {
+          provider: 'EPIC',
+          displayName: 'Epic Games',
+          status: 'EXPERIMENTAL',
+          dataSource: 'EXPERIMENTAL',
+          capabilities: ['CONNECTED_ACCOUNT', 'TOKEN_CONNECT', 'LIBRARY_IMPORT'],
+        },
+        {
+          provider: 'DISCORD',
+          displayName: 'Discord',
+          status: 'CONNECTED',
+          dataSource: 'OFFICIAL',
+          capabilities: ['CONNECTED_ACCOUNT', 'OAUTH_CONNECT'],
+        },
+      ],
+      accounts: [
+        {
+          provider: 'STEAM',
+          displayName: 'Steam',
+          externalId: '76561198000000000',
+          connectionType: 'CONNECTED_ACCOUNT',
+          status: 'CONNECTED',
+          dataSource: 'OFFICIAL',
+          publicProfileVisible: false,
+          connected: true,
+          needsReauth: false,
+          experimental: false,
+          canUnlink: true,
+          capabilities: ['CONNECTED_ACCOUNT', 'LIBRARY_IMPORT'],
+          lastSyncAt: null,
+          createdAt: '2026-04-29T10:00:00.000Z',
+          updatedAt: '2026-04-29T10:00:00.000Z',
+        },
+        {
+          provider: 'EPIC',
+          displayName: 'Epic Games',
+          externalId: 'epic:hash',
+          connectionType: 'CONNECTED_ACCOUNT',
+          status: 'NEEDS_REAUTH',
+          dataSource: 'EXPERIMENTAL',
+          publicProfileVisible: false,
+          connected: false,
+          needsReauth: true,
+          experimental: true,
+          canUnlink: true,
+          capabilities: ['CONNECTED_ACCOUNT', 'TOKEN_CONNECT', 'LIBRARY_IMPORT'],
+          lastSyncAt: null,
+          createdAt: '2026-04-29T10:00:00.000Z',
+          updatedAt: '2026-04-29T10:00:00.000Z',
+        },
+        {
+          provider: 'DISCORD',
+          displayName: 'Discord',
+          externalId: 'discord-user-id',
+          connectionType: 'CONNECTED_ACCOUNT',
+          status: 'CONNECTED',
+          dataSource: 'OFFICIAL',
+          publicProfileVisible: false,
+          connected: true,
+          needsReauth: false,
+          experimental: false,
+          canUnlink: true,
+          capabilities: ['CONNECTED_ACCOUNT', 'OAUTH_CONNECT'],
+          lastSyncAt: null,
+          createdAt: '2026-04-29T10:00:00.000Z',
+          updatedAt: '2026-04-29T10:00:00.000Z',
+        },
+      ],
     });
 
     renderWithQuery(<IntegrationsPageContent />);

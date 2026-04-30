@@ -49,10 +49,25 @@ const PROVIDER_COPY: Partial<Record<ConnectedAccountProvider, {
     description: 'Biblioteca importada pelo fluxo experimental atual.',
     connectionTypeLabel: 'Conta conectada experimental',
   },
+  MYANIMELIST: {
+    description: 'Provider planejado para showcase otaku; OAuth/API ainda nao estao habilitados nesta versao.',
+    connectionTypeLabel: 'Conta conectada otaku',
+  },
 };
 
-function getStatusLabel(account: ConnectedAccount | null): string {
+function getStatusLabel(
+  account: ConnectedAccount | null,
+  providerStatus: ConnectedAccountProviderDefinition['status'],
+): string {
   if (!account) {
+    if (providerStatus === 'UNAVAILABLE') {
+      return 'Indisponivel';
+    }
+
+    if (providerStatus === 'EXPERIMENTAL') {
+      return 'Experimental';
+    }
+
     return 'Nao conectada';
   }
 
@@ -75,8 +90,15 @@ function getStatusLabel(account: ConnectedAccount | null): string {
   return 'Indisponivel';
 }
 
-function getStatusTone(account: ConnectedAccount | null): 'success' | 'warning' | 'neutral' {
+function getStatusTone(
+  account: ConnectedAccount | null,
+  providerStatus: ConnectedAccountProviderDefinition['status'],
+): 'success' | 'warning' | 'neutral' {
   if (!account) {
+    if (providerStatus === 'EXPERIMENTAL') {
+      return 'warning';
+    }
+
     return 'neutral';
   }
 
@@ -190,7 +212,9 @@ function ConnectionProviderRow({
             {definition.description}
           </p>
         </div>
-        <Badge tone={getStatusTone(account)}>{getStatusLabel(account)}</Badge>
+        <Badge tone={getStatusTone(account, definition.status)}>
+          {getStatusLabel(account, definition.status)}
+        </Badge>
       </div>
 
       <dl className="grid gap-3 text-sm text-secondary sm:grid-cols-2">
@@ -480,7 +504,8 @@ export function ConnectionCenter({ onRedirect }: ConnectionCenterProps = {}) {
             Nenhuma conta conectada
           </h3>
           <p className="text-sm leading-6 text-secondary">
-            Conecte Google ou Discord por OAuth, ou use os formularios de Steam e Epic nesta pagina.
+            Conecte Google ou Discord por OAuth, use os formularios de Steam e Epic
+            nesta pagina, e acompanhe providers planejados quando estiverem indisponiveis.
           </p>
         </Card>
       ) : null}
