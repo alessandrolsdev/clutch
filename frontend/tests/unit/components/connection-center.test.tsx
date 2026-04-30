@@ -165,9 +165,37 @@ describe('ConnectionCenter', () => {
 
     expect(myAnimeListCard).toHaveTextContent('MyAnimeList');
     expect(myAnimeListCard).toHaveTextContent('Indisponivel');
-    expect(myAnimeListCard).toHaveTextContent(/OAuth\/API ainda nao estao habilitados/i);
+    expect(myAnimeListCard).toHaveTextContent(/OAuth2\/PKCE/i);
     expect(within(myAnimeListCard).queryByRole('button', { name: /conectar myanimelist/i })).not.toBeInTheDocument();
     expect(mockedStartAccountLink).not.toHaveBeenCalled();
+  });
+
+  it('renderiza MyAnimeList conectavel quando backend declara OAUTH_CONNECT', async () => {
+    const onRedirect = vi.fn();
+    mockedFetchConnectedAccounts.mockResolvedValue({
+      providers: providerDefinitions.map((provider) =>
+        provider.provider === 'MYANIMELIST'
+          ? {
+            ...provider,
+            status: 'CONNECTED',
+            capabilities: ['CONNECTED_ACCOUNT', 'OAUTH_CONNECT'],
+          }
+          : provider),
+      accounts: [],
+    });
+    mockedStartAccountLink.mockResolvedValue({
+      provider: 'MYANIMELIST',
+      authorizationUrl: 'https://myanimelist.net/v1/oauth2/authorize?state=signed-state',
+    });
+
+    renderWithQuery(<ConnectionCenter onRedirect={onRedirect} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /conectar myanimelist/i }));
+
+    await waitFor(() => {
+      expect(mockedStartAccountLink).toHaveBeenCalledWith('MYANIMELIST', expect.anything());
+    });
+    expect(onRedirect).toHaveBeenCalledWith('https://myanimelist.net/v1/oauth2/authorize?state=signed-state');
   });
 
   it('renderiza Steam pelo provider registry com acao OpenID sem social login', async () => {
