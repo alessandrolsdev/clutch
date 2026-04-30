@@ -13,7 +13,9 @@ import { redis } from '@/infra/cache/redis';
 import {
   createPrismaIntegrationsPersistence,
   createIntegrationsService,
+  mapMyAnimeListStatus,
 } from '@/core/services/integrations.service';
+import { protectSensitiveToken } from '@/config/protected-token';
 import { IntegrationError } from '@/infra/integrations/integration.errors';
 import { epicService } from '@/infra/integrations/epic/epic.service';
 import { igdbService } from '@/infra/integrations/igdb/igdb.service';
@@ -27,6 +29,12 @@ vi.mock('@/infra/database/client', () => ({
       findUnique: vi.fn(),
     },
     userGameLibrary: {
+      upsert: vi.fn(),
+    },
+    mediaTitle: {
+      upsert: vi.fn(),
+    },
+    userMediaEntry: {
       upsert: vi.fn(),
     },
   },
@@ -48,7 +56,397 @@ describe('integrations service layer', () => {
     vi.clearAllMocks();
   });
 
+  it('mapeia status MyAnimeList para status de consumo CLUTCH', () => {
+    expect(mapMyAnimeListStatus('watching')).toBe('CONSUMING');
+    expect(mapMyAnimeListStatus('reading')).toBe('CONSUMING');
+    expect(mapMyAnimeListStatus('completed')).toBe('COMPLETED');
+    expect(mapMyAnimeListStatus('plan_to_watch')).toBe('PLANNING');
+    expect(mapMyAnimeListStatus('plan_to_read')).toBe('PLANNING');
+    expect(mapMyAnimeListStatus('on_hold')).toBe('PAUSED');
+    expect(mapMyAnimeListStatus('dropped')).toBe('DROPPED');
+  });
+
+  it('importa listas MyAnimeList conectadas e persiste entradas otaku privadas', async () => {
+    const syncedAt = new Date('2026-04-30T16:30:00.000Z');
+    vi.useFakeTimers();
+    vi.setSystemTime(syncedAt);
+    const persistence = {
+      upsertPlatformIntegration: vi.fn(),
+      findPlatformIntegration: vi.fn().mockResolvedValue({
+        externalId: '12345',
+        status: 'CONNECTED',
+        dataSource: 'OFFICIAL',
+        accessToken: protectSensitiveToken('mal-access-token'),
+      }),
+      upsertSteamLibraryGame: vi.fn(),
+      upsertEpicLibraryGame: vi.fn(),
+      upsertOtakuMediaEntry: vi.fn().mockResolvedValue(undefined),
+      touchPlatformIntegrationLastSyncAt: vi.fn().mockResolvedValue(undefined),
+    };
+    const myAnimeListClient = {
+      fetchAnimeList: vi.fn().mockResolvedValue([
+        {
+          id: '5114',
+          title: 'Fullmetal Alchemist: Brotherhood',
+          kind: 'ANIME',
+          coverUrl: 'https://cdn.mal/anime.jpg',
+          status: 'completed',
+          progress: 64,
+          score: 10,
+        },
+      ]),
+      fetchMangaList: vi.fn().mockResolvedValue([
+        {
+          id: '2',
+          title: 'Berserk',
+          kind: 'MANGA',
+          coverUrl: null,
+          status: 'reading',
+          progress: 12,
+          score: 0,
+        },
+      ]),
+    };
+    const service = createIntegrationsService({
+      steamClient: { validateSteamId: vi.fn(), getOwnedGames: vi.fn() },
+      igdbClient: { searchGame: vi.fn(), searchGames: vi.fn() },
+      epicClient: { validateToken: vi.fn(), getLibrary: vi.fn() },
+      myAnimeListClient,
+      persistence,
+    });
+
+    const result = await service.importMyAnimeListLists('user-id-1');
+
+    expect(result).toEqual({
+      imported: 2,
+      anime: 1,
+      manga: 1,
+      message: '2 itens MyAnimeList importados de forma privada.',
+    });
+    expect(myAnimeListClient.fetchAnimeList).toHaveBeenCalledWith('mal-access-token');
+    expect(myAnimeListClient.fetchMangaList).toHaveBeenCalledWith('mal-access-token');
+    expect(persistence.upsertOtakuMediaEntry).toHaveBeenNthCalledWith(1, 'user-id-1', {
+      externalId: '5114',
+      title: 'Fullmetal Alchemist: Brotherhood',
+      kind: 'ANIME',
+      coverUrl: 'https://cdn.mal/anime.jpg',
+      status: 'COMPLETED',
+      progress: 64,
+      score: 10,
+    });
+    expect(persistence.upsertOtakuMediaEntry).toHaveBeenNthCalledWith(2, 'user-id-1', {
+      externalId: '2',
+      title: 'Berserk',
+      kind: 'MANGA',
+      coverUrl: null,
+      status: 'CONSUMING',
+      progress: 12,
+      score: 0,
+    });
+    expect(persistence.touchPlatformIntegrationLastSyncAt).toHaveBeenCalledWith(
+      'user-id-1',
+      'MYANIMELIST',
+      syncedAt,
+    );
+  });
+
+  it('bloqueia importacao MyAnimeList quando conta precisa reconectar ou token esta ausente', async () => {
+    const persistence = {
+      upsertPlatformIntegration: vi.fn(),
+      findPlatformIntegration: vi.fn()
+        .mockResolvedValueOnce({
+          externalId: '12345',
+          status: 'NEEDS_REAUTH',
+          dataSource: 'OFFICIAL',
+          accessToken: protectSensitiveToken('mal-access-token'),
+        })
+        .mockResolvedValueOnce({
+          externalId: '12345',
+          status: 'CONNECTED',
+          dataSource: 'OFFICIAL',
+          accessToken: null,
+        }),
+      upsertSteamLibraryGame: vi.fn(),
+      upsertEpicLibraryGame: vi.fn(),
+      upsertOtakuMediaEntry: vi.fn(),
+      touchPlatformIntegrationLastSyncAt: vi.fn(),
+    };
+    const service = createIntegrationsService({
+      steamClient: { validateSteamId: vi.fn(), getOwnedGames: vi.fn() },
+      igdbClient: { searchGame: vi.fn(), searchGames: vi.fn() },
+      epicClient: { validateToken: vi.fn(), getLibrary: vi.fn() },
+      myAnimeListClient: { fetchAnimeList: vi.fn(), fetchMangaList: vi.fn() },
+      persistence,
+    });
+
+    await expect(service.importMyAnimeListLists('user-id-1')).rejects.toMatchObject({
+      statusCode: 409,
+      reason: 'reauth_required',
+    });
+    await expect(service.importMyAnimeListLists('user-id-1')).rejects.toMatchObject({
+      statusCode: 409,
+      reason: 'reauth_required',
+    });
+    expect(persistence.upsertOtakuMediaEntry).not.toHaveBeenCalled();
+  });
+
+  it('bloqueia importacao MyAnimeList quando token criptografado esta invalido', async () => {
+    const persistence = {
+      upsertPlatformIntegration: vi.fn(),
+      findPlatformIntegration: vi.fn().mockResolvedValue({
+        externalId: '12345',
+        status: 'CONNECTED',
+        dataSource: 'OFFICIAL',
+        accessToken: 'enc:v1:invalid:protected:token',
+      }),
+      upsertSteamLibraryGame: vi.fn(),
+      upsertEpicLibraryGame: vi.fn(),
+      upsertOtakuMediaEntry: vi.fn(),
+      touchPlatformIntegrationLastSyncAt: vi.fn(),
+    };
+    const myAnimeListClient = {
+      fetchAnimeList: vi.fn(),
+      fetchMangaList: vi.fn(),
+    };
+    const service = createIntegrationsService({
+      steamClient: { validateSteamId: vi.fn(), getOwnedGames: vi.fn() },
+      igdbClient: { searchGame: vi.fn(), searchGames: vi.fn() },
+      epicClient: { validateToken: vi.fn(), getLibrary: vi.fn() },
+      myAnimeListClient,
+      persistence,
+    });
+
+    await expect(service.importMyAnimeListLists('user-id-1')).rejects.toMatchObject({
+      statusCode: 409,
+      reason: 'reauth_required',
+      clientMessage: 'Reconecte o MyAnimeList antes de importar listas.',
+    });
+    expect(myAnimeListClient.fetchAnimeList).not.toHaveBeenCalled();
+    expect(persistence.upsertOtakuMediaEntry).not.toHaveBeenCalled();
+  });
+
+  it('persiste MediaTitle e UserMediaEntry via upsert sem expor payload bruto', async () => {
+    vi.mocked(prisma.mediaTitle.upsert).mockResolvedValue({
+      id: 'media-title-id',
+      kind: 'ANIME',
+      canonicalTitle: 'Sousou no Frieren',
+      coverUrl: 'https://cdn.mal/frieren.jpg',
+      externalSource: 'MYANIMELIST',
+      externalId: '52991',
+      createdAt: new Date('2026-04-30T16:00:00.000Z'),
+      updatedAt: new Date('2026-04-30T16:00:00.000Z'),
+    });
+    vi.mocked(prisma.userMediaEntry.upsert).mockResolvedValue({
+      id: 'entry-id',
+      userId: 'user-id-1',
+      mediaTitleId: 'media-title-id',
+      status: 'CONSUMING',
+      progress: 4,
+      score: 9,
+      showcaseRank: null,
+      createdAt: new Date('2026-04-30T16:00:00.000Z'),
+      updatedAt: new Date('2026-04-30T16:00:00.000Z'),
+    });
+    const persistence = createPrismaIntegrationsPersistence();
+    expect(persistence.upsertOtakuMediaEntry).toBeDefined();
+
+    await persistence.upsertOtakuMediaEntry?.('user-id-1', {
+      externalId: '52991',
+      title: 'Sousou no Frieren',
+      kind: 'ANIME',
+      coverUrl: 'https://cdn.mal/frieren.jpg',
+      status: 'CONSUMING',
+      progress: 4,
+      score: 9,
+    });
+
+    expect(prisma.mediaTitle.upsert).toHaveBeenCalledWith({
+      where: {
+        externalSource_externalId_kind: {
+          externalSource: 'MYANIMELIST',
+          externalId: '52991',
+          kind: 'ANIME',
+        },
+      },
+      create: expect.objectContaining({
+        externalSource: 'MYANIMELIST',
+        externalId: '52991',
+      }),
+      update: {
+        canonicalTitle: 'Sousou no Frieren',
+        coverUrl: 'https://cdn.mal/frieren.jpg',
+      },
+    });
+    expect(prisma.userMediaEntry.upsert).toHaveBeenCalledWith({
+      where: {
+        userId_mediaTitleId: {
+          userId: 'user-id-1',
+          mediaTitleId: 'media-title-id',
+        },
+      },
+      create: expect.objectContaining({
+        showcaseRank: null,
+        progress: 4,
+        score: 9,
+      }),
+      update: {
+        status: 'CONSUMING',
+        progress: 4,
+        score: 9,
+      },
+    });
+    expect(JSON.stringify(vi.mocked(prisma.userMediaEntry.upsert).mock.calls)).not.toContain('access-token');
+  });
+
+  it('usa chave externa composta para evitar duplicidade e colisao entre anime e manga com mesmo MAL id', async () => {
+    vi.mocked(prisma.mediaTitle.upsert)
+      .mockResolvedValueOnce({
+        id: 'anime-media-title-id',
+        kind: 'ANIME',
+        canonicalTitle: 'Shared MAL Id Anime',
+        coverUrl: null,
+        externalSource: 'MYANIMELIST',
+        externalId: '100',
+        createdAt: new Date('2026-04-30T16:00:00.000Z'),
+        updatedAt: new Date('2026-04-30T16:00:00.000Z'),
+      })
+      .mockResolvedValueOnce({
+        id: 'manga-media-title-id',
+        kind: 'MANGA',
+        canonicalTitle: 'Shared MAL Id Manga',
+        coverUrl: null,
+        externalSource: 'MYANIMELIST',
+        externalId: '100',
+        createdAt: new Date('2026-04-30T16:00:00.000Z'),
+        updatedAt: new Date('2026-04-30T16:00:00.000Z'),
+      })
+      .mockResolvedValueOnce({
+        id: 'anime-media-title-id',
+        kind: 'ANIME',
+        canonicalTitle: 'Shared MAL Id Anime',
+        coverUrl: null,
+        externalSource: 'MYANIMELIST',
+        externalId: '100',
+        createdAt: new Date('2026-04-30T16:00:00.000Z'),
+        updatedAt: new Date('2026-04-30T16:00:00.000Z'),
+      });
+    vi.mocked(prisma.userMediaEntry.upsert).mockResolvedValue({
+      id: 'entry-id',
+      userId: 'user-id-1',
+      mediaTitleId: 'anime-media-title-id',
+      status: 'CONSUMING',
+      progress: 1,
+      score: null,
+      showcaseRank: null,
+      createdAt: new Date('2026-04-30T16:00:00.000Z'),
+      updatedAt: new Date('2026-04-30T16:00:00.000Z'),
+    });
+    const persistence = createPrismaIntegrationsPersistence();
+
+    await persistence.upsertOtakuMediaEntry?.('user-id-1', {
+      externalId: '100',
+      title: 'Shared MAL Id Anime',
+      kind: 'ANIME',
+      coverUrl: null,
+      status: 'CONSUMING',
+      progress: 1,
+      score: null,
+    });
+    await persistence.upsertOtakuMediaEntry?.('user-id-1', {
+      externalId: '100',
+      title: 'Shared MAL Id Manga',
+      kind: 'MANGA',
+      coverUrl: null,
+      status: 'PLANNING',
+      progress: 0,
+      score: null,
+    });
+    await persistence.upsertOtakuMediaEntry?.('user-id-1', {
+      externalId: '100',
+      title: 'Shared MAL Id Anime',
+      kind: 'ANIME',
+      coverUrl: null,
+      status: 'COMPLETED',
+      progress: 12,
+      score: 8,
+    });
+
+    expect(prisma.mediaTitle.upsert).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: {
+          externalSource_externalId_kind: {
+            externalSource: 'MYANIMELIST',
+            externalId: '100',
+            kind: 'ANIME',
+          },
+        },
+      }),
+    );
+    expect(prisma.mediaTitle.upsert).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: {
+          externalSource_externalId_kind: {
+            externalSource: 'MYANIMELIST',
+            externalId: '100',
+            kind: 'MANGA',
+          },
+        },
+      }),
+    );
+    expect(prisma.mediaTitle.upsert).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        where: {
+          externalSource_externalId_kind: {
+            externalSource: 'MYANIMELIST',
+            externalId: '100',
+            kind: 'ANIME',
+          },
+        },
+      }),
+    );
+    expect(prisma.userMediaEntry.upsert).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: {
+          userId_mediaTitleId: {
+            userId: 'user-id-1',
+            mediaTitleId: 'anime-media-title-id',
+          },
+        },
+      }),
+    );
+    expect(prisma.userMediaEntry.upsert).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: {
+          userId_mediaTitleId: {
+            userId: 'user-id-1',
+            mediaTitleId: 'manga-media-title-id',
+          },
+        },
+      }),
+    );
+    expect(prisma.userMediaEntry.upsert).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        where: {
+          userId_mediaTitleId: {
+            userId: 'user-id-1',
+            mediaTitleId: 'anime-media-title-id',
+          },
+        },
+        create: expect.objectContaining({
+          showcaseRank: null,
+        }),
+      }),
+    );
+  });
+
   afterEach(() => {
+    vi.useRealTimers();
     process.env = { ...originalEnv };
   });
 

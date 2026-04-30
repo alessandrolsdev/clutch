@@ -11,6 +11,7 @@ import {
   connectedAccountsResponseSchema,
   connectedAccountSchema,
   connectedAccountVisibilityUpdateRequestSchema,
+  myAnimeListImportResponseSchema,
   type AccountConnectionStartResponse,
   type AccountUnlinkResponse,
   type ConnectedAccountsResponse,
@@ -28,6 +29,7 @@ import {
   type SteamConnectResponse,
   type SteamConnectValues,
   type SteamSyncResponse,
+  type MyAnimeListImportResponse,
 } from '@/schemas/integrations';
 
 type ErrorResponse = {
@@ -111,6 +113,22 @@ export async function syncSteamLibrary(): Promise<SteamSyncResponse> {
   }
 
   return steamSyncResponseSchema.parse(responsePayload);
+}
+
+export async function importMyAnimeListLists(): Promise<MyAnimeListImportResponse> {
+  const response = await apiRequest('/integrations/myanimelist/import', {
+    method: 'POST',
+  });
+  const responsePayload = await readJson(response);
+
+  if (!response.ok) {
+    throw new IntegrationsRequestError(
+      response.status,
+      resolveErrorMessage(responsePayload, 'Nao foi possivel importar listas do MyAnimeList agora.'),
+    );
+  }
+
+  return myAnimeListImportResponseSchema.parse(responsePayload);
 }
 
 export async function connectEpic(
