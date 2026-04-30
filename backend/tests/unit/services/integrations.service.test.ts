@@ -112,6 +112,58 @@ describe('integrations service layer', () => {
     );
   });
 
+  it('mantem conexao Steam quando importacao inicial da biblioteca falha', async () => {
+    const stdoutWriteSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const steamClient = {
+      validateSteamId: vi.fn().mockResolvedValue(true),
+      getOwnedGames: vi.fn().mockRejectedValue(
+        new IntegrationError(
+          'steam',
+          503,
+          'upstream_unavailable',
+          'Integração Steam indisponível no momento.',
+        ),
+      ),
+    };
+    const persistence = {
+      upsertPlatformIntegration: vi.fn().mockResolvedValue(undefined),
+      findPlatformIntegration: vi.fn(),
+      upsertSteamLibraryGame: vi.fn(),
+      upsertEpicLibraryGame: vi.fn(),
+    };
+
+    const service = createIntegrationsService({
+      steamClient,
+      igdbClient: {
+        searchGames: vi.fn(),
+        searchGame: vi.fn(),
+      },
+      epicClient: {
+        validateToken: vi.fn(),
+        getLibrary: vi.fn(),
+      },
+      persistence,
+    });
+
+    const result = await service.connectSteam('user-id-1', '76561198000000000');
+
+    expect(result).toMatchObject({
+      imported: 0,
+      message: 'Steam conectado. Biblioteca indisponivel no momento; tente sincronizar novamente mais tarde.',
+    });
+    expect(persistence.upsertPlatformIntegration).toHaveBeenCalledWith(
+      'user-id-1',
+      'STEAM',
+      { externalId: '76561198000000000' },
+    );
+    expect(persistence.upsertSteamLibraryGame).not.toHaveBeenCalled();
+    expect(stdoutWriteSpy).toHaveBeenCalledWith(
+      expect.stringContaining('"event":"integration_steam_library_import_skipped"'),
+    );
+
+    stdoutWriteSpy.mockRestore();
+  });
+
   it('traduz Steam nao conectado na sincronizacao', async () => {
     const service = createIntegrationsService({
       steamClient: {
