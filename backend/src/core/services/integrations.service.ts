@@ -201,7 +201,8 @@ export function createIntegrationsService(dependencies?: {
 
   return {
     async connectSteam(userId: string, steamId: string): Promise<{ imported: number; message: string }> {
-      const isValidSteamId = await steamClient.validateSteamId(steamId);
+      const normalizedSteamId = steamId.trim();
+      const isValidSteamId = await steamClient.validateSteamId(normalizedSteamId);
 
       if (!isValidSteamId) {
         throw createIntegrationError(
@@ -212,9 +213,9 @@ export function createIntegrationsService(dependencies?: {
         );
       }
 
-      await persistence.upsertPlatformIntegration(userId, 'STEAM', { externalId: steamId });
+      await persistence.upsertPlatformIntegration(userId, 'STEAM', { externalId: normalizedSteamId });
 
-      const games = await steamClient.getOwnedGames(steamId);
+      const games = await steamClient.getOwnedGames(normalizedSteamId);
 
       for (const game of games) {
         const coverUrl = await resolveIgdbCover(game.name, igdbClient);

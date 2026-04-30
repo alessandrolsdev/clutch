@@ -53,6 +53,10 @@ describe('integrations service layer', () => {
   });
 
   it('importa biblioteca Steam e tolera falha do IGDB como enriquecimento opcional', async () => {
+    const steamClient = {
+      validateSteamId: vi.fn().mockResolvedValue(true),
+      getOwnedGames: vi.fn().mockResolvedValue(mockSteamGames),
+    };
     const persistence = {
       upsertPlatformIntegration: vi.fn().mockResolvedValue(undefined),
       findPlatformIntegration: vi.fn(),
@@ -61,10 +65,7 @@ describe('integrations service layer', () => {
     };
 
     const service = createIntegrationsService({
-      steamClient: {
-        validateSteamId: vi.fn().mockResolvedValue(true),
-        getOwnedGames: vi.fn().mockResolvedValue(mockSteamGames),
-      },
+      steamClient,
       igdbClient: {
         searchGames: vi.fn(),
         searchGame: vi.fn()
@@ -84,12 +85,14 @@ describe('integrations service layer', () => {
       persistence,
     });
 
-    const result = await service.connectSteam('user-id-1', '76561198000000000');
+    const result = await service.connectSteam('user-id-1', ' 76561198000000000 ');
 
     expect(result).toMatchObject({
       imported: 2,
       message: 'Steam conectado. 2 jogos importados.',
     });
+    expect(steamClient.validateSteamId).toHaveBeenCalledWith('76561198000000000');
+    expect(steamClient.getOwnedGames).toHaveBeenCalledWith('76561198000000000');
     expect(persistence.upsertPlatformIntegration).toHaveBeenCalledWith(
       'user-id-1',
       'STEAM',
@@ -415,6 +418,44 @@ describe('createPrismaIntegrationsPersistence', () => {
 
     expect(prisma.platformIntegration.upsert).not.toHaveBeenCalled();
   });
+
+  it('persiste Steam via connected account foundation com dataSource oficial', async () => {
+    vi.mocked(prisma.platformIntegration.findUnique).mockResolvedValueOnce(null);
+    vi.mocked(prisma.platformIntegration.upsert).mockResolvedValue({
+      id: 'integration-id-1',
+      userId: 'user-id-1',
+      platform: 'STEAM',
+      externalId: '76561198000000000',
+      connectionType: 'CONNECTED_ACCOUNT',
+      status: 'CONNECTED',
+      dataSource: 'OFFICIAL',
+      metadata: null,
+      publicProfileVisible: false,
+      createdAt: new Date('2026-04-29T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-29T00:00:00.000Z'),
+      lastSyncAt: new Date('2026-04-29T00:00:00.000Z'),
+    } as never);
+    const persistence = createPrismaIntegrationsPersistence();
+
+    await persistence.upsertPlatformIntegration(
+      'user-id-1',
+      'STEAM',
+      { externalId: '76561198000000000' },
+    );
+
+    expect(prisma.platformIntegration.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          userId: 'user-id-1',
+          platform: 'STEAM',
+          externalId: '76561198000000000',
+          connectionType: 'CONNECTED_ACCOUNT',
+          status: 'CONNECTED',
+          dataSource: 'OFFICIAL',
+        }),
+      }),
+    );
+  });
 });
 
 describe('steamService', () => {
@@ -443,6 +484,18 @@ describe('steamService', () => {
     const games = await steamService.getOwnedGames('76561198000000000');
 
     expect(games).toHaveLength(2);
+  });
+
+  it('trata biblioteca Steam privada ou indisponivel como lista vazia', async () => {
+    vi.mocked(axios.get).mockResolvedValue({
+      data: {
+        response: {},
+      },
+    } as never);
+
+    const games = await steamService.getOwnedGames('76561198000000000');
+
+    expect(games).toEqual([]);
   });
 
   it('traduz timeout da Steam para erro coerente', async () => {

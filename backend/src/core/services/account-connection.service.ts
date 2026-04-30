@@ -442,7 +442,10 @@ function listPublicProviders(accounts: ConnectedAccountRecord[]): PublicConnecte
   const accountProviders = new Set(accounts.map((account) => account.provider));
 
   return listProviderDefinitions()
-    .filter((definition) => definition.status !== 'UNAVAILABLE' || accountProviders.has(definition.provider))
+    .filter((definition) =>
+      definition.visibleInConnectionCenter === true ||
+      definition.status !== 'UNAVAILABLE' ||
+      accountProviders.has(definition.provider))
     .map((definition) => ({
       provider: definition.provider,
       displayName: definition.displayName,

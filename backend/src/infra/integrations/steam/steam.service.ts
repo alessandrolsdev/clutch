@@ -48,7 +48,7 @@ export const steamService = {
   async getOwnedGames(steamId: string): Promise<SteamGame[]> {
     try {
       const response = await axios.get<{
-        response: {
+        response?: {
           game_count: number;
           games:      SteamGame[];
         };
@@ -65,7 +65,7 @@ export const steamService = {
         },
       );
 
-      return response.data.response.games ?? [];
+      return response.data.response?.games ?? [];
     } catch (error) {
       throw translateUpstreamError(
         'steam',

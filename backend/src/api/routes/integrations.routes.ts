@@ -9,7 +9,7 @@ import { createIntegrationError } from '../../infra/integrations/integration.err
 import { isIntegrationError } from '../../core/services/integrations.service';
 
 const steamConnectSchema = z.object({
-  steamId: z.string().min(1, 'SteamID é obrigatório'),
+  steamId: z.string().trim().min(1, 'SteamID é obrigatório'),
 });
 
 const epicConnectSchema = z.object({
