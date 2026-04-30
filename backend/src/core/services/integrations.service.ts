@@ -6,7 +6,7 @@ import type {
 import { buildExperimentalEpicExternalId } from '../providers/epic-identity';
 import {
   createIntegrationError,
-  type IntegrationError,
+  IntegrationError,
   translateUpstreamError,
 } from '../../infra/integrations/integration.errors';
 import { epicService, type EpicGame } from '../../infra/integrations/epic/epic.service';
@@ -201,7 +201,8 @@ export function createIntegrationsService(dependencies?: {
 
   return {
     async connectSteam(userId: string, steamId: string): Promise<{ imported: number; message: string }> {
-      const isValidSteamId = await steamClient.validateSteamId(steamId);
+      const normalizedSteamId = steamId.trim();
+      const isValidSteamId = await steamClient.validateSteamId(normalizedSteamId);
 
       if (!isValidSteamId) {
         throw createIntegrationError(
@@ -212,9 +213,29 @@ export function createIntegrationsService(dependencies?: {
         );
       }
 
-      await persistence.upsertPlatformIntegration(userId, 'STEAM', { externalId: steamId });
+      await persistence.upsertPlatformIntegration(userId, 'STEAM', { externalId: normalizedSteamId });
 
-      const games = await steamClient.getOwnedGames(steamId);
+      let games: SteamGame[] = [];
+      let libraryImportSkipped = false;
+
+      try {
+        games = await steamClient.getOwnedGames(normalizedSteamId);
+      } catch (error) {
+        if (!(error instanceof IntegrationError)) {
+          throw error;
+        }
+
+        libraryImportSkipped = true;
+        writeBackendRuntimeLog(
+          'warn',
+          'integration_steam_library_import_skipped',
+          'Steam connection was persisted, but the initial library import failed.',
+          {
+            provider: 'steam',
+            reason: error.reason,
+          },
+        );
+      }
 
       for (const game of games) {
         const coverUrl = await resolveIgdbCover(game.name, igdbClient);
@@ -223,7 +244,9 @@ export function createIntegrationsService(dependencies?: {
 
       return {
         imported: games.length,
-        message: `Steam conectado. ${games.length} jogos importados.`,
+        message: libraryImportSkipped
+          ? 'Steam conectado. Biblioteca indisponivel no momento; tente sincronizar novamente mais tarde.'
+          : `Steam conectado. ${games.length} jogos importados.`,
       };
     },
 

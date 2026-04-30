@@ -98,6 +98,13 @@ const providerDefinitions: ConnectedAccountProviderDefinition[] = [
     dataSource: 'EXPERIMENTAL',
     capabilities: ['CONNECTED_ACCOUNT', 'TOKEN_CONNECT', 'LIBRARY_IMPORT'],
   },
+  {
+    provider: 'MYANIMELIST',
+    displayName: 'MyAnimeList',
+    status: 'UNAVAILABLE',
+    dataSource: 'OFFICIAL',
+    capabilities: ['CONNECTED_ACCOUNT'],
+  },
 ];
 
 describe('ConnectionCenter', () => {
@@ -143,6 +150,39 @@ describe('ConnectionCenter', () => {
 
     expect(screen.getByRole('button', { name: /conectar google/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /conectar discord/i })).toBeInTheDocument();
+  });
+
+  it('renderiza MyAnimeList como planejado sem acao de conexao falsa', async () => {
+    mockedFetchConnectedAccounts.mockResolvedValue({
+      providers: providerDefinitions,
+      accounts: [],
+    });
+
+    renderWithQuery(<ConnectionCenter />);
+
+    const myAnimeListCard = await screen.findByTestId('connection-provider-myanimelist');
+
+    expect(myAnimeListCard).toHaveTextContent('MyAnimeList');
+    expect(myAnimeListCard).toHaveTextContent('Indisponivel');
+    expect(myAnimeListCard).toHaveTextContent(/OAuth\/API ainda nao estao habilitados/i);
+    expect(within(myAnimeListCard).queryByRole('button', { name: /conectar myanimelist/i })).not.toBeInTheDocument();
+    expect(mockedStartAccountLink).not.toHaveBeenCalled();
+  });
+
+  it('renderiza Steam pelo provider registry sem acao OAuth indevida', async () => {
+    mockedFetchConnectedAccounts.mockResolvedValue({
+      providers: providerDefinitions,
+      accounts: [],
+    });
+
+    renderWithQuery(<ConnectionCenter />);
+
+    const steamCard = await screen.findByTestId('connection-provider-steam');
+
+    expect(steamCard).toHaveTextContent('Steam');
+    expect(steamCard).toHaveTextContent(/SteamID publica/i);
+    expect(steamCard).toHaveTextContent(/formulario especifico/i);
+    expect(within(steamCard).queryByRole('button', { name: /conectar steam/i })).not.toBeInTheDocument();
   });
 
   it('mostra erro de carregamento', async () => {

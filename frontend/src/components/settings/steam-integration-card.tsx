@@ -80,6 +80,11 @@ export function SteamIntegrationCard({
   const onSubmit = handleSubmit(async (values) => {
     await connectMutation.mutateAsync(values);
   });
+  const statusCopy = isConnected
+    ? importedPreviewCount > 0
+      ? `A profile API mostra ${importedPreviewCount} jogo(s) recentes dessa integracao.`
+      : 'Steam conectada, mas nenhum jogo apareceu na previa. Isso pode indicar biblioteca vazia, biblioteca privada ou sincronizacao ainda sem jogos importados.'
+    : 'Ainda nao ha integracao Steam ativa neste perfil.';
 
   return (
     <Card className="space-y-5">
@@ -99,9 +104,7 @@ export function SteamIntegrationCard({
       </div>
 
       <p className="text-sm text-secondary">
-        {isConnected
-          ? `A profile API mostra ${importedPreviewCount} jogo(s) recentes dessa integracao.`
-          : 'Ainda nao ha integracao Steam ativa neste perfil.'}
+        {statusCopy}
       </p>
 
       {feedback ? (
