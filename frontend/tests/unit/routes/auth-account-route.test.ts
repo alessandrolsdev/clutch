@@ -76,6 +76,31 @@ describe('auth account connection frontend routes', () => {
     expect(location).not.toContain('should-not-leak');
   });
 
+  it('redireciona erro de linking com fallback quando mensagem contem code ou state', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({
+        message: 'Falha OAuth code=oauth-code state=signed-state token=provider-token',
+      }),
+      {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    )) as typeof fetch);
+
+    const response = await completeAccountLink(
+      new NextRequest('http://localhost/api/auth/accounts/google/link/callback?code=oauth-code&state=signed-state'),
+      { params: Promise.resolve({ provider: 'google' }) },
+    );
+    const location = response.headers.get('location') ?? '';
+
+    expect(response.status).toBe(307);
+    expect(location).toContain('connectionStatus=error');
+    expect(location).toContain('Nao+foi+possivel+concluir+a+conexao+agora.');
+    expect(location).not.toContain('oauth-code');
+    expect(location).not.toContain('signed-state');
+    expect(location).not.toContain('provider-token');
+  });
+
   it('bloqueia provider invalido no callback frontend sem chamar backend', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -116,6 +141,32 @@ describe('auth account connection frontend routes', () => {
 
     expect(response.status).toBe(307);
     expect(location).toContain('connectionStatus=error');
+    expect(location).not.toContain('oauth-code');
+    expect(location).not.toContain('signed-state');
+  });
+
+  it('redireciona erro de reauth com fallback quando mensagem contem segredo', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({
+        message: 'Provider retornou secret=client-secret refresh_token=refresh-token',
+      }),
+      {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    )) as typeof fetch);
+
+    const response = await completeAccountReauth(
+      new NextRequest('http://localhost/api/auth/accounts/discord/reauth/callback?code=oauth-code&state=signed-state'),
+      { params: Promise.resolve({ provider: 'discord' }) },
+    );
+    const location = response.headers.get('location') ?? '';
+
+    expect(response.status).toBe(307);
+    expect(location).toContain('connectionStatus=error');
+    expect(location).toContain('Nao+foi+possivel+concluir+a+reconexao+agora.');
+    expect(location).not.toContain('client-secret');
+    expect(location).not.toContain('refresh-token');
     expect(location).not.toContain('oauth-code');
     expect(location).not.toContain('signed-state');
   });
