@@ -190,6 +190,41 @@ describe('integrations service layer', () => {
     expect(persistence.upsertOtakuMediaEntry).not.toHaveBeenCalled();
   });
 
+  it('bloqueia importacao MyAnimeList quando token criptografado esta invalido', async () => {
+    const persistence = {
+      upsertPlatformIntegration: vi.fn(),
+      findPlatformIntegration: vi.fn().mockResolvedValue({
+        externalId: '12345',
+        status: 'CONNECTED',
+        dataSource: 'OFFICIAL',
+        accessToken: 'enc:v1:invalid:protected:token',
+      }),
+      upsertSteamLibraryGame: vi.fn(),
+      upsertEpicLibraryGame: vi.fn(),
+      upsertOtakuMediaEntry: vi.fn(),
+      touchPlatformIntegrationLastSyncAt: vi.fn(),
+    };
+    const myAnimeListClient = {
+      fetchAnimeList: vi.fn(),
+      fetchMangaList: vi.fn(),
+    };
+    const service = createIntegrationsService({
+      steamClient: { validateSteamId: vi.fn(), getOwnedGames: vi.fn() },
+      igdbClient: { searchGame: vi.fn(), searchGames: vi.fn() },
+      epicClient: { validateToken: vi.fn(), getLibrary: vi.fn() },
+      myAnimeListClient,
+      persistence,
+    });
+
+    await expect(service.importMyAnimeListLists('user-id-1')).rejects.toMatchObject({
+      statusCode: 409,
+      reason: 'reauth_required',
+      clientMessage: 'Reconecte o MyAnimeList antes de importar listas.',
+    });
+    expect(myAnimeListClient.fetchAnimeList).not.toHaveBeenCalled();
+    expect(persistence.upsertOtakuMediaEntry).not.toHaveBeenCalled();
+  });
+
   it('persiste MediaTitle e UserMediaEntry via upsert sem expor payload bruto', async () => {
     vi.mocked(prisma.mediaTitle.upsert).mockResolvedValue({
       id: 'media-title-id',
@@ -261,6 +296,153 @@ describe('integrations service layer', () => {
       },
     });
     expect(JSON.stringify(vi.mocked(prisma.userMediaEntry.upsert).mock.calls)).not.toContain('access-token');
+  });
+
+  it('usa chave externa composta para evitar duplicidade e colisao entre anime e manga com mesmo MAL id', async () => {
+    vi.mocked(prisma.mediaTitle.upsert)
+      .mockResolvedValueOnce({
+        id: 'anime-media-title-id',
+        kind: 'ANIME',
+        canonicalTitle: 'Shared MAL Id Anime',
+        coverUrl: null,
+        externalSource: 'MYANIMELIST',
+        externalId: '100',
+        createdAt: new Date('2026-04-30T16:00:00.000Z'),
+        updatedAt: new Date('2026-04-30T16:00:00.000Z'),
+      })
+      .mockResolvedValueOnce({
+        id: 'manga-media-title-id',
+        kind: 'MANGA',
+        canonicalTitle: 'Shared MAL Id Manga',
+        coverUrl: null,
+        externalSource: 'MYANIMELIST',
+        externalId: '100',
+        createdAt: new Date('2026-04-30T16:00:00.000Z'),
+        updatedAt: new Date('2026-04-30T16:00:00.000Z'),
+      })
+      .mockResolvedValueOnce({
+        id: 'anime-media-title-id',
+        kind: 'ANIME',
+        canonicalTitle: 'Shared MAL Id Anime',
+        coverUrl: null,
+        externalSource: 'MYANIMELIST',
+        externalId: '100',
+        createdAt: new Date('2026-04-30T16:00:00.000Z'),
+        updatedAt: new Date('2026-04-30T16:00:00.000Z'),
+      });
+    vi.mocked(prisma.userMediaEntry.upsert).mockResolvedValue({
+      id: 'entry-id',
+      userId: 'user-id-1',
+      mediaTitleId: 'anime-media-title-id',
+      status: 'CONSUMING',
+      progress: 1,
+      score: null,
+      showcaseRank: null,
+      createdAt: new Date('2026-04-30T16:00:00.000Z'),
+      updatedAt: new Date('2026-04-30T16:00:00.000Z'),
+    });
+    const persistence = createPrismaIntegrationsPersistence();
+
+    await persistence.upsertOtakuMediaEntry?.('user-id-1', {
+      externalId: '100',
+      title: 'Shared MAL Id Anime',
+      kind: 'ANIME',
+      coverUrl: null,
+      status: 'CONSUMING',
+      progress: 1,
+      score: null,
+    });
+    await persistence.upsertOtakuMediaEntry?.('user-id-1', {
+      externalId: '100',
+      title: 'Shared MAL Id Manga',
+      kind: 'MANGA',
+      coverUrl: null,
+      status: 'PLANNING',
+      progress: 0,
+      score: null,
+    });
+    await persistence.upsertOtakuMediaEntry?.('user-id-1', {
+      externalId: '100',
+      title: 'Shared MAL Id Anime',
+      kind: 'ANIME',
+      coverUrl: null,
+      status: 'COMPLETED',
+      progress: 12,
+      score: 8,
+    });
+
+    expect(prisma.mediaTitle.upsert).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: {
+          externalSource_externalId_kind: {
+            externalSource: 'MYANIMELIST',
+            externalId: '100',
+            kind: 'ANIME',
+          },
+        },
+      }),
+    );
+    expect(prisma.mediaTitle.upsert).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: {
+          externalSource_externalId_kind: {
+            externalSource: 'MYANIMELIST',
+            externalId: '100',
+            kind: 'MANGA',
+          },
+        },
+      }),
+    );
+    expect(prisma.mediaTitle.upsert).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        where: {
+          externalSource_externalId_kind: {
+            externalSource: 'MYANIMELIST',
+            externalId: '100',
+            kind: 'ANIME',
+          },
+        },
+      }),
+    );
+    expect(prisma.userMediaEntry.upsert).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: {
+          userId_mediaTitleId: {
+            userId: 'user-id-1',
+            mediaTitleId: 'anime-media-title-id',
+          },
+        },
+      }),
+    );
+    expect(prisma.userMediaEntry.upsert).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: {
+          userId_mediaTitleId: {
+            userId: 'user-id-1',
+            mediaTitleId: 'manga-media-title-id',
+          },
+        },
+      }),
+    );
+    expect(prisma.userMediaEntry.upsert).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        where: {
+          userId_mediaTitleId: {
+            userId: 'user-id-1',
+            mediaTitleId: 'anime-media-title-id',
+          },
+        },
+        create: expect.objectContaining({
+          showcaseRank: null,
+        }),
+      }),
+    );
   });
 
   afterEach(() => {

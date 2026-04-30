@@ -479,7 +479,7 @@ export function createIntegrationsService(dependencies?: {
       try {
         accessToken = revealSensitiveToken(integration.accessToken);
       } catch (error) {
-        if (error instanceof Error && error.message === 'Token protegido inválido.') {
+        if (error instanceof Error) {
           throw createIntegrationError(
             'myanimelist',
             409,
