@@ -1,8 +1,12 @@
 /* eslint-disable no-unused-vars */
 import { prisma } from '../../infra/database/client';
 import type {
+  MediaConsumptionStatus,
+  MediaKind,
   PlatformIntegrationDataSource,
+  PlatformIntegrationStatus,
 } from '@prisma/client';
+import { revealSensitiveToken } from '../../config/protected-token';
 import { buildExperimentalEpicExternalId } from '../providers/epic-identity';
 import {
   createIntegrationError,
@@ -11,6 +15,12 @@ import {
 } from '../../infra/integrations/integration.errors';
 import { epicService, type EpicGame } from '../../infra/integrations/epic/epic.service';
 import { igdbService, type IgdbGame } from '../../infra/integrations/igdb/igdb.service';
+import {
+  myAnimeListListClient,
+  type MyAnimeListListClient,
+  type MyAnimeListListItem,
+  type MyAnimeListListStatus,
+} from '../../infra/integrations/myanimelist/myanimelist-list.client';
 import { steamService, type SteamGame } from '../../infra/integrations/steam/steam.service';
 import { writeBackendRuntimeLog } from '../../config/logging';
 import {
@@ -18,10 +28,11 @@ import {
   createConnectedAccountService,
 } from './connected-account.service';
 
-type PlatformIntegrationPlatform = 'STEAM' | 'EPIC';
+type PlatformIntegrationPlatform = 'STEAM' | 'EPIC' | 'MYANIMELIST';
 
 type PersistedIntegration = {
   externalId: string;
+  status: PlatformIntegrationStatus;
   dataSource: PlatformIntegrationDataSource;
   accessToken?: string | null;
 };
@@ -35,6 +46,13 @@ type PersistIntegrationInput = {
 type SteamIntegrationClient = Pick<typeof steamService, 'validateSteamId' | 'getOwnedGames'>;
 type IgdbIntegrationClient = Pick<typeof igdbService, 'searchGame' | 'searchGames'>;
 type EpicIntegrationClient = Pick<typeof epicService, 'validateToken' | 'getLibrary'>;
+
+export type MyAnimeListImportResult = {
+  imported: number;
+  anime: number;
+  manga: number;
+  message: string;
+};
 
 type IntegrationsPersistence = {
   upsertPlatformIntegration(
@@ -55,6 +73,25 @@ type IntegrationsPersistence = {
     userId: string,
     game: EpicGame,
   ): Promise<void>;
+  upsertOtakuMediaEntry?(
+    userId: string,
+    item: NormalizedMyAnimeListImportItem,
+  ): Promise<void>;
+  touchPlatformIntegrationLastSyncAt?(
+    userId: string,
+    platform: PlatformIntegrationPlatform,
+    syncedAt: Date,
+  ): Promise<void>;
+};
+
+type NormalizedMyAnimeListImportItem = {
+  externalId: string;
+  title: string;
+  kind: MediaKind;
+  coverUrl: string | null;
+  status: MediaConsumptionStatus;
+  progress: number | null;
+  score: number | null;
 };
 
 export type IntegrationsService = ReturnType<typeof createIntegrationsService>;
@@ -103,6 +140,7 @@ export function createPrismaIntegrationsPersistence(): IntegrationsPersistence {
 
       return {
         externalId: integration.externalId,
+        status: integration.status,
         dataSource: integration.dataSource,
         accessToken: integration.accessToken,
       };
@@ -156,6 +194,92 @@ export function createPrismaIntegrationsPersistence(): IntegrationsPersistence {
         },
       });
     },
+    async upsertOtakuMediaEntry(userId, item): Promise<void> {
+      const mediaTitle = await prisma.mediaTitle.upsert({
+        where: {
+          externalSource_externalId_kind: {
+            externalSource: 'MYANIMELIST',
+            externalId: item.externalId,
+            kind: item.kind,
+          },
+        },
+        create: {
+          kind: item.kind,
+          canonicalTitle: item.title,
+          coverUrl: item.coverUrl,
+          externalSource: 'MYANIMELIST',
+          externalId: item.externalId,
+        },
+        update: {
+          canonicalTitle: item.title,
+          coverUrl: item.coverUrl,
+        },
+      });
+
+      await prisma.userMediaEntry.upsert({
+        where: {
+          userId_mediaTitleId: {
+            userId,
+            mediaTitleId: mediaTitle.id,
+          },
+        },
+        create: {
+          userId,
+          mediaTitleId: mediaTitle.id,
+          status: item.status,
+          progress: item.progress,
+          score: item.score,
+          showcaseRank: null,
+        },
+        update: {
+          status: item.status,
+          progress: item.progress,
+          score: item.score,
+        },
+      });
+    },
+    async touchPlatformIntegrationLastSyncAt(userId, platform, syncedAt): Promise<void> {
+      await prisma.platformIntegration.update({
+        where: {
+          userId_platform: {
+            userId,
+            platform,
+          },
+        },
+        data: {
+          lastSyncAt: syncedAt,
+        },
+      });
+    },
+  };
+}
+
+export function mapMyAnimeListStatus(status: MyAnimeListListStatus): MediaConsumptionStatus {
+  switch (status) {
+    case 'watching':
+    case 'reading':
+      return 'CONSUMING';
+    case 'completed':
+      return 'COMPLETED';
+    case 'plan_to_watch':
+    case 'plan_to_read':
+      return 'PLANNING';
+    case 'on_hold':
+      return 'PAUSED';
+    case 'dropped':
+      return 'DROPPED';
+  }
+}
+
+function normalizeMyAnimeListImportItem(item: MyAnimeListListItem): NormalizedMyAnimeListImportItem {
+  return {
+    externalId: item.id,
+    title: item.title,
+    kind: item.kind,
+    coverUrl: item.coverUrl,
+    status: mapMyAnimeListStatus(item.status),
+    progress: item.progress,
+    score: item.score,
   };
 }
 
@@ -189,16 +313,19 @@ export function createIntegrationsService(dependencies?: {
   steamClient?: SteamIntegrationClient;
   igdbClient?: IgdbIntegrationClient;
   epicClient?: EpicIntegrationClient;
+  myAnimeListClient?: MyAnimeListListClient;
   persistence?: IntegrationsPersistence;
 }): {
   connectSteam: (userId: string, steamId: string) => Promise<{ imported: number; message: string }>;
   syncSteamLibrary: (userId: string) => Promise<{ synced: number; message: string }>;
   searchIgdbGames: (query: string) => Promise<IgdbGame[]>;
   connectEpic: (userId: string, authToken: string) => Promise<{ imported: number; message: string }>;
+  importMyAnimeListLists: (userId: string) => Promise<MyAnimeListImportResult>;
 } {
   const steamClient = dependencies?.steamClient ?? steamService;
   const igdbClient = dependencies?.igdbClient ?? igdbService;
   const epicClient = dependencies?.epicClient ?? epicService;
+  const myAnimeListClient = dependencies?.myAnimeListClient ?? myAnimeListListClient;
   const persistence = dependencies?.persistence ?? createPrismaIntegrationsPersistence();
 
   return {
@@ -323,6 +450,86 @@ export function createIntegrationsService(dependencies?: {
       return {
         imported: games.length,
         message: `Epic conectado. ${games.length} jogos importados.`,
+      };
+    },
+
+    async importMyAnimeListLists(userId: string): Promise<MyAnimeListImportResult> {
+      const integration = await persistence.findPlatformIntegration(userId, 'MYANIMELIST');
+
+      if (!integration) {
+        throw createIntegrationError(
+          'myanimelist',
+          404,
+          'not_connected',
+          'MyAnimeList não conectado.',
+        );
+      }
+
+      if (integration.status !== 'CONNECTED') {
+        throw createIntegrationError(
+          'myanimelist',
+          409,
+          'reauth_required',
+          'Reconecte o MyAnimeList antes de importar listas.',
+        );
+      }
+
+      let accessToken: string | null;
+
+      try {
+        accessToken = revealSensitiveToken(integration.accessToken);
+      } catch (error) {
+        if (error instanceof Error && error.message === 'Token protegido inválido.') {
+          throw createIntegrationError(
+            'myanimelist',
+            409,
+            'reauth_required',
+            'Reconecte o MyAnimeList antes de importar listas.',
+          );
+        }
+
+        throw error;
+      }
+
+      if (!accessToken) {
+        throw createIntegrationError(
+          'myanimelist',
+          409,
+          'reauth_required',
+          'Reconecte o MyAnimeList antes de importar listas.',
+        );
+      }
+
+      let animeItems: MyAnimeListListItem[];
+      let mangaItems: MyAnimeListListItem[];
+
+      [animeItems, mangaItems] = await Promise.all([
+        myAnimeListClient.fetchAnimeList(accessToken),
+        myAnimeListClient.fetchMangaList(accessToken),
+      ]);
+
+      const normalizedItems = [...animeItems, ...mangaItems].map(normalizeMyAnimeListImportItem);
+
+      if (!persistence.upsertOtakuMediaEntry || !persistence.touchPlatformIntegrationLastSyncAt) {
+        throw createIntegrationError(
+          'myanimelist',
+          503,
+          'misconfigured',
+          'Importação MyAnimeList indisponível no runtime atual.',
+        );
+      }
+
+      for (const item of normalizedItems) {
+        await persistence.upsertOtakuMediaEntry(userId, item);
+      }
+
+      await persistence.touchPlatformIntegrationLastSyncAt(userId, 'MYANIMELIST', new Date());
+
+      return {
+        imported: normalizedItems.length,
+        anime: animeItems.length,
+        manga: mangaItems.length,
+        message: `${normalizedItems.length} itens MyAnimeList importados de forma privada.`,
       };
     },
   };

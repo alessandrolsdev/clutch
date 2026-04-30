@@ -247,11 +247,14 @@ model MediaTitle {
   kind           MediaKind
   canonicalTitle String
   coverUrl       String?
+  externalSource Platform?
+  externalId     String?
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
   userEntries UserMediaEntry[]
 
+  @@unique([externalSource, externalId, kind])
   @@map("media_titles")
 }
 
@@ -260,6 +263,8 @@ model UserMediaEntry {
   userId       String
   mediaTitleId String
   status       MediaConsumptionStatus
+  progress     Int?
+  score        Int?
   showcaseRank Int?
   createdAt    DateTime               @default(now())
   updatedAt    DateTime               @updatedAt

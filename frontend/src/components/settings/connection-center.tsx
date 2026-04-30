@@ -12,6 +12,7 @@ import type {
 } from '@/schemas/integrations';
 import {
   fetchConnectedAccounts,
+  importMyAnimeListLists,
   IntegrationsRequestError,
   startAccountLink,
   startAccountReauth,
@@ -175,6 +176,7 @@ type ConnectionProviderRowProps = {
   onConnect(provider: ConnectedAccountProvider): void;
   onReauth(provider: ConnectedAccountProvider): void;
   onUnlink(provider: ConnectedAccountProvider): void;
+  onImportMyAnimeList(): void;
   onVisibilityChange(provider: ConnectedAccountProvider, publicProfileVisible: boolean): void;
 };
 
@@ -185,6 +187,7 @@ function ConnectionProviderRow({
   onConnect,
   onReauth,
   onUnlink,
+  onImportMyAnimeList,
   onVisibilityChange,
 }: ConnectionProviderRowProps) {
   const isBusy = busyProvider === definition.provider;
@@ -200,6 +203,10 @@ function ConnectionProviderRow({
     account?.status === 'CONNECTED' &&
     !account.experimental &&
     account.dataSource === 'OFFICIAL';
+  const canImportMyAnimeList = definition.provider === 'MYANIMELIST' &&
+    Boolean(account?.connected) &&
+    account?.status === 'CONNECTED' &&
+    !account.needsReauth;
 
   return (
     <Card className="space-y-5" data-testid={`connection-provider-${definition.provider.toLowerCase()}`}>
@@ -240,6 +247,12 @@ function ConnectionProviderRow({
       {account?.needsReauth ? (
         <p className="rounded-control border border-status-afk/40 bg-[rgba(245,158,11,0.12)] px-control-x py-control-y text-sm text-primary">
           Esta conta precisa ser reconectada antes de voltar ao estado ativo.
+        </p>
+      ) : null}
+
+      {definition.provider === 'MYANIMELIST' && account?.connected ? (
+        <p className="rounded-control border border-border bg-background-tertiary/40 px-control-x py-control-y text-sm text-secondary">
+          A importacao e manual, limitada e privada por padrao. Nada sera publicado no perfil ou no feed automaticamente.
         </p>
       ) : null}
 
@@ -317,6 +330,17 @@ function ConnectionProviderRow({
             }}
           >
             {isBusy ? 'Abrindo...' : `Reconectar ${definition.name}`}
+          </Button>
+        ) : null}
+
+        {canImportMyAnimeList ? (
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={isBusy}
+            onClick={onImportMyAnimeList}
+          >
+            {isBusy ? 'Importando...' : 'Importar listas do MyAnimeList'}
           </Button>
         ) : null}
 
@@ -467,6 +491,25 @@ export function ConnectionCenter({ onRedirect }: ConnectionCenterProps = {}) {
     },
   });
 
+  const myAnimeListImportMutation = useMutation({
+    mutationFn: importMyAnimeListLists,
+    onMutate: () => {
+      setBusyProvider('MYANIMELIST');
+      setErrorMessage(null);
+      setFeedbackMessage(null);
+    },
+    onSuccess: async (response) => {
+      setFeedbackMessage(response.message);
+      await queryClient.invalidateQueries({ queryKey: ['connected-accounts'] });
+    },
+    onError: (error) => {
+      setErrorMessage(resolveErrorMessage(error, 'Nao foi possivel importar listas do MyAnimeList agora.'));
+    },
+    onSettled: () => {
+      setBusyProvider(null);
+    },
+  });
+
   if (accountsQuery.isPending) {
     return (
       <Card className="space-y-4" data-testid="connection-center-loading">
@@ -541,6 +584,9 @@ export function ConnectionCenter({ onRedirect }: ConnectionCenterProps = {}) {
             }}
             onUnlink={(provider) => {
               unlinkMutation.mutate(provider);
+            }}
+            onImportMyAnimeList={() => {
+              myAnimeListImportMutation.mutate();
             }}
             onVisibilityChange={(provider, publicProfileVisible) => {
               visibilityMutation.mutate({ provider, publicProfileVisible });
