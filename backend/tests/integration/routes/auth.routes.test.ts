@@ -1077,7 +1077,7 @@ describe('Auth Routes', () => {
         name: 'AccountConnectionError',
         statusCode: 400,
         reason: 'unsupported_provider',
-        clientMessage: 'Provider não suporta conexão OAuth neste momento.',
+        clientMessage: 'Provider nao suporta conexao OpenID neste momento.',
       });
       const app = await buildApp({ accountConnectionService });
       const token = generateTestToken(app);
@@ -1090,7 +1090,7 @@ describe('Auth Routes', () => {
 
       expect(response.statusCode).toBe(400);
       expect(response.json()).toMatchObject({
-        message: 'Provider não suporta conexão OAuth neste momento.',
+        message: 'Provider nao suporta conexao OpenID neste momento.',
       });
       await app.close();
     });
@@ -1118,6 +1118,48 @@ describe('Auth Routes', () => {
         code: 'oauth-code',
         state: 'signed-state',
         providerError: undefined,
+        openIdParams: expect.objectContaining({
+          code: 'oauth-code',
+          state: 'signed-state',
+        }),
+      });
+      await app.close();
+    });
+
+    it('conclui callback Steam OpenID repassando parametros sem emitir sessao nova', async () => {
+      const accountConnectionService = createAccountConnectionService();
+      accountConnectionService.completeLink.mockResolvedValueOnce({
+        provider: 'STEAM',
+        externalId: '76561198000000000',
+        status: 'CONNECTED',
+        connectionType: 'CONNECTED_ACCOUNT',
+        message: 'Steam verificada e conectada com sucesso.',
+      });
+      const app = await buildApp({ accountConnectionService });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/accounts/steam/link/callback?state=signed-state&openid.mode=id_res&openid.claimed_id=https%3A%2F%2Fsteamcommunity.com%2Fopenid%2Fid%2F76561198000000000',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        provider: 'STEAM',
+        externalId: '76561198000000000',
+        status: 'CONNECTED',
+        connectionType: 'CONNECTED_ACCOUNT',
+      });
+      expect(response.json()).not.toHaveProperty('token');
+      expect(response.headers['set-cookie']).toBeUndefined();
+      expect(accountConnectionService.completeLink).toHaveBeenCalledWith({
+        provider: 'steam',
+        code: undefined,
+        state: 'signed-state',
+        providerError: undefined,
+        openIdParams: expect.objectContaining({
+          'openid.mode': 'id_res',
+          'openid.claimed_id': 'https://steamcommunity.com/openid/id/76561198000000000',
+        }),
       });
       await app.close();
     });
@@ -1212,6 +1254,33 @@ describe('Auth Routes', () => {
         userId: 'user-id-1',
         provider: 'google',
         publicProfileVisible: true,
+      });
+      await app.close();
+    });
+
+    it('inicia linking Steam OpenID autenticado', async () => {
+      const accountConnectionService = createAccountConnectionService();
+      accountConnectionService.startLink.mockResolvedValueOnce({
+        provider: 'STEAM',
+        authorizationUrl: 'https://steamcommunity.com/openid/login?openid.mode=checkid_setup',
+      });
+      const app = await buildApp({ accountConnectionService });
+      const token = generateTestToken(app);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/accounts/steam/link/start',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        provider: 'STEAM',
+        authorizationUrl: expect.stringContaining('steamcommunity.com/openid/login'),
+      });
+      expect(accountConnectionService.startLink).toHaveBeenCalledWith({
+        userId: 'user-id-1',
+        provider: 'steam',
       });
       await app.close();
     });
