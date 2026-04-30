@@ -96,7 +96,7 @@ describe('integrations service layer', () => {
     expect(persistence.upsertPlatformIntegration).toHaveBeenCalledWith(
       'user-id-1',
       'STEAM',
-      { externalId: '76561198000000000' },
+      { externalId: '76561198000000000', dataSource: 'MANUAL' },
     );
     expect(persistence.upsertSteamLibraryGame).toHaveBeenNthCalledWith(
       1,
@@ -154,7 +154,7 @@ describe('integrations service layer', () => {
     expect(persistence.upsertPlatformIntegration).toHaveBeenCalledWith(
       'user-id-1',
       'STEAM',
-      { externalId: '76561198000000000' },
+      { externalId: '76561198000000000', dataSource: 'MANUAL' },
     );
     expect(persistence.upsertSteamLibraryGame).not.toHaveBeenCalled();
     expect(stdoutWriteSpy).toHaveBeenCalledWith(
@@ -162,6 +162,80 @@ describe('integrations service layer', () => {
     );
 
     stdoutWriteSpy.mockRestore();
+  });
+
+  it('preserva ownership oficial quando fallback manual usa o mesmo SteamID verificado', async () => {
+    const persistence = {
+      upsertPlatformIntegration: vi.fn().mockResolvedValue(undefined),
+      findPlatformIntegration: vi.fn().mockResolvedValue({
+        externalId: '76561198000000000',
+        dataSource: 'OFFICIAL',
+        accessToken: null,
+      }),
+      upsertSteamLibraryGame: vi.fn().mockResolvedValue(undefined),
+      upsertEpicLibraryGame: vi.fn(),
+    };
+
+    const service = createIntegrationsService({
+      steamClient: {
+        validateSteamId: vi.fn().mockResolvedValue(true),
+        getOwnedGames: vi.fn().mockResolvedValue([]),
+      },
+      igdbClient: {
+        searchGames: vi.fn(),
+        searchGame: vi.fn(),
+      },
+      epicClient: {
+        validateToken: vi.fn(),
+        getLibrary: vi.fn(),
+      },
+      persistence,
+    });
+
+    await service.connectSteam('user-id-1', '76561198000000000');
+
+    expect(persistence.upsertPlatformIntegration).toHaveBeenCalledWith(
+      'user-id-1',
+      'STEAM',
+      { externalId: '76561198000000000', dataSource: 'OFFICIAL' },
+    );
+  });
+
+  it('bloqueia fallback manual que trocaria uma Steam oficial verificada', async () => {
+    const persistence = {
+      upsertPlatformIntegration: vi.fn(),
+      findPlatformIntegration: vi.fn().mockResolvedValue({
+        externalId: '76561198000000000',
+        dataSource: 'OFFICIAL',
+        accessToken: null,
+      }),
+      upsertSteamLibraryGame: vi.fn(),
+      upsertEpicLibraryGame: vi.fn(),
+    };
+
+    const service = createIntegrationsService({
+      steamClient: {
+        validateSteamId: vi.fn().mockResolvedValue(true),
+        getOwnedGames: vi.fn(),
+      },
+      igdbClient: {
+        searchGames: vi.fn(),
+        searchGame: vi.fn(),
+      },
+      epicClient: {
+        validateToken: vi.fn(),
+        getLibrary: vi.fn(),
+      },
+      persistence,
+    });
+
+    await expect(
+      service.connectSteam('user-id-1', '76561198000000001'),
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      reason: 'conflict',
+    });
+    expect(persistence.upsertPlatformIntegration).not.toHaveBeenCalled();
   });
 
   it('traduz Steam nao conectado na sincronizacao', async () => {
@@ -197,6 +271,7 @@ describe('integrations service layer', () => {
       upsertPlatformIntegration: vi.fn(),
       findPlatformIntegration: vi.fn().mockResolvedValue({
         externalId: '76561198000000000',
+        dataSource: 'MANUAL',
       }),
       upsertSteamLibraryGame: vi.fn().mockResolvedValue(undefined),
       upsertEpicLibraryGame: vi.fn(),
@@ -471,7 +546,7 @@ describe('createPrismaIntegrationsPersistence', () => {
     expect(prisma.platformIntegration.upsert).not.toHaveBeenCalled();
   });
 
-  it('persiste Steam via connected account foundation com dataSource oficial', async () => {
+  it('persiste Steam manual via connected account foundation com dataSource manual', async () => {
     vi.mocked(prisma.platformIntegration.findUnique).mockResolvedValueOnce(null);
     vi.mocked(prisma.platformIntegration.upsert).mockResolvedValue({
       id: 'integration-id-1',
@@ -480,7 +555,7 @@ describe('createPrismaIntegrationsPersistence', () => {
       externalId: '76561198000000000',
       connectionType: 'CONNECTED_ACCOUNT',
       status: 'CONNECTED',
-      dataSource: 'OFFICIAL',
+      dataSource: 'MANUAL',
       metadata: null,
       publicProfileVisible: false,
       createdAt: new Date('2026-04-29T00:00:00.000Z'),
@@ -492,7 +567,7 @@ describe('createPrismaIntegrationsPersistence', () => {
     await persistence.upsertPlatformIntegration(
       'user-id-1',
       'STEAM',
-      { externalId: '76561198000000000' },
+      { externalId: '76561198000000000', dataSource: 'MANUAL' },
     );
 
     expect(prisma.platformIntegration.upsert).toHaveBeenCalledWith(
@@ -503,7 +578,7 @@ describe('createPrismaIntegrationsPersistence', () => {
           externalId: '76561198000000000',
           connectionType: 'CONNECTED_ACCOUNT',
           status: 'CONNECTED',
-          dataSource: 'OFFICIAL',
+          dataSource: 'MANUAL',
         }),
       }),
     );

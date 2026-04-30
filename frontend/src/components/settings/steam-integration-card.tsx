@@ -92,10 +92,10 @@ export function SteamIntegrationCard({
         <div className="space-y-2">
           <p className="text-xs uppercase tracking-[0.35em] text-secondary">Steam</p>
           <h2 className="font-display text-2xl font-semibold text-primary">
-            Biblioteca Steam
+            Fallback manual Steam
           </h2>
           <p className="text-sm leading-6 text-secondary">
-            Conecta sua conta pela SteamID publica e permite sincronizar a biblioteca real.
+            Use apenas quando o fluxo verificado pela Steam estiver indisponivel. SteamID manual ajuda a importar dados publicos, mas nao prova ownership da conta.
           </p>
         </div>
         <Badge tone={isConnected ? 'success' : 'neutral'}>
@@ -139,7 +139,7 @@ export function SteamIntegrationCard({
 
         <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" disabled={isSubmitting || connectMutation.isPending}>
-            {isSubmitting || connectMutation.isPending ? 'Conectando...' : 'Conectar Steam'}
+            {isSubmitting || connectMutation.isPending ? 'Conectando...' : 'Vincular SteamID manualmente'}
           </Button>
           <Button
             type="button"
