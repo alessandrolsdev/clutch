@@ -3,14 +3,12 @@ import type { Platform, User } from '@prisma/client';
 import {
   AccountConnectionError,
   createAccountConnectionService,
+  type AccountConnectionProviderClient,
+  type OAuthAccountConnectionProvider,
   type PublicConnectedAccount,
 } from '@/core/services/account-connection.service';
 import { ConnectedAccountConflictError } from '@/core/services/connected-account.service';
 import type { ConnectedAccountRecord } from '@/core/repositories/connected-account.repository';
-import type {
-  SocialAuthProvider,
-  SocialAuthProviderClient,
-} from '@/core/services/social-auth.service';
 
 const baseUser: User = {
   id: 'user-id-1',
@@ -22,10 +20,12 @@ const baseUser: User = {
   updatedAt: new Date('2026-04-28T00:00:00.000Z'),
 };
 
+const originalEnv = { ...process.env };
+
 function createProviderClient(
-  provider: SocialAuthProvider,
+  provider: OAuthAccountConnectionProvider,
   externalId = `${provider.toLowerCase()}-external-id`,
-): SocialAuthProviderClient {
+): AccountConnectionProviderClient {
   return {
     provider,
     createAuthorizationUrl: vi.fn().mockReturnValue(`https://provider.test/${provider.toLowerCase()}/authorize`),
@@ -67,6 +67,7 @@ function createDependencies() {
     providerClients: {
       GOOGLE: createProviderClient('GOOGLE'),
       DISCORD: createProviderClient('DISCORD'),
+      MYANIMELIST: createProviderClient('MYANIMELIST'),
     },
     steamClient: {
       createAuthorizationUrl: vi.fn().mockReturnValue('https://steamcommunity.com/openid/login?openid.mode=checkid_setup'),
@@ -91,7 +92,7 @@ function createDependencies() {
 async function issueState(
   service: ReturnType<typeof createAccountConnectionService>,
   dependencies: ReturnType<typeof createDependencies>,
-  provider: SocialAuthProvider,
+  provider: OAuthAccountConnectionProvider,
   mode: 'link' | 'reauth' = 'link',
 ): Promise<string> {
   if (mode === 'reauth') {
@@ -141,6 +142,7 @@ async function issueSteamState(
 describe('account connection service', () => {
   afterEach(() => {
     vi.useRealTimers();
+    process.env = { ...originalEnv };
   });
 
   it('lista contas conectadas sem expor tokens', async () => {
@@ -151,6 +153,11 @@ describe('account connection service', () => {
         externalId: 'discord-user-id',
         connectionType: 'CONNECTED_ACCOUNT',
         status: 'NEEDS_REAUTH',
+        metadata: {
+          rawProfile: { id: 'discord-user-id' },
+          code: 'oauth-code',
+          accessToken: 'discord-access-token',
+        },
       }),
     ]);
     const service = createAccountConnectionService(dependencies);
@@ -168,6 +175,10 @@ describe('account connection service', () => {
     });
     expect(result.accounts[0]).not.toHaveProperty('accessToken');
     expect(result.accounts[0]).not.toHaveProperty('refreshToken');
+    expect(result.accounts[0]).not.toHaveProperty('metadata');
+    expect(JSON.stringify(result.accounts[0])).not.toContain('rawProfile');
+    expect(JSON.stringify(result.accounts[0])).not.toContain('oauth-code');
+    expect(JSON.stringify(result.accounts[0])).not.toContain('discord-access-token');
     expect(result.providers).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -314,6 +325,120 @@ describe('account connection service', () => {
     });
   });
 
+  it('inicia linking MyAnimeList com PKCE quando OAuth esta configurado', async () => {
+    process.env['MYANIMELIST_CLIENT_ID'] = 'mal-client-id';
+    process.env['MYANIMELIST_CLIENT_SECRET'] = 'mal-client-secret';
+    process.env['MYANIMELIST_REDIRECT_URI'] = 'http://localhost/api/auth/accounts/myanimelist/link/callback';
+    const dependencies = createDependencies();
+    const service = createAccountConnectionService(dependencies);
+
+    const result = await service.startLink({ userId: 'user-id-1', provider: 'myanimelist' });
+
+    expect(result).toMatchObject({
+      provider: 'MYANIMELIST',
+      authorizationUrl: 'https://provider.test/myanimelist/authorize',
+    });
+    expect(dependencies.providerClients.MYANIMELIST.createAuthorizationUrl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        state: expect.stringContaining('.'),
+        nonce: expect.any(String),
+        redirectUri: 'http://localhost/api/auth/accounts/myanimelist/link/callback',
+        codeChallenge: expect.stringMatching(/^[A-Za-z0-9_-]+$/u),
+      }),
+    );
+  });
+
+  it('conecta MyAnimeList como conta conectada sem criar login social', async () => {
+    process.env['MYANIMELIST_CLIENT_ID'] = 'mal-client-id';
+    process.env['MYANIMELIST_CLIENT_SECRET'] = 'mal-client-secret';
+    process.env['MYANIMELIST_REDIRECT_URI'] = 'http://localhost/api/auth/accounts/myanimelist/link/callback';
+    const dependencies = createDependencies();
+    const service = createAccountConnectionService(dependencies);
+    const state = await issueState(service, dependencies, 'MYANIMELIST');
+
+    const result = await service.completeLink({
+      provider: 'myanimelist',
+      code: 'oauth-code',
+      state,
+    });
+
+    expect(result).toMatchObject({
+      provider: 'MYANIMELIST',
+      externalId: 'myanimelist-external-id',
+      status: 'CONNECTED',
+      connectionType: 'CONNECTED_ACCOUNT',
+    });
+    expect(dependencies.providerClients.MYANIMELIST.exchangeCodeForIdentity).toHaveBeenCalledWith(
+      'oauth-code',
+      expect.objectContaining({
+        redirectUri: 'http://localhost/api/auth/accounts/myanimelist/link/callback',
+        codeVerifier: expect.stringMatching(/^[A-Za-z0-9_-]+$/u),
+      }),
+    );
+    expect(dependencies.connectedAccountService.connectExternalIdentity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user-id-1',
+        provider: 'MYANIMELIST',
+        externalId: 'myanimelist-external-id',
+        connectionType: 'CONNECTED_ACCOUNT',
+        accessToken: 'myanimelist-access-token',
+        refreshToken: 'myanimelist-refresh-token',
+      }),
+    );
+  });
+
+  it('falha callback MyAnimeList quando verifier PKCE nao existe mais', async () => {
+    process.env['MYANIMELIST_CLIENT_ID'] = 'mal-client-id';
+    process.env['MYANIMELIST_CLIENT_SECRET'] = 'mal-client-secret';
+    process.env['MYANIMELIST_REDIRECT_URI'] = 'http://localhost/api/auth/accounts/myanimelist/link/callback';
+    const dependencies = createDependencies();
+    const pkceStore = {
+      store: vi.fn().mockResolvedValue(undefined),
+      consume: vi.fn().mockResolvedValue(null),
+    };
+    const service = createAccountConnectionService({
+      ...dependencies,
+      pkceStore,
+    });
+    const state = await issueState(service, dependencies, 'MYANIMELIST');
+
+    await expect(service.completeLink({
+      provider: 'myanimelist',
+      code: 'oauth-code',
+      state,
+    })).rejects.toMatchObject({
+      statusCode: 400,
+      reason: 'invalid_state',
+    });
+    expect(dependencies.providerClients.MYANIMELIST.exchangeCodeForIdentity).not.toHaveBeenCalled();
+  });
+
+  it('falha callback MyAnimeList com state reutilizado antes de trocar token novamente', async () => {
+    process.env['MYANIMELIST_CLIENT_ID'] = 'mal-client-id';
+    process.env['MYANIMELIST_CLIENT_SECRET'] = 'mal-client-secret';
+    process.env['MYANIMELIST_REDIRECT_URI'] = 'http://localhost/api/auth/accounts/myanimelist/link/callback';
+    const dependencies = createDependencies();
+    const service = createAccountConnectionService(dependencies);
+    const state = await issueState(service, dependencies, 'MYANIMELIST');
+
+    await service.completeLink({
+      provider: 'myanimelist',
+      code: 'oauth-code',
+      state,
+    });
+
+    vi.mocked(dependencies.providerClients.MYANIMELIST.exchangeCodeForIdentity).mockClear();
+    await expect(service.completeLink({
+      provider: 'myanimelist',
+      code: 'oauth-code-again',
+      state,
+    })).rejects.toMatchObject({
+      statusCode: 400,
+      reason: 'invalid_state',
+    });
+    expect(dependencies.providerClients.MYANIMELIST.exchangeCodeForIdentity).not.toHaveBeenCalled();
+  });
+
   it('conecta identidade externa ao usuario autenticado sem criar conta CLUTCH', async () => {
     const dependencies = createDependencies();
     const service = createAccountConnectionService(dependencies);
@@ -396,6 +521,31 @@ describe('account connection service', () => {
 
     await expect(service.completeLink({
       provider: 'discord',
+      code: 'oauth-code',
+      state,
+    })).rejects.toMatchObject({
+      statusCode: 409,
+      reason: 'identity_conflict',
+    });
+    expect(dependencies.connectedAccountService.connectExternalIdentity).not.toHaveBeenCalled();
+  });
+
+  it('bloqueia MyAnimeList quando identidade externa pertence a outro usuario', async () => {
+    process.env['MYANIMELIST_CLIENT_ID'] = 'mal-client-id';
+    process.env['MYANIMELIST_CLIENT_SECRET'] = 'mal-client-secret';
+    process.env['MYANIMELIST_REDIRECT_URI'] = 'http://localhost/api/auth/accounts/myanimelist/link/callback';
+    const dependencies = createDependencies();
+    const service = createAccountConnectionService(dependencies);
+    const state = await issueState(service, dependencies, 'MYANIMELIST');
+    dependencies.repository.findByProviderExternalId.mockResolvedValueOnce(createAccount({
+      provider: 'MYANIMELIST',
+      externalId: 'myanimelist-external-id',
+      userId: 'other-user-id',
+      connectionType: 'CONNECTED_ACCOUNT',
+    }));
+
+    await expect(service.completeLink({
+      provider: 'myanimelist',
       code: 'oauth-code',
       state,
     })).rejects.toMatchObject({
@@ -766,6 +916,43 @@ describe('account connection service', () => {
         userId: 'user-id-1',
         provider: 'DISCORD',
         externalId: 'discord-external-id',
+        connectionType: 'CONNECTED_ACCOUNT',
+        status: 'CONNECTED',
+      }),
+    );
+  });
+
+  it('reconecta MyAnimeList mantendo conta conectada e mesmo externalId', async () => {
+    process.env['MYANIMELIST_CLIENT_ID'] = 'mal-client-id';
+    process.env['MYANIMELIST_CLIENT_SECRET'] = 'mal-client-secret';
+    process.env['MYANIMELIST_REDIRECT_URI'] = 'http://localhost/api/auth/accounts/myanimelist/link/callback';
+    const dependencies = createDependencies();
+    const service = createAccountConnectionService(dependencies);
+    const state = await issueState(service, dependencies, 'MYANIMELIST', 'reauth');
+    dependencies.repository.findByUserProvider.mockResolvedValueOnce(createAccount({
+      provider: 'MYANIMELIST',
+      externalId: 'myanimelist-external-id',
+      connectionType: 'CONNECTED_ACCOUNT',
+      status: 'NEEDS_REAUTH',
+    }));
+
+    const result = await service.completeReauth({
+      provider: 'myanimelist',
+      code: 'oauth-code',
+      state,
+    });
+
+    expect(result).toMatchObject({
+      provider: 'MYANIMELIST',
+      externalId: 'myanimelist-external-id',
+      status: 'CONNECTED',
+      connectionType: 'CONNECTED_ACCOUNT',
+    });
+    expect(dependencies.connectedAccountService.connectExternalIdentity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user-id-1',
+        provider: 'MYANIMELIST',
+        externalId: 'myanimelist-external-id',
         connectionType: 'CONNECTED_ACCOUNT',
         status: 'CONNECTED',
       }),

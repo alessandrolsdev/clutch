@@ -21,7 +21,6 @@ import {
 import {
   createInMemorySocialOAuthStateStore,
   type SocialAuthProvider,
-  type SocialAuthProviderClient,
   type SocialAuthProviderIdentity,
   type SocialOAuthStateStore,
 } from './social-auth.service';
@@ -29,6 +28,10 @@ import {
   discordSocialOAuthClient,
   googleSocialOAuthClient,
 } from '../../infra/integrations/social/social-oauth.clients';
+import {
+  createMyAnimeListCodeVerifier,
+  myAnimeListOAuthClient,
+} from '../../infra/integrations/myanimelist/myanimelist-oauth.client';
 import {
   steamOpenIdClient,
   type SteamOpenIdCallbackParams,
@@ -46,7 +49,34 @@ const ACCOUNT_CONNECTION_CALLBACK_PATHS: Record<AccountConnectionMode, string> =
 };
 
 export type AccountConnectionMode = 'link' | 'reauth';
-type BrowserAccountConnectionProvider = SocialAuthProvider | 'STEAM';
+export type OAuthAccountConnectionProvider = SocialAuthProvider | 'MYANIMELIST';
+type BrowserAccountConnectionProvider = OAuthAccountConnectionProvider | 'STEAM';
+
+export type AccountConnectionProviderIdentity = Omit<SocialAuthProviderIdentity, 'provider'> & {
+  provider: OAuthAccountConnectionProvider;
+};
+
+export type AccountConnectionProviderClient = {
+  provider: OAuthAccountConnectionProvider;
+  createAuthorizationUrl(input: {
+    state: string;
+    nonce: string;
+    redirectUri?: string;
+    codeChallenge?: string;
+  }): string;
+  exchangeCodeForIdentity(
+    code: string,
+    input?: {
+      redirectUri?: string;
+      codeVerifier?: string;
+    },
+  ): Promise<AccountConnectionProviderIdentity>;
+};
+
+export type AccountConnectionPkceStore = {
+  store(state: string, codeVerifier: string, ttlMs: number): Promise<void>;
+  consume(state: string): Promise<string | null>;
+};
 
 export type PublicConnectedAccount = {
   provider: Platform;
@@ -151,7 +181,7 @@ type AccountConnectionUserGateway = {
 };
 
 type AccountConnectionDependencies = {
-  providerClients?: Partial<Record<SocialAuthProvider, SocialAuthProviderClient>>;
+  providerClients?: Partial<Record<OAuthAccountConnectionProvider, AccountConnectionProviderClient>>;
   steamClient?: SteamOpenIdClient;
   users?: AccountConnectionUserGateway;
   repository?: Pick<
@@ -164,6 +194,7 @@ type AccountConnectionDependencies = {
   >;
   connectedAccountService?: Pick<ConnectedAccountService, 'connectExternalIdentity'>;
   stateStore?: SocialOAuthStateStore;
+  pkceStore?: AccountConnectionPkceStore;
 };
 
 type AccountConnectionStatePayload = {
@@ -217,8 +248,12 @@ function isSocialOAuthProvider(value: unknown): value is SocialAuthProvider {
   return value === 'GOOGLE' || value === 'DISCORD';
 }
 
+function isAccountConnectionOAuthProvider(value: unknown): value is OAuthAccountConnectionProvider {
+  return isSocialOAuthProvider(value) || value === 'MYANIMELIST';
+}
+
 function isBrowserAccountConnectionProvider(value: unknown): value is BrowserAccountConnectionProvider {
-  return isSocialOAuthProvider(value) || value === 'STEAM';
+  return isAccountConnectionOAuthProvider(value) || value === 'STEAM';
 }
 
 function decodeStatePayload(value: string): AccountConnectionStatePayload {
@@ -354,12 +389,12 @@ function normalizePlatform(provider: string): Platform {
   return knownProvider.provider;
 }
 
-function normalizeOAuthProvider(provider: string): SocialAuthProvider {
+function normalizeOAuthProvider(provider: string): OAuthAccountConnectionProvider {
   const normalizedProvider = normalizePlatform(provider);
   const definition = getProviderDefinition(normalizedProvider);
 
   if (
-    !isSocialOAuthProvider(normalizedProvider) ||
+    !isAccountConnectionOAuthProvider(normalizedProvider) ||
     definition.status === 'UNAVAILABLE' ||
     !definition.capabilities.includes('OAUTH_CONNECT')
   ) {
@@ -473,18 +508,26 @@ function getDefaultSocialRedirectUri(provider: SocialAuthProvider): string | und
   return process.env['DISCORD_SOCIAL_REDIRECT_URI']?.trim();
 }
 
+function getDefaultOAuthRedirectUri(provider: OAuthAccountConnectionProvider): string | undefined {
+  if (provider === 'MYANIMELIST') {
+    return process.env['MYANIMELIST_REDIRECT_URI']?.trim();
+  }
+
+  return getDefaultSocialRedirectUri(provider);
+}
+
 function getExplicitAccountConnectionRedirectUri(
-  provider: SocialAuthProvider,
+  provider: OAuthAccountConnectionProvider,
   mode: AccountConnectionMode,
 ): string | undefined {
   return process.env[`${provider}_ACCOUNT_${mode.toUpperCase()}_REDIRECT_URI`]?.trim();
 }
 
 function deriveAccountConnectionRedirectUri(
-  provider: SocialAuthProvider,
+  provider: OAuthAccountConnectionProvider,
   mode: AccountConnectionMode,
 ): string | undefined {
-  const defaultRedirectUri = getDefaultSocialRedirectUri(provider);
+  const defaultRedirectUri = getDefaultOAuthRedirectUri(provider);
 
   if (!defaultRedirectUri) {
     return undefined;
@@ -494,12 +537,26 @@ function deriveAccountConnectionRedirectUri(
     const parsedUrl = new URL(defaultRedirectUri);
     const providerSlug = provider.toLowerCase();
     const callbackMode = ACCOUNT_CONNECTION_CALLBACK_PATHS[mode];
-    const nextPathname = parsedUrl.pathname.replace(
-      `/auth/social/${providerSlug}/callback`,
+    const socialCallbackPath = `/auth/social/${providerSlug}/callback`;
+    const accountLinkCallbackPath = `/auth/accounts/${providerSlug}/link/callback`;
+    let nextPathname = parsedUrl.pathname.replace(
+      socialCallbackPath,
       `/auth/accounts/${providerSlug}/${callbackMode}/callback`,
     );
 
     if (nextPathname === parsedUrl.pathname) {
+      nextPathname = parsedUrl.pathname.replace(
+        accountLinkCallbackPath,
+        `/auth/accounts/${providerSlug}/${callbackMode}/callback`,
+      );
+    }
+
+    if (nextPathname === parsedUrl.pathname) {
+      if (parsedUrl.pathname === `/api/auth/accounts/${providerSlug}/${callbackMode}/callback` ||
+        parsedUrl.pathname === `/auth/accounts/${providerSlug}/${callbackMode}/callback`) {
+        return parsedUrl.toString();
+      }
+
       return undefined;
     }
 
@@ -512,7 +569,7 @@ function deriveAccountConnectionRedirectUri(
 }
 
 function resolveAccountConnectionRedirectUri(
-  provider: SocialAuthProvider,
+  provider: OAuthAccountConnectionProvider,
   mode: AccountConnectionMode,
 ): string | undefined {
   return getExplicitAccountConnectionRedirectUri(provider, mode)
@@ -612,7 +669,7 @@ function mapProviderFailure(error: unknown, provider: BrowserAccountConnectionPr
   });
 }
 
-function buildIdentityMetadata(identity: SocialAuthProviderIdentity): Prisma.InputJsonObject {
+function buildIdentityMetadata(identity: AccountConnectionProviderIdentity): Prisma.InputJsonObject {
   return {
     ...identity.metadata,
     email: identity.email,
@@ -624,6 +681,43 @@ function buildIdentityMetadata(identity: SocialAuthProviderIdentity): Prisma.Inp
   };
 }
 
+export function createInMemoryAccountConnectionPkceStore(): AccountConnectionPkceStore {
+  const verifiers = new Map<string, { codeVerifier: string; expiresAt: number }>();
+
+  function pruneExpiredVerifiers(): void {
+    const now = Date.now();
+
+    for (const [state, record] of verifiers.entries()) {
+      if (record.expiresAt <= now) {
+        verifiers.delete(state);
+      }
+    }
+  }
+
+  return {
+    async store(state, codeVerifier, ttlMs): Promise<void> {
+      pruneExpiredVerifiers();
+      verifiers.set(state, {
+        codeVerifier,
+        expiresAt: Date.now() + ttlMs,
+      });
+    },
+
+    async consume(state): Promise<string | null> {
+      pruneExpiredVerifiers();
+      const record = verifiers.get(state);
+
+      if (!record || record.expiresAt <= Date.now()) {
+        verifiers.delete(state);
+        return null;
+      }
+
+      verifiers.delete(state);
+      return record.codeVerifier;
+    },
+  };
+}
+
 export function createAccountConnectionService(
   dependencies: AccountConnectionDependencies = {},
 ): AccountConnectionService {
@@ -631,19 +725,25 @@ export function createAccountConnectionService(
   const repository = dependencies.repository ?? createConnectedAccountRepository();
   const connectedAccountService = dependencies.connectedAccountService ?? createConnectedAccountService();
   const stateStore = dependencies.stateStore ?? createInMemorySocialOAuthStateStore();
+  const pkceStore = dependencies.pkceStore ?? createInMemoryAccountConnectionPkceStore();
   const providerClients = {
     GOOGLE: dependencies.providerClients?.GOOGLE ?? googleSocialOAuthClient,
     DISCORD: dependencies.providerClients?.DISCORD ?? discordSocialOAuthClient,
+    MYANIMELIST: dependencies.providerClients?.MYANIMELIST ?? myAnimeListOAuthClient,
   };
   const steamClient = dependencies.steamClient ?? steamOpenIdClient;
 
   async function exchangeIdentity(
-    provider: SocialAuthProvider,
+    provider: OAuthAccountConnectionProvider,
     code: string,
     redirectUri?: string,
-  ): Promise<SocialAuthProviderIdentity> {
+    codeVerifier?: string,
+  ): Promise<AccountConnectionProviderIdentity> {
     try {
-      const identity = await providerClients[provider].exchangeCodeForIdentity(code, { redirectUri });
+      const identity = await providerClients[provider].exchangeCodeForIdentity(code, {
+        redirectUri,
+        codeVerifier,
+      });
 
       if (identity.provider !== provider) {
         throw createAccountConnectionError({
@@ -713,13 +813,21 @@ export function createAccountConnectionService(
       mode: input.mode,
       expectedExternalId: input.expectedExternalId,
     });
+    const codeVerifier = provider === 'MYANIMELIST'
+      ? createMyAnimeListCodeVerifier()
+      : undefined;
     const authorizationUrl = providerClients[provider].createAuthorizationUrl({
       state,
       nonce,
       redirectUri: resolveAccountConnectionRedirectUri(provider, input.mode),
+      codeChallenge: codeVerifier,
     });
 
     await stateStore.store(state, ACCOUNT_CONNECTION_STATE_TTL_MS);
+
+    if (codeVerifier) {
+      await pkceStore.store(state, codeVerifier, ACCOUNT_CONNECTION_STATE_TTL_MS);
+    }
 
     return {
       provider,
@@ -757,7 +865,7 @@ export function createAccountConnectionService(
     state?: string;
     providerError?: string;
     mode: AccountConnectionMode;
-  }): Promise<{ provider: SocialAuthProvider; identity: SocialAuthProviderIdentity; statePayload: AccountConnectionStatePayload }> {
+  }): Promise<{ provider: OAuthAccountConnectionProvider; identity: AccountConnectionProviderIdentity; statePayload: AccountConnectionStatePayload }> {
     const provider = normalizeOAuthProvider(input.provider);
 
     if (input.providerError) {
@@ -789,12 +897,26 @@ export function createAccountConnectionService(
       });
     }
 
+    const codeVerifier = provider === 'MYANIMELIST'
+      ? await pkceStore.consume(input.state) ?? undefined
+      : undefined;
+
+    if (provider === 'MYANIMELIST' && !codeVerifier) {
+      throw createAccountConnectionError({
+        statusCode: 400,
+        reason: 'invalid_state',
+        clientMessage: 'Callback de conexão inválido ou expirado.',
+        provider,
+      });
+    }
+
     return {
       provider,
       identity: await exchangeIdentity(
         provider,
         input.code,
         resolveAccountConnectionRedirectUri(provider, input.mode),
+        codeVerifier,
       ),
       statePayload,
     };
@@ -975,7 +1097,7 @@ export function createAccountConnectionService(
           userId: statePayload.userId,
           provider,
           externalId: identity.externalId,
-          connectionType: 'SOCIAL_LOGIN',
+          connectionType: provider === 'MYANIMELIST' ? 'CONNECTED_ACCOUNT' : 'SOCIAL_LOGIN',
           status: 'CONNECTED',
           dataSource: getProviderDefinition(provider).dataSource,
           accessToken: identity.accessToken,
@@ -1000,7 +1122,7 @@ export function createAccountConnectionService(
         provider,
         externalId: identity.externalId,
         status: 'CONNECTED',
-        connectionType: 'SOCIAL_LOGIN',
+        connectionType: provider === 'MYANIMELIST' ? 'CONNECTED_ACCOUNT' : 'SOCIAL_LOGIN',
         message: `${getProviderDefinition(provider).displayName} vinculado com sucesso.`,
       };
     },

@@ -3,6 +3,7 @@ import type {
   PlatformIntegrationDataSource,
   PlatformIntegrationStatus,
 } from '@prisma/client';
+import { isMyAnimeListOAuthConfigured } from '../../infra/integrations/myanimelist/myanimelist-oauth.client';
 
 export type ProviderCapability =
   | 'SOCIAL_LOGIN'
@@ -93,11 +94,31 @@ const PROVIDER_DEFINITIONS: readonly ProviderDefinition[] = [
   },
 ];
 
-export function listProviderDefinitions(): ProviderDefinition[] {
-  return PROVIDER_DEFINITIONS.map((definition) => ({
+function resolveProviderDefinition(definition: ProviderDefinition): ProviderDefinition {
+  if (definition.provider !== 'MYANIMELIST') {
+    return definition;
+  }
+
+  if (!isMyAnimeListOAuthConfigured()) {
+    return definition;
+  }
+
+  return {
     ...definition,
-    capabilities: [...definition.capabilities],
-  }));
+    status: 'CONNECTED',
+    capabilities: ['CONNECTED_ACCOUNT', 'OAUTH_CONNECT'],
+  };
+}
+
+export function listProviderDefinitions(): ProviderDefinition[] {
+  return PROVIDER_DEFINITIONS.map((definition) => {
+    const resolvedDefinition = resolveProviderDefinition(definition);
+
+    return {
+      ...resolvedDefinition,
+      capabilities: [...resolvedDefinition.capabilities],
+    };
+  });
 }
 
 export function getProviderDefinition(provider: Platform): ProviderDefinition {
@@ -107,8 +128,10 @@ export function getProviderDefinition(provider: Platform): ProviderDefinition {
     throw new Error(`Provider ${provider} não está registrado.`);
   }
 
+  const resolvedDefinition = resolveProviderDefinition(definition);
+
   return {
-    ...definition,
-    capabilities: [...definition.capabilities],
+    ...resolvedDefinition,
+    capabilities: [...resolvedDefinition.capabilities],
   };
 }
