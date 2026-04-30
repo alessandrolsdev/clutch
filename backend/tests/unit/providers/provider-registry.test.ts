@@ -1,10 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   getProviderDefinition,
   listProviderDefinitions,
 } from '@/core/providers/provider-registry';
 
+const originalEnv = { ...process.env };
+
 describe('provider registry', () => {
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
   it('descreve providers sem depender de implementacao de rota especifica', () => {
     const discord = getProviderDefinition('DISCORD');
 
@@ -34,12 +40,32 @@ describe('provider registry', () => {
   });
 
   it('mantem MyAnimeList planejado sem declarar OAuth antes do client real', () => {
+    delete process.env['MYANIMELIST_CLIENT_ID'];
+    delete process.env['MYANIMELIST_CLIENT_SECRET'];
+    delete process.env['MYANIMELIST_REDIRECT_URI'];
+    delete process.env['MYANIMELIST_ACCOUNT_LINK_REDIRECT_URI'];
     const myAnimeList = getProviderDefinition('MYANIMELIST');
 
     expect(myAnimeList.status).toBe('UNAVAILABLE');
     expect(myAnimeList.visibleInConnectionCenter).toBe(true);
     expect(myAnimeList.capabilities).toContain('CONNECTED_ACCOUNT');
     expect(myAnimeList.capabilities).not.toContain('OAUTH_CONNECT');
+    expect(myAnimeList.capabilities).not.toContain('SOCIAL_LOGIN');
+  });
+
+  it('expõe MyAnimeList como OAuth connect quando config segura existe', () => {
+    process.env['MYANIMELIST_CLIENT_ID'] = 'mal-client-id';
+    process.env['MYANIMELIST_CLIENT_SECRET'] = 'mal-client-secret';
+    process.env['MYANIMELIST_REDIRECT_URI'] = 'http://localhost/api/auth/accounts/myanimelist/link/callback';
+
+    const myAnimeList = getProviderDefinition('MYANIMELIST');
+
+    expect(myAnimeList.status).toBe('CONNECTED');
+    expect(myAnimeList.dataSource).toBe('OFFICIAL');
+    expect(myAnimeList.visibleInConnectionCenter).toBe(true);
+    expect(myAnimeList.capabilities).toEqual(
+      expect.arrayContaining(['CONNECTED_ACCOUNT', 'OAUTH_CONNECT']),
+    );
     expect(myAnimeList.capabilities).not.toContain('SOCIAL_LOGIN');
   });
 

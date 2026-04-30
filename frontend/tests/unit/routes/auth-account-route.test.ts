@@ -94,6 +94,41 @@ describe('auth account connection frontend routes', () => {
     expect(location).not.toContain('76561198000000000');
   });
 
+  it('redireciona callback MyAnimeList sem propagar code ou state', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toBe(
+        'http://backend.test/auth/accounts/myanimelist/link/callback?code=oauth-code&state=signed-state',
+      );
+
+      return new Response(
+        JSON.stringify({
+          provider: 'MYANIMELIST',
+          externalId: '123456',
+          status: 'CONNECTED',
+          connectionType: 'CONNECTED_ACCOUNT',
+          message: 'MyAnimeList vinculado com sucesso.',
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      );
+    }) as typeof fetch);
+
+    const response = await completeAccountLink(
+      new NextRequest('http://localhost/api/auth/accounts/myanimelist/link/callback?code=oauth-code&state=signed-state'),
+      { params: Promise.resolve({ provider: 'myanimelist' }) },
+    );
+    const location = response.headers.get('location') ?? '';
+
+    expect(response.status).toBe(307);
+    expect(location).toContain('connectionStatus=success');
+    expect(location).toContain('MyAnimeList+vinculado');
+    expect(location).not.toContain('oauth-code');
+    expect(location).not.toContain('signed-state');
+    expect(location).not.toContain('123456');
+  });
+
   it('redireciona erro de linking sem expor payload sensivel', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(
       JSON.stringify({

@@ -50,7 +50,7 @@ const PROVIDER_COPY: Partial<Record<ConnectedAccountProvider, {
     connectionTypeLabel: 'Conta conectada experimental',
   },
   MYANIMELIST: {
-    description: 'Provider planejado para showcase otaku; OAuth/API ainda nao estao habilitados nesta versao.',
+    description: 'Conexao OAuth2/PKCE para identidade MyAnimeList. Importacao de listas fica fora deste fluxo.',
     connectionTypeLabel: 'Conta conectada otaku',
   },
 };
@@ -520,8 +520,8 @@ export function ConnectionCenter({ onRedirect }: ConnectionCenterProps = {}) {
             Nenhuma conta conectada
           </h3>
           <p className="text-sm leading-6 text-secondary">
-            Conecte Google ou Discord por OAuth, use os formularios de Steam e Epic
-            nesta pagina, e acompanhe providers planejados quando estiverem indisponiveis.
+            Conecte Google, Discord, Steam ou MyAnimeList quando o provider estiver configurado,
+            e use os formularios legados desta pagina apenas quando indicados.
           </p>
         </Card>
       ) : null}

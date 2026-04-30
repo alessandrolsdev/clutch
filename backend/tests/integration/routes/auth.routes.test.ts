@@ -1057,6 +1057,33 @@ describe('Auth Routes', () => {
       await app.close();
     });
 
+    it('inicia linking MyAnimeList autenticado usando rota generica de contas', async () => {
+      const accountConnectionService = createAccountConnectionService();
+      accountConnectionService.startLink.mockResolvedValueOnce({
+        provider: 'MYANIMELIST',
+        authorizationUrl: 'https://myanimelist.net/v1/oauth2/authorize?state=signed-state',
+      });
+      const app = await buildApp({ accountConnectionService });
+      const token = generateTestToken(app);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/accounts/myanimelist/link/start',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        provider: 'MYANIMELIST',
+        authorizationUrl: expect.stringContaining('myanimelist.net/v1/oauth2/authorize'),
+      });
+      expect(accountConnectionService.startLink).toHaveBeenCalledWith({
+        userId: 'user-id-1',
+        provider: 'myanimelist',
+      });
+      await app.close();
+    });
+
     it('bloqueia start de linking sem autenticacao', async () => {
       const accountConnectionService = createAccountConnectionService();
       const app = await buildApp({ accountConnectionService });
@@ -1123,6 +1150,31 @@ describe('Auth Routes', () => {
           state: 'signed-state',
         }),
       });
+      await app.close();
+    });
+
+    it('bloqueia callback MyAnimeList sem code ou state antes de chamar service', async () => {
+      const accountConnectionService = createAccountConnectionService();
+      const app = await buildApp({ accountConnectionService });
+
+      const withoutCode = await app.inject({
+        method: 'GET',
+        url: '/auth/accounts/myanimelist/link/callback?state=signed-state',
+      });
+      const withoutState = await app.inject({
+        method: 'GET',
+        url: '/auth/accounts/myanimelist/link/callback?code=oauth-code',
+      });
+
+      expect(withoutCode.statusCode).toBe(400);
+      expect(withoutCode.json()).toMatchObject({
+        message: 'Callback de conexão inválido.',
+      });
+      expect(withoutState.statusCode).toBe(400);
+      expect(withoutState.json()).toMatchObject({
+        message: 'Callback de conexão inválido.',
+      });
+      expect(accountConnectionService.completeLink).not.toHaveBeenCalled();
       await app.close();
     });
 
