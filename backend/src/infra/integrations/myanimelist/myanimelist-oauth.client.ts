@@ -126,6 +126,7 @@ function buildMyAnimeListAuthorizationUrl(input: {
   authorizationUrl.searchParams.set('client_id', config.clientId);
   authorizationUrl.searchParams.set('redirect_uri', config.redirectUri);
   authorizationUrl.searchParams.set('state', input.state);
+  // MyAnimeList currently documents only PKCE plain, so the verifier is also the challenge.
   authorizationUrl.searchParams.set('code_challenge', input.codeChallenge);
   authorizationUrl.searchParams.set('code_challenge_method', 'plain');
 

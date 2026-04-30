@@ -153,6 +153,11 @@ describe('account connection service', () => {
         externalId: 'discord-user-id',
         connectionType: 'CONNECTED_ACCOUNT',
         status: 'NEEDS_REAUTH',
+        metadata: {
+          rawProfile: { id: 'discord-user-id' },
+          code: 'oauth-code',
+          accessToken: 'discord-access-token',
+        },
       }),
     ]);
     const service = createAccountConnectionService(dependencies);
@@ -170,6 +175,10 @@ describe('account connection service', () => {
     });
     expect(result.accounts[0]).not.toHaveProperty('accessToken');
     expect(result.accounts[0]).not.toHaveProperty('refreshToken');
+    expect(result.accounts[0]).not.toHaveProperty('metadata');
+    expect(JSON.stringify(result.accounts[0])).not.toContain('rawProfile');
+    expect(JSON.stringify(result.accounts[0])).not.toContain('oauth-code');
+    expect(JSON.stringify(result.accounts[0])).not.toContain('discord-access-token');
     expect(result.providers).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -396,6 +405,32 @@ describe('account connection service', () => {
     await expect(service.completeLink({
       provider: 'myanimelist',
       code: 'oauth-code',
+      state,
+    })).rejects.toMatchObject({
+      statusCode: 400,
+      reason: 'invalid_state',
+    });
+    expect(dependencies.providerClients.MYANIMELIST.exchangeCodeForIdentity).not.toHaveBeenCalled();
+  });
+
+  it('falha callback MyAnimeList com state reutilizado antes de trocar token novamente', async () => {
+    process.env['MYANIMELIST_CLIENT_ID'] = 'mal-client-id';
+    process.env['MYANIMELIST_CLIENT_SECRET'] = 'mal-client-secret';
+    process.env['MYANIMELIST_REDIRECT_URI'] = 'http://localhost/api/auth/accounts/myanimelist/link/callback';
+    const dependencies = createDependencies();
+    const service = createAccountConnectionService(dependencies);
+    const state = await issueState(service, dependencies, 'MYANIMELIST');
+
+    await service.completeLink({
+      provider: 'myanimelist',
+      code: 'oauth-code',
+      state,
+    });
+
+    vi.mocked(dependencies.providerClients.MYANIMELIST.exchangeCodeForIdentity).mockClear();
+    await expect(service.completeLink({
+      provider: 'myanimelist',
+      code: 'oauth-code-again',
       state,
     })).rejects.toMatchObject({
       statusCode: 400,
