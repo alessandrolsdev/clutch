@@ -54,6 +54,7 @@ function createAccount(overrides: Partial<ConnectedAccountRecord> = {}): Connect
     status: 'CONNECTED',
     dataSource: 'OFFICIAL',
     metadata: null,
+    publicProfileVisible: false,
     createdAt: new Date('2026-04-28T00:00:00.000Z'),
     updatedAt: new Date('2026-04-28T00:00:00.000Z'),
     lastSyncAt: null,
@@ -75,6 +76,7 @@ function createDependencies() {
       findByProviderExternalId: vi.fn().mockResolvedValue(null),
       findByUserProvider: vi.fn().mockResolvedValue(null),
       deleteByUserProvider: vi.fn().mockResolvedValue(null),
+      updateVisibility: vi.fn().mockResolvedValue(null),
     },
     connectedAccountService: {
       connectExternalIdentity: vi.fn().mockResolvedValue(createAccount()),
@@ -129,6 +131,7 @@ describe('account connection service', () => {
       provider: 'DISCORD',
       externalId: 'discord-user-id',
       connectionType: 'CONNECTED_ACCOUNT',
+      publicProfileVisible: false,
       needsReauth: true,
       connected: false,
     });
@@ -383,6 +386,101 @@ describe('account connection service', () => {
       statusCode: 404,
       reason: 'not_connected',
     });
+  });
+
+  it('atualiza visibilidade publica da propria conta ativa oficial', async () => {
+    const dependencies = createDependencies();
+    const account = createAccount({
+      provider: 'STEAM',
+      connectionType: 'CONNECTED_ACCOUNT',
+      publicProfileVisible: false,
+    });
+    dependencies.repository.findByUserProvider.mockResolvedValue(account);
+    dependencies.repository.updateVisibility.mockResolvedValue({
+      ...account,
+      publicProfileVisible: true,
+    });
+    dependencies.repository.listByUser.mockResolvedValue([{
+      ...account,
+      publicProfileVisible: true,
+    }]);
+    const service = createAccountConnectionService(dependencies);
+
+    const result = await service.updateVisibility({
+      userId: 'user-id-1',
+      provider: 'steam',
+      publicProfileVisible: true,
+    });
+
+    expect(result).toMatchObject({
+      provider: 'STEAM',
+      publicProfileVisible: true,
+      connected: true,
+    });
+    expect(dependencies.repository.updateVisibility).toHaveBeenCalledWith({
+      userId: 'user-id-1',
+      provider: 'STEAM',
+      publicProfileVisible: true,
+    });
+  });
+
+  it('bloqueia visibilidade publica para conta que precisa reconectar', async () => {
+    const dependencies = createDependencies();
+    dependencies.repository.findByUserProvider.mockResolvedValue(createAccount({
+      status: 'NEEDS_REAUTH',
+    }));
+    const service = createAccountConnectionService(dependencies);
+
+    await expect(service.updateVisibility({
+      userId: 'user-id-1',
+      provider: 'google',
+      publicProfileVisible: true,
+    })).rejects.toMatchObject({
+      statusCode: 409,
+      reason: 'visibility_not_allowed',
+    });
+    expect(dependencies.repository.updateVisibility).not.toHaveBeenCalled();
+  });
+
+  it('bloqueia visibilidade publica para conta experimental ou nao oficial', async () => {
+    const dependencies = createDependencies();
+    dependencies.repository.findByUserProvider.mockResolvedValue(createAccount({
+      provider: 'EPIC',
+      dataSource: 'EXPERIMENTAL',
+    }));
+    const service = createAccountConnectionService(dependencies);
+
+    await expect(service.updateVisibility({
+      userId: 'user-id-1',
+      provider: 'epic',
+      publicProfileVisible: true,
+    })).rejects.toMatchObject({
+      statusCode: 409,
+      reason: 'visibility_not_allowed',
+    });
+    expect(dependencies.repository.updateVisibility).not.toHaveBeenCalled();
+  });
+
+  it('permite tornar privada uma conta que nao esta ativa', async () => {
+    const dependencies = createDependencies();
+    const account = createAccount({
+      status: 'NEEDS_REAUTH',
+      publicProfileVisible: true,
+    });
+    dependencies.repository.findByUserProvider.mockResolvedValue(account);
+    dependencies.repository.updateVisibility.mockResolvedValue({
+      ...account,
+      publicProfileVisible: false,
+    });
+    const service = createAccountConnectionService(dependencies);
+
+    const result = await service.updateVisibility({
+      userId: 'user-id-1',
+      provider: 'google',
+      publicProfileVisible: false,
+    });
+
+    expect(result.publicProfileVisible).toBe(false);
   });
 
   it('inicia reauth apenas para conta em NEEDS_REAUTH', async () => {

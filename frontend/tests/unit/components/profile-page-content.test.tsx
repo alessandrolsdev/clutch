@@ -66,7 +66,8 @@ const profileFixture: ProfileResponse = {
   platformIntegrations: [
     {
       platform: 'STEAM',
-      metadata: null,
+      displayName: 'Steam',
+      connectionType: 'CONNECTED_ACCOUNT',
     },
   ],
   gameLibrary: [

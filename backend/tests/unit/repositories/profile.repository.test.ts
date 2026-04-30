@@ -44,7 +44,12 @@ const mockFullProfile = {
     platform:    null,
     updatedAt:   new Date(),
   },
-  platformIntegrations: [],
+  platformIntegrations: [
+    {
+      platform: 'STEAM',
+      connectionType: 'CONNECTED_ACCOUNT',
+    },
+  ],
   gameLibrary:          [],
 };
 
@@ -74,7 +79,16 @@ describe('profileRepository', () => {
 
       const result = await profileRepository.findFullProfileByUsername('clutchplayer');
 
-      expect(result).toEqual(mockFullProfile);
+      expect(result).toEqual({
+        ...mockFullProfile,
+        platformIntegrations: [
+          {
+            platform: 'STEAM',
+            displayName: 'Steam',
+            connectionType: 'CONNECTED_ACCOUNT',
+          },
+        ],
+      });
       expect(prisma.user.findUnique).toHaveBeenCalledWith(
         expect.objectContaining({ where: { username: 'clutchplayer' } }),
       );
@@ -105,6 +119,39 @@ describe('profileRepository', () => {
 
       const profileQuery = vi.mocked(prisma.user.findUnique).mock.calls[0]?.[0];
       expect(profileQuery?.select?.gameLibrary).not.toHaveProperty('take');
+    });
+
+    it('filtra plataformas publicas sem selecionar metadata ou externalId', async () => {
+      vi.mocked(prisma.user.findUnique).mockResolvedValue(mockFullProfile as never);
+
+      await profileRepository.findFullProfileByUsername('clutchplayer');
+
+      const profileQuery = vi.mocked(prisma.user.findUnique).mock.calls[0]?.[0];
+      const platformIntegrationsQuery = profileQuery?.select?.platformIntegrations;
+
+      expect(platformIntegrationsQuery).toMatchObject({
+        where: {
+          isActive: true,
+          publicProfileVisible: true,
+          status: 'CONNECTED',
+          dataSource: 'OFFICIAL',
+        },
+        select: {
+          platform: true,
+          connectionType: true,
+        },
+      });
+
+      if (
+        typeof platformIntegrationsQuery !== 'object' ||
+        platformIntegrationsQuery === null ||
+        !('select' in platformIntegrationsQuery)
+      ) {
+        throw new Error('Expected platformIntegrations query to select public fields.');
+      }
+
+      expect(platformIntegrationsQuery.select).not.toHaveProperty('metadata');
+      expect(platformIntegrationsQuery.select).not.toHaveProperty('externalId');
     });
   });
 

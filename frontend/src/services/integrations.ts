@@ -9,10 +9,14 @@ import {
   accountConnectionStartResponseSchema,
   accountUnlinkResponseSchema,
   connectedAccountsResponseSchema,
+  connectedAccountSchema,
+  connectedAccountVisibilityUpdateRequestSchema,
   type AccountConnectionStartResponse,
   type AccountUnlinkResponse,
   type ConnectedAccountsResponse,
+  type ConnectedAccount,
   type ConnectedAccountProvider,
+  type ConnectedAccountVisibilityUpdateValues,
   steamConnectRequestSchema,
   steamConnectResponseSchema,
   steamSyncResponseSchema,
@@ -269,4 +273,25 @@ export async function unlinkConnectedAccount(
   }
 
   return accountUnlinkResponseSchema.parse(responsePayload);
+}
+
+export async function updateConnectedAccountVisibility(
+  provider: ConnectedAccountProvider,
+  input: ConnectedAccountVisibilityUpdateValues,
+): Promise<ConnectedAccount> {
+  const payload = connectedAccountVisibilityUpdateRequestSchema.parse(input);
+  const response = await apiRequest(`/auth/connected-accounts/${provider.toLowerCase()}/visibility`, {
+    method: 'PATCH',
+    body: payload,
+  });
+  const responsePayload = await readJson(response);
+
+  if (!response.ok) {
+    throw new IntegrationsRequestError(
+      response.status,
+      resolveErrorMessage(responsePayload, 'Nao foi possivel atualizar a visibilidade agora.'),
+    );
+  }
+
+  return connectedAccountSchema.parse(responsePayload);
 }

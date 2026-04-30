@@ -1,6 +1,6 @@
 import React, { type ReactElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConnectionCenter } from '@/components/settings/connection-center';
 import type { ConnectedAccount, ConnectedAccountProviderDefinition } from '@/schemas/integrations';
@@ -9,6 +9,7 @@ import {
   startAccountLink,
   startAccountReauth,
   unlinkConnectedAccount,
+  updateConnectedAccountVisibility,
 } from '@/services/integrations';
 
 vi.mock('@/services/integrations', () => ({
@@ -16,6 +17,7 @@ vi.mock('@/services/integrations', () => ({
   startAccountLink: vi.fn(),
   startAccountReauth: vi.fn(),
   unlinkConnectedAccount: vi.fn(),
+  updateConnectedAccountVisibility: vi.fn(),
   IntegrationsRequestError: class IntegrationsRequestError extends Error {
     public readonly status: number;
 
@@ -31,6 +33,7 @@ const mockedFetchConnectedAccounts = vi.mocked(fetchConnectedAccounts);
 const mockedStartAccountLink = vi.mocked(startAccountLink);
 const mockedStartAccountReauth = vi.mocked(startAccountReauth);
 const mockedUnlinkConnectedAccount = vi.mocked(unlinkConnectedAccount);
+const mockedUpdateConnectedAccountVisibility = vi.mocked(updateConnectedAccountVisibility);
 
 function renderWithQuery(ui: ReactElement) {
   const queryClient = new QueryClient({
@@ -53,6 +56,7 @@ function createAccount(overrides: Partial<ConnectedAccount> = {}): ConnectedAcco
     connectionType: 'SOCIAL_LOGIN',
     status: 'CONNECTED',
     dataSource: 'OFFICIAL',
+    publicProfileVisible: false,
     connected: true,
     needsReauth: false,
     experimental: false,
@@ -102,6 +106,7 @@ describe('ConnectionCenter', () => {
     mockedStartAccountLink.mockReset();
     mockedStartAccountReauth.mockReset();
     mockedUnlinkConnectedAccount.mockReset();
+    mockedUpdateConnectedAccountVisibility.mockReset();
   });
 
   it('renderiza contas conectadas sem expor tokens', async () => {
@@ -232,6 +237,69 @@ describe('ConnectionCenter', () => {
       expect(mockedUnlinkConnectedAccount.mock.calls[0]?.[0]).toBe('GOOGLE');
     });
     expect(await screen.findByText(/google desconectado com sucesso/i)).toBeInTheDocument();
+  });
+
+  it('alterna visibilidade publica da conta conectada', async () => {
+    mockedFetchConnectedAccounts.mockResolvedValue({
+      providers: providerDefinitions,
+      accounts: [createAccount()],
+    });
+    mockedUpdateConnectedAccountVisibility.mockResolvedValue(createAccount({
+      publicProfileVisible: true,
+    }));
+
+    renderWithQuery(<ConnectionCenter />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /tornar publica/i }));
+
+    await waitFor(() => {
+      expect(mockedUpdateConnectedAccountVisibility).toHaveBeenCalledWith('GOOGLE', {
+        publicProfileVisible: true,
+      });
+    });
+    expect(await screen.findByText(/agora aparece no perfil publico/i)).toBeInTheDocument();
+  });
+
+  it('mostra erro quando visibilidade publica e bloqueada pelo backend', async () => {
+    mockedFetchConnectedAccounts.mockResolvedValue({
+      providers: providerDefinitions,
+      accounts: [createAccount()],
+    });
+    mockedUpdateConnectedAccountVisibility.mockRejectedValue(new Error('Apenas contas ativas e oficiais podem aparecer publicamente.'));
+
+    renderWithQuery(<ConnectionCenter />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /tornar publica/i }));
+
+    expect(await screen.findByText(/nao foi possivel atualizar a visibilidade agora/i)).toBeInTheDocument();
+  });
+
+  it('nao sugere publicacao para Epic experimental', async () => {
+    mockedFetchConnectedAccounts.mockResolvedValue({
+      providers: providerDefinitions,
+      accounts: [
+        createAccount({
+          provider: 'EPIC',
+          displayName: 'Epic Games',
+          externalId: 'legacy:epic:user-id-1',
+          dataSource: 'EXPERIMENTAL',
+          status: 'NEEDS_REAUTH',
+          connected: false,
+          needsReauth: true,
+          experimental: true,
+          capabilities: ['CONNECTED_ACCOUNT', 'TOKEN_CONNECT', 'LIBRARY_IMPORT'],
+        }),
+      ],
+    });
+
+    renderWithQuery(<ConnectionCenter />);
+
+    const epicCard = await screen.findByTestId('connection-provider-epic');
+    const publishButton = within(epicCard).getByRole('button', { name: /tornar publica/i });
+
+    expect(publishButton).toBeDisabled();
+    expect(epicCard).toHaveTextContent(/apenas contas ativas e oficiais/i);
+    expect(mockedUpdateConnectedAccountVisibility).not.toHaveBeenCalled();
   });
 
   it('desabilita unlink quando backend indica que removeria ultimo metodo de login', async () => {
