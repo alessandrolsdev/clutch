@@ -6,6 +6,7 @@ import { ConnectionCenter } from '@/components/settings/connection-center';
 import type { ConnectedAccount, ConnectedAccountProviderDefinition } from '@/schemas/integrations';
 import {
   fetchConnectedAccounts,
+  importMyAnimeListLists,
   startAccountLink,
   startAccountReauth,
   unlinkConnectedAccount,
@@ -14,6 +15,7 @@ import {
 
 vi.mock('@/services/integrations', () => ({
   fetchConnectedAccounts: vi.fn(),
+  importMyAnimeListLists: vi.fn(),
   startAccountLink: vi.fn(),
   startAccountReauth: vi.fn(),
   unlinkConnectedAccount: vi.fn(),
@@ -30,6 +32,7 @@ vi.mock('@/services/integrations', () => ({
 }));
 
 const mockedFetchConnectedAccounts = vi.mocked(fetchConnectedAccounts);
+const mockedImportMyAnimeListLists = vi.mocked(importMyAnimeListLists);
 const mockedStartAccountLink = vi.mocked(startAccountLink);
 const mockedStartAccountReauth = vi.mocked(startAccountReauth);
 const mockedUnlinkConnectedAccount = vi.mocked(unlinkConnectedAccount);
@@ -110,6 +113,7 @@ const providerDefinitions: ConnectedAccountProviderDefinition[] = [
 describe('ConnectionCenter', () => {
   beforeEach(() => {
     mockedFetchConnectedAccounts.mockReset();
+    mockedImportMyAnimeListLists.mockReset();
     mockedStartAccountLink.mockReset();
     mockedStartAccountReauth.mockReset();
     mockedUnlinkConnectedAccount.mockReset();
@@ -196,6 +200,94 @@ describe('ConnectionCenter', () => {
       expect(mockedStartAccountLink).toHaveBeenCalledWith('MYANIMELIST', expect.anything());
     });
     expect(onRedirect).toHaveBeenCalledWith('https://myanimelist.net/v1/oauth2/authorize?state=signed-state');
+  });
+
+  it('mostra importacao privada quando MyAnimeList esta conectado e ativo', async () => {
+    mockedFetchConnectedAccounts.mockResolvedValue({
+      providers: providerDefinitions.map((provider) =>
+        provider.provider === 'MYANIMELIST'
+          ? {
+            ...provider,
+            status: 'CONNECTED',
+            capabilities: ['CONNECTED_ACCOUNT', 'OAUTH_CONNECT'],
+          }
+          : provider),
+      accounts: [
+        createAccount({
+          provider: 'MYANIMELIST',
+          displayName: 'MyAnimeList',
+          externalId: '12345',
+          connectionType: 'CONNECTED_ACCOUNT',
+          capabilities: ['CONNECTED_ACCOUNT', 'OAUTH_CONNECT'],
+        }),
+      ],
+    });
+    mockedImportMyAnimeListLists.mockResolvedValue({
+      imported: 2,
+      anime: 1,
+      manga: 1,
+      message: '2 itens MyAnimeList importados de forma privada.',
+    });
+
+    renderWithQuery(<ConnectionCenter />);
+
+    const myAnimeListCard = await screen.findByTestId('connection-provider-myanimelist');
+
+    expect(myAnimeListCard).toHaveTextContent(/nada sera publicado no perfil ou no feed automaticamente/i);
+    fireEvent.click(within(myAnimeListCard).getByRole('button', { name: /importar listas do myanimelist/i }));
+
+    await waitFor(() => {
+      expect(mockedImportMyAnimeListLists).toHaveBeenCalled();
+    });
+    expect(await screen.findByText('2 itens MyAnimeList importados de forma privada.')).toBeInTheDocument();
+  });
+
+  it('nao oferece importacao quando MyAnimeList precisa reconectar', async () => {
+    mockedFetchConnectedAccounts.mockResolvedValue({
+      providers: providerDefinitions,
+      accounts: [
+        createAccount({
+          provider: 'MYANIMELIST',
+          displayName: 'MyAnimeList',
+          externalId: '12345',
+          connectionType: 'CONNECTED_ACCOUNT',
+          status: 'NEEDS_REAUTH',
+          connected: false,
+          needsReauth: true,
+          capabilities: ['CONNECTED_ACCOUNT', 'OAUTH_CONNECT'],
+        }),
+      ],
+    });
+
+    renderWithQuery(<ConnectionCenter />);
+
+    const myAnimeListCard = await screen.findByTestId('connection-provider-myanimelist');
+
+    expect(within(myAnimeListCard).queryByRole('button', { name: /importar listas do myanimelist/i }))
+      .not.toBeInTheDocument();
+    expect(myAnimeListCard).toHaveTextContent(/precisa ser reconectada/i);
+  });
+
+  it('mostra erro seguro quando importacao MyAnimeList falha', async () => {
+    mockedFetchConnectedAccounts.mockResolvedValue({
+      providers: providerDefinitions,
+      accounts: [
+        createAccount({
+          provider: 'MYANIMELIST',
+          displayName: 'MyAnimeList',
+          externalId: '12345',
+          connectionType: 'CONNECTED_ACCOUNT',
+          capabilities: ['CONNECTED_ACCOUNT', 'OAUTH_CONNECT'],
+        }),
+      ],
+    });
+    mockedImportMyAnimeListLists.mockRejectedValue(new Error('network'));
+
+    renderWithQuery(<ConnectionCenter />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /importar listas do myanimelist/i }));
+
+    expect(await screen.findByText('Nao foi possivel importar listas do MyAnimeList agora.')).toBeInTheDocument();
   });
 
   it('renderiza Steam pelo provider registry com acao OpenID sem social login', async () => {

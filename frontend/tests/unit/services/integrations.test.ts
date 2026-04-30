@@ -5,6 +5,7 @@ import {
   connectEpic,
   connectSteam,
   fetchConnectedAccounts,
+  importMyAnimeListLists,
   startAccountLink,
   startAccountReauth,
   unlinkConnectedAccount,
@@ -81,6 +82,50 @@ describe('integrations service', () => {
     expect(mockedApiRequest).toHaveBeenCalledWith('/integrations/steam/sync', {
       method: 'POST',
     });
+  });
+
+  it('imports MyAnimeList lists with the real contract', async () => {
+    mockedApiRequest.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          message: '2 itens MyAnimeList importados de forma privada.',
+          imported: 2,
+          anime: 1,
+          manga: 1,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    const response = await importMyAnimeListLists();
+
+    expect(response).toEqual({
+      message: '2 itens MyAnimeList importados de forma privada.',
+      imported: 2,
+      anime: 1,
+      manga: 1,
+    });
+    expect(mockedApiRequest).toHaveBeenCalledWith('/integrations/myanimelist/import', {
+      method: 'POST',
+    });
+  });
+
+  it('maps MyAnimeList import errors without leaking sensitive payload', async () => {
+    mockedApiRequest.mockResolvedValue(new Response(
+      JSON.stringify({
+        message: 'Reconecte o MyAnimeList antes de importar listas.',
+        accessToken: 'should-not-leak',
+      }),
+      {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    ));
+
+    await expect(importMyAnimeListLists()).rejects.toMatchObject({
+      status: 409,
+      message: 'Reconecte o MyAnimeList antes de importar listas.',
+    } satisfies Partial<IntegrationsRequestError>);
   });
 
   it('connects epic with the real contract', async () => {

@@ -9,6 +9,7 @@ const createMockIntegrationsService = () => ({
   syncSteamLibrary: vi.fn(),
   searchIgdbGames: vi.fn(),
   connectEpic: vi.fn(),
+  importMyAnimeListLists: vi.fn(),
 });
 
 const createMockDiscordOAuthService = () => ({
@@ -117,6 +118,72 @@ describe('Integrations Routes', () => {
 
       expect(response.statusCode).toBe(404);
       expect(integrationsService.syncSteamLibrary).toHaveBeenCalledWith('user-id-1');
+      await app.close();
+    });
+  });
+
+  describe('POST /integrations/myanimelist/import', () => {
+    it('retorna 401 sem token', async () => {
+      const integrationsService = createMockIntegrationsService();
+      const app = await buildApp({ integrationsService });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/integrations/myanimelist/import',
+      });
+
+      expect(response.statusCode).toBe(401);
+      expect(integrationsService.importMyAnimeListLists).not.toHaveBeenCalled();
+      await app.close();
+    });
+
+    it('retorna resumo da importacao MyAnimeList autenticada sem payload sensivel', async () => {
+      const integrationsService = createMockIntegrationsService();
+      integrationsService.importMyAnimeListLists.mockResolvedValue({
+        imported: 2,
+        anime: 1,
+        manga: 1,
+        message: '2 itens MyAnimeList importados de forma privada.',
+      });
+      const app = await buildApp({ integrationsService });
+      const token = generateTestToken(app, 'user-id-1');
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/integrations/myanimelist/import',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({
+        imported: 2,
+        anime: 1,
+        manga: 1,
+        message: '2 itens MyAnimeList importados de forma privada.',
+      });
+      expect(JSON.stringify(response.json())).not.toContain('access-token');
+      expect(integrationsService.importMyAnimeListLists).toHaveBeenCalledWith('user-id-1');
+      await app.close();
+    });
+
+    it('retorna erro coerente quando MyAnimeList precisa reconectar', async () => {
+      const integrationsService = createMockIntegrationsService();
+      integrationsService.importMyAnimeListLists.mockRejectedValue(
+        createIntegrationError('myanimelist', 409, 'reauth_required', 'Reconecte o MyAnimeList antes de importar listas.'),
+      );
+      const app = await buildApp({ integrationsService });
+      const token = generateTestToken(app, 'user-id-1');
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/integrations/myanimelist/import',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toEqual({
+        message: 'Reconecte o MyAnimeList antes de importar listas.',
+      });
       await app.close();
     });
   });

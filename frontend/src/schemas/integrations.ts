@@ -14,6 +14,13 @@ export const steamSyncResponseSchema = z.object({
   synced: z.number().int().min(0),
 });
 
+export const myAnimeListImportResponseSchema = z.object({
+  message: z.string().min(1),
+  imported: z.number().int().min(0),
+  anime: z.number().int().min(0),
+  manga: z.number().int().min(0),
+});
+
 export const epicConnectRequestSchema = z.object({
   authToken: z.string().trim().min(1, 'Token Epic e obrigatorio.'),
 });
@@ -139,6 +146,7 @@ export const connectedAccountVisibilityUpdateRequestSchema = z.object({
 export type SteamConnectValues = z.infer<typeof steamConnectRequestSchema>;
 export type SteamConnectResponse = z.infer<typeof steamConnectResponseSchema>;
 export type SteamSyncResponse = z.infer<typeof steamSyncResponseSchema>;
+export type MyAnimeListImportResponse = z.infer<typeof myAnimeListImportResponseSchema>;
 export type EpicConnectValues = z.infer<typeof epicConnectRequestSchema>;
 export type EpicConnectResponse = z.infer<typeof epicConnectResponseSchema>;
 export type DiscordOAuthStartResponse = z.infer<typeof discordOAuthStartResponseSchema>;

@@ -103,6 +103,21 @@ export async function integrationRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
+  // ── POST /integrations/myanimelist/import ───────────────
+  app.post(
+    '/myanimelist/import',
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      try {
+        const resultPayload = await app.integrationsService.importMyAnimeListLists(request.userId);
+        return reply.status(200).send(resultPayload);
+      } catch (error) {
+        const integrationError = replyWithIntegrationError(request, error);
+        return reply.status(integrationError.statusCode).send(integrationError.payload);
+      }
+    },
+  );
+
   // ── GET /integrations/igdb/search ───────────────────────
   app.get<{ Querystring: { q: string } }>(
     '/igdb/search',
