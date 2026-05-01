@@ -84,6 +84,24 @@ describe('CommunitiesPageContent', () => {
     expect(screen.getByText(/owner: owner/i)).toBeInTheDocument();
   });
 
+  it('does not render archived communities in public discovery', async () => {
+    mockedFetchCommunities.mockResolvedValue([
+      community,
+      {
+        ...community,
+        id: 'community-id-2',
+        slug: 'guilda-arquivada',
+        name: 'Guilda Arquivada',
+        status: 'ARCHIVED',
+      },
+    ]);
+
+    renderCommunitiesPage();
+
+    expect(await screen.findByText('Guilda dos Speedrunners')).toBeInTheDocument();
+    expect(screen.queryByText('Guilda Arquivada')).not.toBeInTheDocument();
+  });
+
   it('creates a community and navigates to its public page', async () => {
     mockedFetchCommunities.mockResolvedValue([]);
     mockedCreateCommunity.mockResolvedValue(community);

@@ -17,6 +17,7 @@ vi.mock('@/core/services/community.service', async (importOriginal) => {
       createPublicCommunity: vi.fn(),
       joinCommunity: vi.fn(),
       leaveCommunity: vi.fn(),
+      archiveCommunity: vi.fn(),
     },
   };
 });
@@ -89,6 +90,29 @@ describe('Communities Routes', () => {
     await app.close();
   });
 
+  it('retorna detalhe direto de comunidade arquivada', async () => {
+    vi.mocked(communityService.getPublicCommunity).mockResolvedValue({
+      ...mockCommunity,
+      status: CommunityStatus.ARCHIVED,
+      viewerMembershipRole: null,
+    });
+
+    const app = await buildApp();
+    const response = await app.inject({
+      method: 'GET',
+      url: '/communities/guilda-dos-speedrunners',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      community: {
+        slug: 'guilda-dos-speedrunners',
+        status: CommunityStatus.ARCHIVED,
+      },
+    });
+    await app.close();
+  });
+
   it('cria comunidade pública autenticada', async () => {
     vi.mocked(communityService.createPublicCommunity).mockResolvedValue({
       ...mockCommunity,
@@ -136,6 +160,33 @@ describe('Communities Routes', () => {
     });
 
     expect(response.statusCode).toBe(409);
+    await app.close();
+  });
+
+  it('cria comunidade publica com slug unico gerado pelo service', async () => {
+    vi.mocked(communityService.createPublicCommunity).mockResolvedValue({
+      ...mockCommunity,
+      slug: 'guilda-dos-speedrunners-2',
+      viewerMembershipRole: CommunityMemberRole.OWNER,
+    });
+
+    const app = await buildApp();
+    const token = generateTestToken(app, 'owner-id-1');
+    const response = await app.inject({
+      method: 'POST',
+      url: '/communities',
+      headers: { Authorization: `Bearer ${token}` },
+      payload: {
+        name: 'Guilda dos Speedrunners',
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({
+      community: {
+        slug: 'guilda-dos-speedrunners-2',
+      },
+    });
     await app.close();
   });
 
@@ -198,6 +249,74 @@ describe('Communities Routes', () => {
       'guilda-dos-speedrunners',
       'member-id-1',
     );
+    await app.close();
+  });
+
+  it('permite owner arquivar comunidade', async () => {
+    vi.mocked(communityService.archiveCommunity).mockResolvedValue({
+      ...mockCommunity,
+      status: CommunityStatus.ARCHIVED,
+      viewerMembershipRole: CommunityMemberRole.OWNER,
+    });
+
+    const app = await buildApp();
+    const token = generateTestToken(app, 'owner-id-1');
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/communities/guilda-dos-speedrunners/archive',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(communityService.archiveCommunity).toHaveBeenCalledWith(
+      'guilda-dos-speedrunners',
+      'owner-id-1',
+    );
+    expect(response.json()).toMatchObject({
+      community: {
+        status: CommunityStatus.ARCHIVED,
+      },
+    });
+    await app.close();
+  });
+
+  it('bloqueia arquivamento por membro comum', async () => {
+    vi.mocked(communityService.archiveCommunity).mockRejectedValue(
+      new CommunityServiceError(
+        'COMMUNITY_FORBIDDEN',
+        'Apenas o owner pode arquivar esta comunidade.',
+      ),
+    );
+
+    const app = await buildApp();
+    const token = generateTestToken(app, 'member-id-1');
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/communities/guilda-dos-speedrunners/archive',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    expect(response.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it('bloqueia join em comunidade arquivada com erro de dominio', async () => {
+    vi.mocked(communityService.joinCommunity).mockRejectedValue(
+      new CommunityServiceError(
+        'COMMUNITY_ARCHIVED',
+        'Comunidade arquivada não aceita novos membros.',
+      ),
+    );
+
+    const app = await buildApp();
+    const token = generateTestToken(app, 'member-id-1');
+    const response = await app.inject({
+      method: 'POST',
+      url: '/communities/guilda-dos-speedrunners/join',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    expect(response.statusCode).toBe(409);
     await app.close();
   });
 });

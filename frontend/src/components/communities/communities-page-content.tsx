@@ -53,6 +53,9 @@ export function CommunitiesPageContent() {
 
   const isAuthenticated = status === 'authenticated';
   const canSubmit = isAuthenticated && name.trim().length >= 3 && !createCommunityMutation.isPending;
+  const visibleCommunities = communitiesQuery.data?.filter(
+    (community) => community.status === 'ACTIVE',
+  );
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -72,6 +75,7 @@ export function CommunitiesPageContent() {
       <SectionHeading
         eyebrow="Comunidades"
         title="Guildas públicas para pertencer sem virar chat"
+        level="h1"
         description="O primeiro slice mantém descoberta simples, identidade básica e membership mínimo. Eventos, chat e governança pesada ficam fora deste recorte."
       />
 
@@ -121,7 +125,7 @@ export function CommunitiesPageContent() {
             <p className="text-sm text-secondary" role={formMessage ? 'alert' : undefined}>
               {formMessage ??
                 (isAuthenticated
-                  ? 'O slug é derivado do nome e precisa ser único.'
+                  ? 'O slug é derivado do nome e recebe sufixo automático quando necessário.'
                   : 'Entre na sessão para criar uma comunidade pública.')}
             </p>
             <Button type="submit" disabled={!canSubmit}>
@@ -145,7 +149,7 @@ export function CommunitiesPageContent() {
         </Card>
       ) : null}
 
-      {communitiesQuery.data?.length === 0 ? (
+      {visibleCommunities?.length === 0 ? (
         <Card>
           <p className="text-sm leading-6 text-secondary">
             Ainda não há comunidades públicas. Crie a primeira para validar o fluxo básico
@@ -154,9 +158,9 @@ export function CommunitiesPageContent() {
         </Card>
       ) : null}
 
-      {communitiesQuery.data && communitiesQuery.data.length > 0 ? (
+      {visibleCommunities && visibleCommunities.length > 0 ? (
         <div className="grid gap-5 lg:grid-cols-2">
-          {communitiesQuery.data.map((community) => (
+          {visibleCommunities.map((community) => (
             <CommunityCard key={community.id} community={community} />
           ))}
         </div>
