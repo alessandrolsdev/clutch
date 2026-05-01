@@ -10,6 +10,7 @@ import { postRoutes } from './api/routes/posts.routes';
 import { notificationRoutes } from './api/routes/notifications.routes';
 import { uploadRoutes } from './api/routes/uploads.routes';
 import { communityRoutes } from './api/routes/communities.routes';
+import { otakuRoutes } from './api/routes/otaku.routes';
 import { authenticate } from './api/middlewares/authenticate';
 import {
   runReadinessChecks,
@@ -195,6 +196,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await app.register(notificationRoutes, { prefix: '/notifications' });
   await app.register(uploadRoutes, { prefix: '/uploads' });
   await app.register(communityRoutes, { prefix: '/communities' });
+  await app.register(otakuRoutes, { prefix: '/otaku' });
 
   await app.ready();
 

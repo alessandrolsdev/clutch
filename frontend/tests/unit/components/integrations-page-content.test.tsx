@@ -50,6 +50,10 @@ vi.mock('@/components/settings/connection-center', () => ({
   ConnectionCenter: () => <div data-testid="connection-center" />,
 }));
 
+vi.mock('@/components/settings/otaku-showcase-manager', () => ({
+  OtakuShowcaseManager: () => <div data-testid="otaku-showcase-manager" />,
+}));
+
 const mockedUseAuth = vi.mocked(useAuth);
 const mockedFetchProfileByUsername = vi.mocked(fetchProfileByUsername);
 const mockedFetchConnectedAccounts = vi.mocked(fetchConnectedAccounts);
@@ -222,5 +226,6 @@ describe('IntegrationsPageContent', () => {
     expect(screen.queryByText(/conta vinculada: clutch guild/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/clutchplayer/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/ainda fora do contrato frontend atual/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId('otaku-showcase-manager')).toBeInTheDocument();
   });
 });
