@@ -3,12 +3,13 @@
 Data da auditoria: 2026-05-01  
 Base auditada: `origin/develop` em `ed8086b` (`Merge pull request #299 from alessandrolsdev/feature/arena-weekly-challenges`)  
 Escopo: auditoria documental, sem alteração de código, contrato ou regra de negócio.
+Validação adicional: smoke Docker via `docker compose up -d --build`, `container-bootstrap.sh`, proxy Traefik e contratos HTTP reais.
 
 ## 1. Resumo executivo
 
 O CLUTCH saiu das últimas entregas com um conjunto de verticais de produto bem mais completo do que a documentação raiz indica. Em `develop` já existem auth social, connected accounts, Connection Center, Steam OpenID, MyAnimeList OAuth/import/showcase opt-in, comunidades com eventos, arquivamento e o primeiro slice funcional de Arena. A arquitetura por camadas no backend está consistente: rotas, services, repositories, provider registry e Prisma estão relativamente bem separados.
 
-O estado não é "pronto para beta" sem hardening. O maior risco concreto encontrado é de segurança/observabilidade: o callback de login social registra `request.url`, o que pode carregar `code` e `state` de OAuth em logs. Há também fragilidade operacional em stores OAuth/PKCE em memória, documentação defasada em `README.md`, `.codex` e alguns docs de arquitetura, cobertura completa local instável e ausência de runbook de deploy/smoke para providers reais.
+O estado não é "pronto para beta" sem hardening. O maior risco concreto encontrado é de segurança/observabilidade: o callback de login social registra URLs com query e o smoke Docker confirmou `code` e `state` aparecendo em logs da stack, enquanto o log gate atual não bloqueia esse padrão. Há também fragilidade operacional em stores OAuth/PKCE em memória, documentação defasada em `README.md`, `.codex` e alguns docs de arquitetura, cobertura completa local instável e ausência de runbook de deploy/smoke para providers reais.
 
 O MVP é demonstrável em ambiente controlado, com Docker/Postgres/Redis e mocks/secrets corretos. Para beta fechado, eu trataria antes os riscos de log sensível, CI/coverage, documentação/env/runbook e uma revisão objetiva de UX mobile/acessibilidade das superfícies principais.
 
@@ -93,7 +94,7 @@ Legenda: `coerente`, `risco`, `incompleto`.
 
 | Contrato | Estado | Observações |
 | --- | --- | --- |
-| Auth/session/refresh/logout | coerente com risco | Access token é retornado no body e refresh em cookie HTTP-only. Refresh rotation existe. O risco principal é log de callback OAuth, não o contrato de sessão em si. |
+| Auth/session/refresh/logout | coerente com risco | Backend direto emite token no body, mas o contrato browser via frontend proxy validado no Docker grava `clutch_session` e `clutch_refresh` em cookies HTTP-only e não retorna token no body. Refresh rotation existe. O risco principal é log de callback OAuth, não o contrato de sessão em si. |
 | Social login Google/Discord | risco | Backend valida state TTL/consumo único e ownership por external identity. Porém `auth.routes.ts` registra `request.url` no sucesso do callback social, o que pode vazar `code`/`state` em logs. |
 | Connected accounts | coerente com risco baixo | Backend expõe providers/capabilities e contas por usuário. Tokens não aparecem. O contrato privado ainda inclui `externalId`, que pode ser reduzido se a UI não precisar dele. |
 | Providers/capabilities | coerente | Registry diferencia social login, OAuth connect, OpenID, import e experimental. Frontend consome capabilities do backend. |
@@ -109,6 +110,26 @@ Legenda: `coerente`, `risco`, `incompleto`.
 | Notifications/presence | aceitável com risco | Presence usa token em query para websocket conforme `.codex/SECURITY.md`; isso exige redaction forte em logs/reverse proxy. |
 | Uploads/media | incompleto nesta auditoria | Rotas existem, mas não foi feita validação profunda de storage, tipos MIME, tamanho e antivírus. Deve entrar em hardening antes de beta público. |
 
+Validação Docker de contratos reais:
+
+- Stack subiu com `docker compose up -d --build`.
+- `docker compose exec -T backend sh ./scripts/container-bootstrap.sh` aplicou migrations e seed sem pendências.
+- Passaram via proxy/Traefik:
+  - `GET /api/health`.
+  - `GET /api/health/ready`.
+  - `GET /presence/health`.
+  - `GET /login`.
+  - `POST /api/auth/login` com cookies `clutch_session` e `clutch_refresh`, sem token no body do frontend proxy.
+  - `GET /api/auth/me`.
+  - `GET /api/auth/presence-token`.
+  - `GET /api/auth/connected-accounts` sem `accessToken`/`refreshToken`.
+  - `GET /api/profiles/clutchplayer` sem `externalId`/`metadata` de connected accounts.
+  - `GET /api/communities` e `GET /api/communities/:slug/events`.
+  - `GET /api/otaku/library`.
+  - `GET /api/arena/challenges`, detalhe por slug e leaderboard.
+  - Callback social inválido redirecionou sem propagar `code`/`state` na URL final.
+- Falha de segurança observada: logs da stack registraram `code`/`state` de callback e o log gate não detectou.
+
 Contratos com maior risco de drift:
 
 - Connected accounts: `externalId` no contrato privado do owner pode se tornar dependência de UI sem necessidade.
@@ -120,11 +141,16 @@ Contratos com maior risco de drift:
 Achados críticos/P1:
 
 1. Callback de login social pode registrar `code` e `state` em logs.
-   - Evidência: `backend/src/api/routes/auth.routes.ts` registra `path: request.url` no evento `auth_social_login_succeeded`.
-   - Impacto: OAuth authorization code e state podem aparecer em logs de aplicação ou agregadores, violando a regra do projeto de não expor `code`/`state`.
-   - Recomendação: trocar para path sanitizado sem query e adicionar teste/log guard.
+   - Evidência: o smoke Docker chamou `/api/auth/social/google/callback?code=contract-smoke-code&state=contract-smoke-state`; a resposta final redirecionou de forma segura para `/login`, mas logs de frontend Next dev e backend registraram a URL com query. O log gate `scripts/ci/check-sensitive-logs.mjs` retornou sucesso mesmo com `code=` e `state=` presentes no arquivo de logs.
+   - Impacto: OAuth authorization code e state podem aparecer em logs de aplicação, CI ou agregadores, violando a regra do projeto de não expor `code`/`state`.
+   - Recomendação: trocar logs para path sanitizado sem query no backend/frontend, ajustar o log gate para bloquear `code`, `state`, `token` em query string e adicionar teste específico.
 
-2. Stores OAuth/PKCE em memória limitam segurança operacional em produção escalada.
+2. Smoke de websocket imprime token de presença no stdout do helper.
+   - Evidência: `scripts/ci/validate-presence-handshake.mjs` imprime a URL completa `ws://localhost/ws/presence?token=...` durante a conexão.
+   - Impacto: token de acesso temporário pode aparecer em logs de CI/local.
+   - Recomendação: mascarar query token no helper e ampliar o log gate para tokens em query string.
+
+3. Stores OAuth/PKCE em memória limitam segurança operacional em produção escalada.
    - Evidência: `createInMemorySocialOAuthStateStore`, state store de account connection e PKCE store em memória.
    - Impacto: callbacks falham após restart e podem quebrar em múltiplas instâncias. Não é vazamento direto, mas é fragilidade operacional de auth.
    - Recomendação: mover para Redis ou storage compartilhado com TTL/consumo atômico antes de beta escalado.
@@ -159,7 +185,7 @@ Auth/providers:
 - Estado: saudável com hardening pendente.
 - Foundation de identities está boa: `externalId` obrigatório, uniqueness global por provider, ownership conflict mapeado para erro de domínio.
 - Social login evita takeover por email, usando externalId como identidade primária.
-- Ponto frágil: `request.url` em callback social e stores em memória.
+- Ponto frágil: logs de request com query sensível em callback social e stores em memória.
 
 Profile:
 
@@ -330,7 +356,7 @@ Depende de Docker/infra:
 
 Impedimentos para beta fechado:
 
-- Corrigir log de callback OAuth com `code`/`state`.
+- Corrigir log de callback OAuth com `code`/`state` e token de presença em smoke helper.
 - Definir state/PKCE store compartilhado ou documentar single-instance como limite explícito.
 - Estabilizar CI/coverage e smoke local.
 - Atualizar docs/runbooks de env, callbacks e deploy.
@@ -346,7 +372,7 @@ Coisas que seriam ruins mostrar a usuário real:
 Coisas que podem quebrar em produção:
 
 - OAuth callback após restart ou em múltiplas instâncias.
-- Logs com query sensível em callback.
+- Logs com query sensível em callback e token de presence impresso por helper de smoke.
 - Provider externo sem env/callback correto.
 - Tests/coverage se Postgres/Redis não estiverem prontos ou timeouts de frontend persistirem.
 - Leaderboard Arena sem paginação se volume crescer.
@@ -355,16 +381,17 @@ Coisas que podem quebrar em produção:
 
 P0/P1:
 
-1. Log de `code`/`state` OAuth no callback social.
-2. Falta de runbook confiável de env/callback/deploy para providers reais.
-3. Coverage/test matrix instável para validação de beta.
+1. Log de `code`/`state` OAuth no callback social e log gate cego para query sensível.
+2. Smoke helper de presence imprimindo token de acesso em stdout.
+3. Falta de runbook confiável de env/callback/deploy para providers reais.
+4. Coverage/test matrix instável para validação de beta.
 
 P1/P2:
 
-4. State OAuth/PKCE em memória para ambiente multi-instance.
-5. Documentação raiz e `.codex` divergindo do produto real.
-6. Arena sem mecanismo operacional claro para criar/ativar desafios.
-7. Revisão mobile/acessibilidade pendente nas superfícies novas.
+5. State OAuth/PKCE em memória para ambiente multi-instance.
+6. Documentação raiz e `.codex` divergindo do produto real.
+7. Arena sem mecanismo operacional claro para criar/ativar desafios.
+8. Revisão mobile/acessibilidade pendente nas superfícies novas.
 
 P2:
 
@@ -424,7 +451,7 @@ Não recomendo abrir novo ciclo de features agora. O produto já acumulou muitas
 
 Ordem sugerida:
 
-1. Corrigir log sensível de OAuth social.
+1. Corrigir log sensível de OAuth social e token de presence no smoke helper.
 2. Atualizar docs/runbooks de setup, deploy, providers e smoke.
 3. Estabilizar coverage/smoke E2E.
 4. Revisar mobile/acessibilidade das superfícies MVP.
@@ -432,13 +459,13 @@ Ordem sugerida:
 
 ## 13. Lista curta de issues sugeridas
 
-### 1. `fix(security): sanitizar logs de callbacks OAuth social`
+### 1. `fix(security): sanitizar logs de callbacks OAuth e presence smoke`
 
 - Tipo: `bug`
 - Prioridade: P0
-- Motivo: `auth.routes.ts` registra `request.url` no callback social, podendo expor `code` e `state`.
-- Escopo mínimo: substituir logs de callback por path sem query, revisar callbacks social/link/reauth/Discord legado e adicionar teste ou log guard contra `code`, `state`, `access_token`, `refresh_token`.
-- Critério de aceite: nenhum log de callback contém query sensível; testes focados passam; scanner de logs sensíveis não acusa OAuth code/state.
+- Motivo: smoke Docker confirmou `code`/`state` em logs de callback social, o log gate não bloqueou esse padrão e o helper de websocket imprime token na URL de conexão.
+- Escopo mínimo: substituir logs por path sem query, revisar callbacks social/link/reauth/Discord legado, mascarar token no helper de presence e ampliar log gate para `code`, `state`, `token`, `access_token`, `refresh_token` em query string.
+- Critério de aceite: nenhum log de callback ou smoke contém query sensível; testes focados passam; scanner de logs sensíveis bloqueia OAuth code/state e token em query.
 
 ### 2. `docs(ops): atualizar runbook de setup, providers e deploy beta`
 
