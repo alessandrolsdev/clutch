@@ -151,6 +151,15 @@ export const communityRepository = {
     return community ? toSummary(community) : null;
   },
 
+  async slugExists(slug: string): Promise<boolean> {
+    const community = await prisma.community.findUnique({
+      where: { slug },
+      select: { id: true },
+    });
+
+    return Boolean(community);
+  },
+
   async findBySlug(slug: string): Promise<CommunitySummary | null> {
     const community = await prisma.community.findUnique({
       where: { slug },
@@ -158,6 +167,18 @@ export const communityRepository = {
     });
 
     return community ? toSummary(community) : null;
+  },
+
+  async archive(communityId: string): Promise<CommunitySummary> {
+    const community = await prisma.community.update({
+      where: { id: communityId },
+      data: {
+        status: CommunityStatus.ARCHIVED,
+      },
+      select: communitySelect,
+    });
+
+    return toSummary(community);
   },
 
   async findMembershipRole(

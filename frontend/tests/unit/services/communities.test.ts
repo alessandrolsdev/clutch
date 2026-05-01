@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiRequest } from '@/lib/api';
 import {
   createCommunity,
+  archiveCommunity,
   fetchCommunities,
   fetchCommunityBySlug,
   joinCommunity,
@@ -130,6 +131,28 @@ describe('communities service', () => {
       '/communities/guilda-dos-speedrunners/membership',
       {
         method: 'DELETE',
+      },
+    );
+  });
+
+  it('archives a community by slug', async () => {
+    mockedApiRequest.mockResolvedValue(
+      new Response(
+        JSON.stringify({ community: { ...communityPayload, status: 'ARCHIVED' } }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      ),
+    );
+
+    const response = await archiveCommunity('guilda-dos-speedrunners');
+
+    expect(response.status).toBe('ARCHIVED');
+    expect(mockedApiRequest).toHaveBeenCalledWith(
+      '/communities/guilda-dos-speedrunners/archive',
+      {
+        method: 'PATCH',
       },
     );
   });

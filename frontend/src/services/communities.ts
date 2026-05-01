@@ -133,3 +133,19 @@ export async function leaveCommunity(slug: string): Promise<Community> {
 
   return communityResponseSchema.parse(payload).community;
 }
+
+export async function archiveCommunity(slug: string): Promise<Community> {
+  const response = await apiRequest(`/communities/${encodeURIComponent(slug)}/archive`, {
+    method: 'PATCH',
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw new CommunitiesRequestError(
+      response.status,
+      resolveErrorMessage(payload, 'Nao foi possivel arquivar esta comunidade.'),
+    );
+  }
+
+  return communityResponseSchema.parse(payload).community;
+}
