@@ -14,6 +14,7 @@ import {
   joinCommunity,
   leaveCommunity,
 } from '@/services/communities';
+import { CommunityEventsPanel } from './community-events-panel';
 
 type CommunityPageContentProps = {
   slug: string;
@@ -203,6 +204,13 @@ export function CommunityPageContent({ slug }: CommunityPageContentProps) {
           </p>
         ) : null}
       </Card>
+
+      <CommunityEventsPanel
+        slug={slug}
+        isArchived={isArchived}
+        isAuthenticated={isAuthenticated}
+        viewerMembershipRole={community.viewerMembershipRole ?? null}
+      />
     </div>
   );
 }
