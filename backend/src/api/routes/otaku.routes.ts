@@ -11,7 +11,12 @@ const entryParamsSchema = z.object({
 });
 
 const updateShowcaseSchema = z.object({
-  showcaseRank: z.number().int().nullable(),
+  showcaseRank: z
+    .number()
+    .int()
+    .min(1)
+    .max(OTAKU_SHOWCASE_MAX_FEATURED)
+    .nullable(),
 });
 
 function sendOtakuShowcaseServiceError(
@@ -20,6 +25,7 @@ function sendOtakuShowcaseServiceError(
 ): FastifyReply {
   const statusByCode: Record<OtakuShowcaseServiceError['code'], number> = {
     OTAKU_ENTRY_NOT_FOUND: 404,
+    OTAKU_SHOWCASE_CONCURRENT_UPDATE: 409,
     OTAKU_SHOWCASE_LIMIT_EXCEEDED: 409,
     OTAKU_SHOWCASE_RANK_INVALID: 400,
   };
