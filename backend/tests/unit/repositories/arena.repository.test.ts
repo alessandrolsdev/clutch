@@ -8,6 +8,7 @@ import { arenaRepository } from '@/core/repositories/arena.repository';
 
 vi.mock('@/infra/database/client', () => ({
   prisma: {
+    $transaction: vi.fn(),
     arenaChallenge: {
       findMany: vi.fn(),
       findUnique: vi.fn(),
@@ -58,6 +59,7 @@ const challengeRecord = {
 describe('arenaRepository', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(prisma.$transaction).mockImplementation(async (callback) => callback(prisma));
   });
 
   it('lista desafios ativos e marca participacao do viewer', async () => {
@@ -155,5 +157,44 @@ describe('arenaRepository', () => {
         submissionsCount: 1,
       }),
     ]);
+  });
+
+  it('cria submissao dentro de transacao serializavel respeitando cap', async () => {
+    vi.mocked(prisma.arenaSubmission.count).mockResolvedValue(2);
+    vi.mocked(prisma.arenaSubmission.create).mockResolvedValue({
+      id: 'submission-id-1',
+      challengeId: 'challenge-id-1',
+      participationId: 'participation-id-1',
+      userId: 'user-id-1',
+      proofType: ArenaProofType.GAME_SESSION,
+      proofId: 'post-id-1',
+      score: 10,
+      submittedAt: new Date('2026-05-02T12:00:00.000Z'),
+    } as never);
+
+    const result = await arenaRepository.createSubmissionWithinCap({
+      challengeId: 'challenge-id-1',
+      participationId: 'participation-id-1',
+      userId: 'user-id-1',
+      proofType: ArenaProofType.GAME_SESSION,
+      proofId: 'post-id-1',
+      score: 10,
+      maxSubmissionsPerUser: 3,
+    });
+
+    expect(result.id).toBe('submission-id-1');
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: 'Serializable',
+    });
+    expect(prisma.arenaSubmission.create).toHaveBeenCalledWith({
+      data: {
+        challengeId: 'challenge-id-1',
+        participationId: 'participation-id-1',
+        userId: 'user-id-1',
+        proofType: ArenaProofType.GAME_SESSION,
+        proofId: 'post-id-1',
+        score: 10,
+      },
+    });
   });
 });

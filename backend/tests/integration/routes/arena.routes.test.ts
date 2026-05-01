@@ -143,6 +143,7 @@ describe('Arena Routes', () => {
       payload: {
         proofType: 'GAME_SESSION',
         proofId: 'post-id-1',
+        score: 9999,
       },
     });
 
@@ -154,6 +155,14 @@ describe('Arena Routes', () => {
         score: 10,
       },
     });
+    expect(arenaService.submitProof).toHaveBeenCalledWith(
+      'challenge-id-1',
+      'user-id-1',
+      {
+        proofType: 'GAME_SESSION',
+        proofId: 'post-id-1',
+      },
+    );
     await app.close();
   });
 

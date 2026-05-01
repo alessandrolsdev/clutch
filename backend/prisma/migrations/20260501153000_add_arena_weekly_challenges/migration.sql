@@ -50,6 +50,11 @@ CREATE UNIQUE INDEX "arena_submissions_challengeId_proofType_proofId_key" ON "ar
 CREATE INDEX "arena_submissions_challengeId_userId_idx" ON "arena_submissions"("challengeId", "userId");
 CREATE INDEX "arena_submissions_userId_idx" ON "arena_submissions"("userId");
 
+ALTER TABLE "arena_challenges" ADD CONSTRAINT "arena_challenges_valid_window_check" CHECK ("endsAt" > "startsAt");
+ALTER TABLE "arena_challenges" ADD CONSTRAINT "arena_challenges_scoreValue_positive_check" CHECK ("scoreValue" > 0);
+ALTER TABLE "arena_challenges" ADD CONSTRAINT "arena_challenges_maxSubmissionsPerUser_positive_check" CHECK ("maxSubmissionsPerUser" > 0);
+ALTER TABLE "arena_submissions" ADD CONSTRAINT "arena_submissions_score_positive_check" CHECK ("score" > 0);
+
 ALTER TABLE "arena_participations" ADD CONSTRAINT "arena_participations_challengeId_fkey" FOREIGN KEY ("challengeId") REFERENCES "arena_challenges"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "arena_participations" ADD CONSTRAINT "arena_participations_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "arena_submissions" ADD CONSTRAINT "arena_submissions_challengeId_fkey" FOREIGN KEY ("challengeId") REFERENCES "arena_challenges"("id") ON DELETE CASCADE ON UPDATE CASCADE;

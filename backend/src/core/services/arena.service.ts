@@ -6,6 +6,7 @@ import {
 } from '@prisma/client';
 import {
   arenaRepository,
+  ArenaSubmissionCapReachedError,
   type ArenaChallengeSummary,
   type ArenaLeaderboardEntry,
   type ArenaSubmissionSummary,
@@ -99,6 +100,10 @@ function assertProofBelongsToChallengeWindow(
 
 function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
+
+function isSerializableTransactionConflict(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034';
 }
 
 export const arenaService = {
@@ -220,28 +225,35 @@ export const arenaService = {
       );
     }
 
-    const submissionsCount = await arenaRepository.countUserSubmissions(challenge.id, userId);
-    if (submissionsCount >= challenge.maxSubmissionsPerUser) {
-      throw new ArenaServiceError(
-        'ARENA_SUBMISSION_CAP_REACHED',
-        'Você atingiu o limite de submissões deste desafio.',
-      );
-    }
-
     try {
-      return await arenaRepository.createSubmission({
+      return await arenaRepository.createSubmissionWithinCap({
         challengeId: challenge.id,
         participationId: participation.id,
         userId,
         proofType: input.proofType,
         proofId: input.proofId,
         score: challenge.scoreValue,
+        maxSubmissionsPerUser: challenge.maxSubmissionsPerUser,
       });
     } catch (error) {
+      if (error instanceof ArenaSubmissionCapReachedError) {
+        throw new ArenaServiceError(
+          'ARENA_SUBMISSION_CAP_REACHED',
+          'Você atingiu o limite de submissões deste desafio.',
+        );
+      }
+
       if (isUniqueConstraintError(error)) {
         throw new ArenaServiceError(
           'ARENA_PROOF_DUPLICATE',
           'Esta prova já foi usada neste desafio.',
+        );
+      }
+
+      if (isSerializableTransactionConflict(error)) {
+        throw new ArenaServiceError(
+          'ARENA_SUBMISSION_CAP_REACHED',
+          'Tente enviar novamente; outra submissão foi processada ao mesmo tempo.',
         );
       }
 
