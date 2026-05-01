@@ -6,6 +6,7 @@ import { ConnectionCenter } from '@/components/settings/connection-center';
 import { DiscordIntegrationCard } from '@/components/settings/discord-integration-card';
 import { EpicIntegrationCard } from '@/components/settings/epic-integration-card';
 import { IgdbSearchCard } from '@/components/settings/igdb-search-card';
+import { OtakuShowcaseManager } from '@/components/settings/otaku-showcase-manager';
 import { SettingsNav } from '@/components/settings/settings-nav';
 import { SteamIntegrationCard } from '@/components/settings/steam-integration-card';
 import { Card } from '@/components/ui/card';
@@ -116,6 +117,8 @@ export function IntegrationsPageContent() {
       ) : null}
 
       <ConnectionCenter />
+
+      <OtakuShowcaseManager />
 
       <div className="grid gap-section xl:grid-cols-2">
         <SteamIntegrationCard
