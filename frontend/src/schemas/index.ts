@@ -1,5 +1,17 @@
 export {};
 export {
+  arenaChallengeResponseSchema,
+  arenaChallengeSchema,
+  arenaChallengeStatusSchema,
+  arenaChallengesResponseSchema,
+  arenaLeaderboardEntrySchema,
+  arenaLeaderboardResponseSchema,
+  arenaProofTypeSchema,
+  arenaSubmissionResponseSchema,
+  arenaSubmissionSchema,
+  submitArenaProofRequestSchema,
+} from './arena';
+export {
   authSessionSchema,
   loginBackendResponseSchema,
   loginRequestSchema,
