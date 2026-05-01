@@ -2,7 +2,7 @@ import {
   ArenaChallengeStatus,
   ArenaProofType,
   PostType,
-  type Prisma,
+  Prisma,
 } from '@prisma/client';
 import { prisma } from '../../infra/database/client';
 
@@ -90,6 +90,13 @@ export type ArenaLeaderboardEntry = {
   submissionsCount: number;
   lastSubmissionAt: Date;
 };
+
+export class ArenaSubmissionCapReachedError extends Error {
+  constructor() {
+    super('Arena submission cap reached.');
+    this.name = 'ArenaSubmissionCapReachedError';
+  }
+}
 
 function toChallengeSummary(
   challenge: ArenaChallengeRecord,
@@ -235,16 +242,39 @@ export const arenaRepository = {
     });
   },
 
-  async createSubmission(input: {
+  async createSubmissionWithinCap(input: {
     challengeId: string;
     participationId: string;
     userId: string;
     proofType: ArenaProofType;
     proofId: string;
     score: number;
+    maxSubmissionsPerUser: number;
   }): Promise<ArenaSubmissionSummary> {
-    return prisma.arenaSubmission.create({
-      data: input,
+    return prisma.$transaction(async (tx) => {
+      const submissionsCount = await tx.arenaSubmission.count({
+        where: {
+          challengeId: input.challengeId,
+          userId: input.userId,
+        },
+      });
+
+      if (submissionsCount >= input.maxSubmissionsPerUser) {
+        throw new ArenaSubmissionCapReachedError();
+      }
+
+      return tx.arenaSubmission.create({
+        data: {
+          challengeId: input.challengeId,
+          participationId: input.participationId,
+          userId: input.userId,
+          proofType: input.proofType,
+          proofId: input.proofId,
+          score: input.score,
+        },
+      });
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
   },
 

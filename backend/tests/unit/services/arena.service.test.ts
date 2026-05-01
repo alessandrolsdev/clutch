@@ -3,15 +3,23 @@ import {
   ArenaChallengeStatus,
   ArenaProofType,
   PostType,
+  Prisma,
 } from '@prisma/client';
 import { arenaService } from '@/core/services/arena.service';
 import {
   arenaRepository,
+  ArenaSubmissionCapReachedError,
   type ArenaChallengeSummary,
   type ArenaSubmissionSummary,
 } from '@/core/repositories/arena.repository';
 
 vi.mock('@/core/repositories/arena.repository', () => ({
+  ArenaSubmissionCapReachedError: class ArenaSubmissionCapReachedError extends Error {
+    constructor() {
+      super('Arena submission cap reached.');
+      this.name = 'ArenaSubmissionCapReachedError';
+    }
+  },
   arenaRepository: {
     listActiveChallenges: vi.fn(),
     findChallengeBySlug: vi.fn(),
@@ -21,7 +29,7 @@ vi.mock('@/core/repositories/arena.repository', () => ({
     findProofPost: vi.fn(),
     countUserSubmissions: vi.fn(),
     findSubmissionByProof: vi.fn(),
-    createSubmission: vi.fn(),
+    createSubmissionWithinCap: vi.fn(),
     listLeaderboard: vi.fn(),
   },
 }));
@@ -112,6 +120,35 @@ describe('arenaService', () => {
     expect(arenaRepository.upsertParticipation).not.toHaveBeenCalled();
   });
 
+  it('bloqueia entrada em desafio futuro', async () => {
+    vi.mocked(arenaRepository.findChallengeById).mockResolvedValue({
+      ...activeChallenge,
+      startsAt: new Date('2099-01-01T00:00:00.000Z'),
+      endsAt: new Date('2099-01-08T00:00:00.000Z'),
+    });
+
+    await expect(
+      arenaService.joinChallenge(activeChallenge.id, 'user-id-1'),
+    ).rejects.toMatchObject({
+      code: 'ARENA_CHALLENGE_NOT_STARTED',
+    });
+    expect(arenaRepository.upsertParticipation).not.toHaveBeenCalled();
+  });
+
+  it('bloqueia entrada em desafio inativo', async () => {
+    vi.mocked(arenaRepository.findChallengeById).mockResolvedValue({
+      ...activeChallenge,
+      status: ArenaChallengeStatus.DRAFT,
+    });
+
+    await expect(
+      arenaService.joinChallenge(activeChallenge.id, 'user-id-1'),
+    ).rejects.toMatchObject({
+      code: 'ARENA_CHALLENGE_NOT_ACTIVE',
+    });
+    expect(arenaRepository.upsertParticipation).not.toHaveBeenCalled();
+  });
+
   it('submete prova GAME_SESSION valida e calcula score fixo', async () => {
     vi.mocked(arenaRepository.findParticipation).mockResolvedValue({
       id: 'participation-id-1',
@@ -127,8 +164,7 @@ describe('arenaService', () => {
       contentText: 'Ranked com squad fechado.',
     });
     vi.mocked(arenaRepository.findSubmissionByProof).mockResolvedValue(null);
-    vi.mocked(arenaRepository.countUserSubmissions).mockResolvedValue(0);
-    vi.mocked(arenaRepository.createSubmission).mockResolvedValue(submission);
+    vi.mocked(arenaRepository.createSubmissionWithinCap).mockResolvedValue(submission);
 
     const result = await arenaService.submitProof(activeChallenge.id, 'user-id-1', {
       proofType: ArenaProofType.GAME_SESSION,
@@ -136,13 +172,14 @@ describe('arenaService', () => {
     });
 
     expect(result.score).toBe(10);
-    expect(arenaRepository.createSubmission).toHaveBeenCalledWith({
+    expect(arenaRepository.createSubmissionWithinCap).toHaveBeenCalledWith({
       challengeId: activeChallenge.id,
       participationId: 'participation-id-1',
       userId: 'user-id-1',
       proofType: ArenaProofType.GAME_SESSION,
       proofId: 'post-id-1',
       score: 10,
+      maxSubmissionsPerUser: 3,
     });
   });
 
@@ -235,6 +272,38 @@ describe('arenaService', () => {
     });
   });
 
+  it('mapeia unique constraint concorrente de prova duplicada para erro de dominio', async () => {
+    vi.mocked(arenaRepository.findParticipation).mockResolvedValue({
+      id: 'participation-id-1',
+      challengeId: activeChallenge.id,
+      userId: 'user-id-1',
+      joinedAt: new Date(),
+    });
+    vi.mocked(arenaRepository.findProofPost).mockResolvedValue({
+      id: 'post-id-1',
+      userId: 'user-id-1',
+      type: PostType.GAME_SESSION,
+      createdAt: new Date('2026-05-01T11:00:00.000Z'),
+      contentText: null,
+    });
+    vi.mocked(arenaRepository.findSubmissionByProof).mockResolvedValue(null);
+    vi.mocked(arenaRepository.createSubmissionWithinCap).mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      }),
+    );
+
+    await expect(
+      arenaService.submitProof(activeChallenge.id, 'user-id-1', {
+        proofType: ArenaProofType.GAME_SESSION,
+        proofId: 'post-id-1',
+      }),
+    ).rejects.toMatchObject({
+      code: 'ARENA_PROOF_DUPLICATE',
+    });
+  });
+
   it('bloqueia submissao acima do cap do desafio', async () => {
     vi.mocked(arenaRepository.findParticipation).mockResolvedValue({
       id: 'participation-id-1',
@@ -250,12 +319,46 @@ describe('arenaService', () => {
       contentText: null,
     });
     vi.mocked(arenaRepository.findSubmissionByProof).mockResolvedValue(null);
-    vi.mocked(arenaRepository.countUserSubmissions).mockResolvedValue(3);
+    vi.mocked(arenaRepository.createSubmissionWithinCap).mockRejectedValue(
+      new ArenaSubmissionCapReachedError(),
+    );
 
     await expect(
       arenaService.submitProof(activeChallenge.id, 'user-id-1', {
         proofType: ArenaProofType.GAME_SESSION,
         proofId: 'post-id-1',
+      }),
+    ).rejects.toMatchObject({
+      code: 'ARENA_SUBMISSION_CAP_REACHED',
+    });
+  });
+
+  it('mapeia conflito serializavel de cap concorrente para erro de dominio', async () => {
+    vi.mocked(arenaRepository.findParticipation).mockResolvedValue({
+      id: 'participation-id-1',
+      challengeId: activeChallenge.id,
+      userId: 'user-id-1',
+      joinedAt: new Date(),
+    });
+    vi.mocked(arenaRepository.findProofPost).mockResolvedValue({
+      id: 'post-id-2',
+      userId: 'user-id-1',
+      type: PostType.GAME_SESSION,
+      createdAt: new Date('2026-05-01T11:00:00.000Z'),
+      contentText: null,
+    });
+    vi.mocked(arenaRepository.findSubmissionByProof).mockResolvedValue(null);
+    vi.mocked(arenaRepository.createSubmissionWithinCap).mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Transaction conflict', {
+        code: 'P2034',
+        clientVersion: 'test',
+      }),
+    );
+
+    await expect(
+      arenaService.submitProof(activeChallenge.id, 'user-id-1', {
+        proofType: ArenaProofType.GAME_SESSION,
+        proofId: 'post-id-2',
       }),
     ).rejects.toMatchObject({
       code: 'ARENA_SUBMISSION_CAP_REACHED',
