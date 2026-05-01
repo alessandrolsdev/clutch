@@ -37,8 +37,10 @@ function sendCommunityServiceError(
   const statusByCode: Record<CommunityServiceError['code'], number> = {
     COMMUNITY_NOT_FOUND: 404,
     COMMUNITY_SLUG_CONFLICT: 409,
+    COMMUNITY_ARCHIVED: 409,
     COMMUNITY_ALREADY_JOINED: 409,
     COMMUNITY_OWNER_CANNOT_LEAVE: 403,
+    COMMUNITY_FORBIDDEN: 403,
     COMMUNITY_MEMBERSHIP_NOT_FOUND: 404,
   };
 
@@ -151,6 +153,33 @@ export async function communityRoutes(app: FastifyInstance): Promise<void> {
 
       try {
         const community = await communityService.leaveCommunity(params.data.slug, request.userId);
+
+        return reply.status(200).send({ community });
+      } catch (error) {
+        if (error instanceof CommunityServiceError) {
+          return sendCommunityServiceError(error, reply);
+        }
+
+        throw error;
+      }
+    },
+  );
+
+  app.patch<{ Params: { slug: string } }>(
+    '/:slug/archive',
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const params = slugParamsSchema.safeParse(request.params);
+
+      if (!params.success) {
+        return reply.status(400).send({
+          message: 'Parâmetros inválidos.',
+          errors: params.error.flatten(),
+        });
+      }
+
+      try {
+        const community = await communityService.archiveCommunity(params.data.slug, request.userId);
 
         return reply.status(200).send({ community });
       } catch (error) {
