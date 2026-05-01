@@ -111,6 +111,17 @@ enum CommunityMemberRole {
   MEMBER
 }
 
+enum CommunityEventStatus {
+  PUBLISHED
+  CANCELLED
+}
+
+enum CommunityEventRsvpStatus {
+  GOING
+  INTERESTED
+  NOT_GOING
+}
+
 // ── User ─────────────────────────────────────────────────────
 
 model User {
@@ -122,25 +133,27 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  profile              Profile?
-  stats                UserStats?
-  presence             UserPresence?
-  platformIntegrations PlatformIntegration[]
-  gameLibrary          UserGameLibrary[]
-  posts                Post[]
-  comments             Comment[]
-  interactions         Interaction[]
-  notifications        Notification[]        @relation("NotificationRecipient")
-  actorNotifications   Notification[]        @relation("NotificationActor")
-  sentFriendRequests   FriendRequest[]       @relation("FriendRequestSender")
-  receivedFriendRequests FriendRequest[]     @relation("FriendRequestReceiver")
-  friendships          Friendship[]          @relation("FriendshipUser")
-  friendOf             Friendship[]          @relation("FriendshipFriend")
-  sentGameInvites      GameInvite[]          @relation("GameInviteSender")
-  receivedGameInvites  GameInvite[]          @relation("GameInviteReceiver")
-  mediaEntries         UserMediaEntry[]
-  ownedCommunities     Community[]           @relation("CommunityOwner")
-  communityMemberships CommunityMember[]
+  profile                Profile?
+  stats                  UserStats?
+  presence               UserPresence?
+  platformIntegrations   PlatformIntegration[]
+  gameLibrary            UserGameLibrary[]
+  posts                  Post[]
+  comments               Comment[]
+  interactions           Interaction[]
+  notifications          Notification[]        @relation("NotificationRecipient")
+  actorNotifications     Notification[]        @relation("NotificationActor")
+  sentFriendRequests     FriendRequest[]       @relation("FriendRequestSender")
+  receivedFriendRequests FriendRequest[]       @relation("FriendRequestReceiver")
+  friendships            Friendship[]          @relation("FriendshipUser")
+  friendOf               Friendship[]          @relation("FriendshipFriend")
+  sentGameInvites        GameInvite[]          @relation("GameInviteSender")
+  receivedGameInvites    GameInvite[]          @relation("GameInviteReceiver")
+  mediaEntries           UserMediaEntry[]
+  ownedCommunities       Community[]           @relation("CommunityOwner")
+  communityMemberships   CommunityMember[]
+  createdCommunityEvents CommunityEvent[]      @relation("CommunityEventCreator")
+  communityEventRsvps    CommunityEventRsvp[]
 
   @@map("users")
 }
@@ -200,21 +213,21 @@ model UserPresence {
 // ── PlatformIntegration ──────────────────────────────────────
 
 model PlatformIntegration {
-  id             String                            @id @default(uuid())
-  userId         String
-  platform       Platform
-  externalId     String
-  connectionType PlatformIntegrationConnectionType @default(CONNECTED_ACCOUNT)
-  status         PlatformIntegrationStatus         @default(CONNECTED)
-  dataSource     PlatformIntegrationDataSource     @default(OFFICIAL)
-  accessToken    String?
-  refreshToken   String?
-  metadata       Json?
-  isActive       Boolean                           @default(true)
-  publicProfileVisible Boolean                     @default(false)
-  lastSyncAt     DateTime?
-  createdAt      DateTime                          @default(now())
-  updatedAt      DateTime                          @updatedAt
+  id                   String                            @id @default(uuid())
+  userId               String
+  platform             Platform
+  externalId           String
+  connectionType       PlatformIntegrationConnectionType @default(CONNECTED_ACCOUNT)
+  status               PlatformIntegrationStatus         @default(CONNECTED)
+  dataSource           PlatformIntegrationDataSource     @default(OFFICIAL)
+  accessToken          String?
+  refreshToken         String?
+  metadata             Json?
+  isActive             Boolean                           @default(true)
+  publicProfileVisible Boolean                           @default(false)
+  lastSyncAt           DateTime?
+  createdAt            DateTime                          @default(now())
+  updatedAt            DateTime                          @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -226,7 +239,7 @@ model PlatformIntegration {
 // ── UserGameLibrary ──────────────────────────────────────────
 
 model UserGameLibrary {
-  id           String   @id @default(uuid())
+  id           String    @id @default(uuid())
   userId       String
   gameId       String
   gameName     String
@@ -243,14 +256,14 @@ model UserGameLibrary {
 }
 
 model MediaTitle {
-  id             String           @id @default(uuid())
+  id             String    @id @default(uuid())
   kind           MediaKind
   canonicalTitle String
   coverUrl       String?
   externalSource Platform?
   externalId     String?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   userEntries UserMediaEntry[]
 
@@ -292,6 +305,7 @@ model Community {
 
   owner   User              @relation("CommunityOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
   members CommunityMember[]
+  events  CommunityEvent[]
 
   @@index([status, visibility, createdAt])
   @@map("communities")
@@ -312,17 +326,52 @@ model CommunityMember {
   @@map("community_members")
 }
 
+model CommunityEvent {
+  id              String               @id @default(uuid())
+  communityId     String
+  title           String
+  description     String?
+  startsAt        DateTime
+  status          CommunityEventStatus @default(PUBLISHED)
+  createdByUserId String
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  community Community            @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  createdBy User                 @relation("CommunityEventCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  rsvps     CommunityEventRsvp[]
+
+  @@index([communityId, status, startsAt])
+  @@map("community_events")
+}
+
+model CommunityEventRsvp {
+  id        String                   @id @default(uuid())
+  eventId   String
+  userId    String
+  status    CommunityEventRsvpStatus
+  createdAt DateTime                 @default(now())
+  updatedAt DateTime                 @updatedAt
+
+  event CommunityEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+  @@index([userId])
+  @@map("community_event_rsvps")
+}
+
 // ── Post ─────────────────────────────────────────────────────
 
 model Post {
-  id          String    @id @default(uuid())
+  id          String   @id @default(uuid())
   userId      String
   contentText String?
   mediaUrl    String?
-  type        PostType  @default(TEXT)
+  type        PostType @default(TEXT)
   gameContext Json?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   comments     Comment[]
@@ -341,10 +390,10 @@ model Comment {
   content   String
   createdAt DateTime @default(now())
 
-  post     Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
-  replies  Comment[] @relation("CommentReplies")
+  post    Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent  Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies Comment[] @relation("CommentReplies")
 
   @@map("comments")
 }
