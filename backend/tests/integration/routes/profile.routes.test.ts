@@ -16,7 +16,10 @@ vi.mock('@/core/services/social-continuity.service', () => ({
 }));
 
 vi.mock('@/core/services/otaku-showcase.service', () => ({
+  OTAKU_SHOWCASE_MAX_FEATURED: 3,
   otakuShowcaseService: {
+    listUserLibrary: vi.fn(),
+    updateEntryShowcase: vi.fn(),
     summarizeUser: vi.fn(),
   },
 }));

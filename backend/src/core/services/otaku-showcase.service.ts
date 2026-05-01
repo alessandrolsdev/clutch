@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../infra/database/client';
 
 export const OTAKU_SHOWCASE_MAX_FEATURED = 3;
@@ -31,7 +32,8 @@ export interface OtakuLibraryEntry {
 export type OtakuShowcaseServiceErrorCode =
   | 'OTAKU_ENTRY_NOT_FOUND'
   | 'OTAKU_SHOWCASE_LIMIT_EXCEEDED'
-  | 'OTAKU_SHOWCASE_RANK_INVALID';
+  | 'OTAKU_SHOWCASE_RANK_INVALID'
+  | 'OTAKU_SHOWCASE_CONCURRENT_UPDATE';
 
 export class OtakuShowcaseServiceError extends Error {
   readonly code: OtakuShowcaseServiceErrorCode;
@@ -149,61 +151,98 @@ export const otakuShowcaseService = {
       );
     }
 
-    const existingEntry = await prisma.userMediaEntry.findUnique({
-      where: { id: entryId },
-      select: {
-        id: true,
-        userId: true,
-        showcaseRank: true,
-      },
-    });
-
-    if (!existingEntry || existingEntry.userId !== userId) {
-      throw new OtakuShowcaseServiceError(
-        'OTAKU_ENTRY_NOT_FOUND',
-        'Item otaku não encontrado.',
-      );
-    }
-
-    if (showcaseRank !== null && existingEntry.showcaseRank === null) {
-      const currentShowcaseCount = await prisma.userMediaEntry.count({
-        where: {
-          userId,
-          showcaseRank: {
-            not: null,
+    try {
+      const updatedEntry = (await prisma.$transaction(async (tx) => {
+        const existingEntry = await tx.userMediaEntry.findUnique({
+          where: { id: entryId },
+          select: {
+            id: true,
+            userId: true,
+            showcaseRank: true,
           },
-        },
-      });
+        });
 
-      if (currentShowcaseCount >= OTAKU_SHOWCASE_MAX_FEATURED) {
+        if (!existingEntry || existingEntry.userId !== userId) {
+          throw new OtakuShowcaseServiceError(
+            'OTAKU_ENTRY_NOT_FOUND',
+            'Item otaku não encontrado.',
+          );
+        }
+
+        if (showcaseRank !== null && existingEntry.showcaseRank === null) {
+          const currentShowcaseCount = await tx.userMediaEntry.count({
+            where: {
+              userId,
+              showcaseRank: {
+                not: null,
+              },
+            },
+          });
+
+          if (currentShowcaseCount >= OTAKU_SHOWCASE_MAX_FEATURED) {
+            throw new OtakuShowcaseServiceError(
+              'OTAKU_SHOWCASE_LIMIT_EXCEEDED',
+              `O showcase otaku aceita no máximo ${OTAKU_SHOWCASE_MAX_FEATURED} itens.`,
+            );
+          }
+        }
+
+        if (showcaseRank !== null) {
+          await tx.userMediaEntry.updateMany({
+            where: {
+              userId,
+              showcaseRank,
+              id: {
+                not: entryId,
+              },
+            },
+            data: {
+              showcaseRank: null,
+            },
+          });
+        }
+
+        return tx.userMediaEntry.update({
+          where: { id: entryId },
+          data: { showcaseRank },
+          select: {
+            id: true,
+            status: true,
+            progress: true,
+            score: true,
+            showcaseRank: true,
+            updatedAt: true,
+            mediaTitle: {
+              select: {
+                kind: true,
+                canonicalTitle: true,
+                coverUrl: true,
+              },
+            },
+          },
+        });
+      }, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      })) as UserLibraryEntryRecord;
+
+      return toLibraryEntry(updatedEntry);
+    } catch (error) {
+      if (error instanceof OtakuShowcaseServiceError) {
+        throw error;
+      }
+
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2034'
+      ) {
         throw new OtakuShowcaseServiceError(
-          'OTAKU_SHOWCASE_LIMIT_EXCEEDED',
-          `O showcase otaku aceita no máximo ${OTAKU_SHOWCASE_MAX_FEATURED} itens.`,
+          'OTAKU_SHOWCASE_CONCURRENT_UPDATE',
+          'O showcase foi alterado ao mesmo tempo. Tente novamente.',
         );
       }
+
+      throw error;
     }
-
-    const updatedEntry = (await prisma.userMediaEntry.update({
-      where: { id: entryId },
-      data: { showcaseRank },
-      select: {
-        id: true,
-        status: true,
-        progress: true,
-        score: true,
-        showcaseRank: true,
-        updatedAt: true,
-        mediaTitle: {
-          select: {
-            kind: true,
-            canonicalTitle: true,
-            coverUrl: true,
-          },
-        },
-      },
-    })) as UserLibraryEntryRecord;
-
-    return toLibraryEntry(updatedEntry);
   },
 
   async summarizeUser(userId: string): Promise<OtakuShowcaseSummary | null> {

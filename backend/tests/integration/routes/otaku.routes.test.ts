@@ -191,5 +191,28 @@ describe('Otaku Routes', () => {
       expect(response.json()).toEqual({ message: 'O showcase otaku aceita no máximo 3 itens.' });
       await app.close();
     });
+
+    it.each([
+      ['zero', { showcaseRank: 0 }],
+      ['negativo', { showcaseRank: -1 }],
+      ['decimal', { showcaseRank: 1.5 }],
+      ['string', { showcaseRank: '1' }],
+      ['acima do limite', { showcaseRank: 4 }],
+      ['payload malformado', { rank: 1 }],
+    ])('rejeita showcaseRank invalido: %s', async (_caseName, payload) => {
+      const app = await buildApp();
+      const token = generateTestToken(app, 'user-id-1');
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/otaku/library/${mockEntry.id}/showcase`,
+        headers: { Authorization: `Bearer ${token}` },
+        payload,
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(otakuShowcaseService.updateEntryShowcase).not.toHaveBeenCalled();
+      await app.close();
+    });
   });
 });

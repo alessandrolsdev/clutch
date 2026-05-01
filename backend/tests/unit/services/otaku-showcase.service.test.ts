@@ -6,10 +6,12 @@ import {
 
 vi.mock('@/infra/database/client', () => ({
   prisma: {
+    $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) => callback(prisma)),
     userMediaEntry: {
       findMany: vi.fn(),
       findUnique: vi.fn(),
       count: vi.fn(),
+      updateMany: vi.fn(),
       update: vi.fn(),
     },
   },
@@ -214,6 +216,18 @@ describe('otakuShowcaseService', () => {
         },
       },
     });
+    expect(prisma.userMediaEntry.updateMany).toHaveBeenCalledWith({
+      where: {
+        userId: 'user-1',
+        showcaseRank: 3,
+        id: {
+          not: 'entry-1',
+        },
+      },
+      data: {
+        showcaseRank: null,
+      },
+    });
     expect(prisma.userMediaEntry.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'entry-1' },
       data: { showcaseRank: 3 },
@@ -248,6 +262,7 @@ describe('otakuShowcaseService', () => {
     const entry = await otakuShowcaseService.updateEntryShowcase('user-1', 'entry-1', null);
 
     expect(prisma.userMediaEntry.count).not.toHaveBeenCalled();
+    expect(prisma.userMediaEntry.updateMany).not.toHaveBeenCalled();
     expect(prisma.userMediaEntry.update).toHaveBeenCalledWith(expect.objectContaining({
       data: { showcaseRank: null },
     }));
@@ -272,6 +287,45 @@ describe('otakuShowcaseService', () => {
     expect(prisma.userMediaEntry.update).not.toHaveBeenCalled();
   });
 
+  it('normaliza rank duplicado removendo destaque anterior da mesma posicao', async () => {
+    vi.mocked(prisma.userMediaEntry.findUnique).mockResolvedValue({
+      id: 'entry-2',
+      userId: 'user-1',
+      showcaseRank: 2,
+    } as never);
+    vi.mocked(prisma.userMediaEntry.updateMany).mockResolvedValue({ count: 1 } as never);
+    vi.mocked(prisma.userMediaEntry.update).mockResolvedValue({
+      id: 'entry-2',
+      status: 'COMPLETED',
+      progress: 12,
+      score: 8,
+      showcaseRank: 1,
+      updatedAt: new Date('2026-04-30T18:00:00.000Z'),
+      mediaTitle: {
+        kind: 'MANGA',
+        canonicalTitle: 'Berserk',
+        coverUrl: null,
+      },
+    } as never);
+
+    const entry = await otakuShowcaseService.updateEntryShowcase('user-1', 'entry-2', 1);
+
+    expect(prisma.userMediaEntry.count).not.toHaveBeenCalled();
+    expect(prisma.userMediaEntry.updateMany).toHaveBeenCalledWith({
+      where: {
+        userId: 'user-1',
+        showcaseRank: 1,
+        id: {
+          not: 'entry-2',
+        },
+      },
+      data: {
+        showcaseRank: null,
+      },
+    });
+    expect(entry.showcaseRank).toBe(1);
+  });
+
   it('aplica limite maximo de destaques', async () => {
     vi.mocked(prisma.userMediaEntry.findUnique).mockResolvedValue({
       id: 'entry-4',
@@ -289,6 +343,22 @@ describe('otakuShowcaseService', () => {
 
   it('valida showcaseRank dentro do intervalo publico permitido', async () => {
     await expect(otakuShowcaseService.updateEntryShowcase('user-1', 'entry-1', 4))
+      .rejects.toMatchObject({
+        code: 'OTAKU_SHOWCASE_RANK_INVALID',
+      });
+    expect(prisma.userMediaEntry.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('rejeita showcaseRank decimal, zero e negativo antes de consultar o banco', async () => {
+    await expect(otakuShowcaseService.updateEntryShowcase('user-1', 'entry-1', 1.5))
+      .rejects.toMatchObject({
+        code: 'OTAKU_SHOWCASE_RANK_INVALID',
+      });
+    await expect(otakuShowcaseService.updateEntryShowcase('user-1', 'entry-1', 0))
+      .rejects.toMatchObject({
+        code: 'OTAKU_SHOWCASE_RANK_INVALID',
+      });
+    await expect(otakuShowcaseService.updateEntryShowcase('user-1', 'entry-1', -1))
       .rejects.toMatchObject({
         code: 'OTAKU_SHOWCASE_RANK_INVALID',
       });
