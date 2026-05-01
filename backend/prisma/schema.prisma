@@ -122,6 +122,19 @@ enum CommunityEventRsvpStatus {
   NOT_GOING
 }
 
+enum ArenaChallengeStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+  ARCHIVED
+}
+
+enum ArenaProofType {
+  GAME_SESSION
+  ACHIEVEMENT
+  COMMUNITY_EVENT_RSVP
+}
+
 // ── User ─────────────────────────────────────────────────────
 
 model User {
@@ -154,6 +167,8 @@ model User {
   communityMemberships   CommunityMember[]
   createdCommunityEvents CommunityEvent[]      @relation("CommunityEventCreator")
   communityEventRsvps    CommunityEventRsvp[]
+  arenaParticipations     ArenaParticipation[]
+  arenaSubmissions        ArenaSubmission[]
 
   @@map("users")
 }
@@ -359,6 +374,64 @@ model CommunityEventRsvp {
   @@unique([eventId, userId])
   @@index([userId])
   @@map("community_event_rsvps")
+}
+
+// ── Arena ───────────────────────────────────────────────────
+
+model ArenaChallenge {
+  id                    String               @id @default(uuid())
+  slug                  String               @unique
+  title                 String
+  description           String
+  startsAt              DateTime
+  endsAt                DateTime
+  status                ArenaChallengeStatus @default(ACTIVE)
+  ruleType              ArenaProofType
+  scoreValue            Int                  @default(10)
+  maxSubmissionsPerUser Int                  @default(3)
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+
+  participations ArenaParticipation[]
+  submissions    ArenaSubmission[]
+
+  @@index([status, startsAt, endsAt])
+  @@map("arena_challenges")
+}
+
+model ArenaParticipation {
+  id          String   @id @default(uuid())
+  challengeId String
+  userId      String
+  joinedAt    DateTime @default(now())
+
+  challenge   ArenaChallenge   @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  submissions ArenaSubmission[]
+
+  @@unique([challengeId, userId])
+  @@index([userId])
+  @@map("arena_participations")
+}
+
+model ArenaSubmission {
+  id              String         @id @default(uuid())
+  challengeId     String
+  participationId String
+  userId          String
+  proofType       ArenaProofType
+  proofId         String
+  score           Int
+  submittedAt     DateTime       @default(now())
+
+  challenge     ArenaChallenge     @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  participation ArenaParticipation @relation(fields: [participationId], references: [id], onDelete: Cascade)
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([challengeId, proofType, proofId])
+  @@index([challengeId, userId])
+  @@index([userId])
+  @@map("arena_submissions")
 }
 
 // ── Post ─────────────────────────────────────────────────────
