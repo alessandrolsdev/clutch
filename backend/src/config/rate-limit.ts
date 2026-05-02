@@ -1,5 +1,6 @@
 import type Redis from 'ioredis';
 import type { FastifyRequest } from 'fastify';
+import { sanitizeRequestPath } from './logging';
 
 type AuthRateLimitRouteId = 'login' | 'register' | 'refresh';
 
@@ -13,7 +14,7 @@ function createExceededLogger(
       event: 'auth_rate_limit_exceeded',
       requestId: request.id,
       method: request.method,
-      path: request.url,
+      path: sanitizeRequestPath(request.url),
       status: 429,
       limiter: routeId,
       max,

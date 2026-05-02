@@ -1,4 +1,6 @@
 import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import process from 'node:process';
 
 const tokenFile = process.env.PRESENCE_TOKEN_FILE;
 const wsUrl = process.env.PRESENCE_WS_URL;
@@ -36,6 +38,20 @@ async function readPresenceToken() {
   return parsed.token;
 }
 
+export function maskPresenceSocketUrl(rawUrl) {
+  try {
+    const parsedUrl = new URL(rawUrl);
+
+    if (parsedUrl.searchParams.has('token')) {
+      parsedUrl.searchParams.set('token', '[REDACTED]');
+    }
+
+    return parsedUrl.toString().replace(/token=%5BREDACTED%5D/iu, 'token=[REDACTED]');
+  } catch {
+    return '[presence websocket url redacted]';
+  }
+}
+
 async function validatePresenceHandshake() {
   if (!wsUrl || wsUrl.trim().length === 0) {
     fail('PRESENCE_WS_URL nao foi definido.');
@@ -49,7 +65,7 @@ async function validatePresenceHandshake() {
   const socketUrl = new URL('/ws/presence', wsUrl);
   socketUrl.searchParams.set('token', token);
 
-  console.log(`[presence-smoke] connecting to ${socketUrl.toString()}`);
+  console.log(`[presence-smoke] connecting to ${maskPresenceSocketUrl(socketUrl.toString())}`);
 
   await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -127,7 +143,12 @@ async function validatePresenceHandshake() {
   });
 }
 
-validatePresenceHandshake().catch((error) => {
-  console.error('[presence-smoke] validation failed:', error);
-  process.exit(1);
-});
+const isDirectExecution =
+  typeof process.argv[1] === 'string' && fileURLToPath(import.meta.url) === process.argv[1];
+
+if (isDirectExecution) {
+  validatePresenceHandshake().catch((error) => {
+    console.error('[presence-smoke] validation failed:', error);
+    process.exit(1);
+  });
+}
