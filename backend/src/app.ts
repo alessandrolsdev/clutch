@@ -22,6 +22,7 @@ import {
   logBackendError,
   REQUEST_ID_HEADER,
   resolveBackendRequestId,
+  sanitizeRequestPath,
 } from './config/logging';
 import {
   createJwtSigner,
@@ -130,7 +131,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
         event: 'http_request_start',
         requestId: request.id,
         method: request.method,
-        path: request.url,
+        path: sanitizeRequestPath(request.url),
       },
       'HTTP request started',
     );
@@ -144,7 +145,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
         event: 'http_request_complete',
         requestId: request.id,
         method: request.method,
-        path: request.url,
+        path: sanitizeRequestPath(request.url),
         status: reply.statusCode,
         duration_ms: Math.max(Date.now() - startedAt, 0),
       },
@@ -163,7 +164,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       {
         requestId: request.id,
         method: request.method,
-        path: request.url,
+        path: sanitizeRequestPath(request.url),
         status: reply.statusCode >= 400 ? reply.statusCode : 500,
         duration_ms: Math.max(Date.now() - startedAt, 0),
       },

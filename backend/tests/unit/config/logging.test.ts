@@ -6,6 +6,7 @@ import {
   createFastifyLoggerOptions,
   resolveBackendRequestId,
   sanitizeConnectionUrl,
+  sanitizeRequestPath,
   sanitizeSensitiveText,
   serializeErrorDetails,
 } from '@/config/logging';
@@ -89,5 +90,54 @@ describe('logging config', () => {
     );
     expect(String(details.stack)).not.toContain('super-secret');
     expect(String(details.stack)).not.toContain('redis://');
+  });
+
+  it('redige tokens e query sensivel em mensagens de erro', () => {
+    const details = serializeErrorDetails(
+      new Error('callback failed /callback?code=oauth-code&state=oauth-state Authorization=Bearer abcdefghijklmnop'),
+    );
+
+    expect(details.errorMessage).toContain('?code=[REDACTED]');
+    expect(details.errorMessage).toContain('&state=[REDACTED]');
+    expect(details.errorMessage).toContain('Authorization=***');
+    expect(details.errorMessage).not.toContain('oauth-code');
+    expect(details.errorMessage).not.toContain('abcdefghijklmnop');
+  });
+
+  it('sanitiza paths sensiveis do contexto estruturado', () => {
+    const entry = createBackendRuntimeLogEntry('info', 'request_start', 'Request started', {
+      path: '/auth/social/google/callback?code=oauth-code&state=oauth-state',
+      targetUrl: 'http://localhost/auth/accounts/steam/link/callback?openid.sig=signature',
+    });
+
+    expect(entry.path).toBe('/auth/social/google/callback');
+    expect(entry.targetUrl).toBe('/auth/accounts/steam/link/callback');
+    expect(JSON.stringify(entry)).not.toContain('oauth-code');
+    expect(JSON.stringify(entry)).not.toContain('openid.sig');
+  });
+
+  it('remove query sensivel de paths de callback antes do log', () => {
+    const path = sanitizeRequestPath(
+      '/auth/social/google/callback?code=oauth-code&state=oauth-state&scope=profile',
+    );
+
+    expect(path).toBe('/auth/social/google/callback');
+    expect(path).not.toContain('code=');
+    expect(path).not.toContain('state=');
+  });
+
+  it('remove parametros OpenID sensiveis antes do log', () => {
+    const path = sanitizeRequestPath(
+      '/auth/accounts/steam/link/callback?openid.sig=signature&openid.return_to=http%3A%2F%2Flocalhost%2Fcallback%3Fstate%3Dsecret&openid.claimed_id=https%3A%2F%2Fsteamcommunity.com%2Fopenid%2Fid%2F76561198000000000',
+    );
+
+    expect(path).toBe('/auth/accounts/steam/link/callback');
+    expect(path).not.toContain('openid.sig');
+    expect(path).not.toContain('openid.return_to');
+    expect(path).not.toContain('state=');
+  });
+
+  it('preserva query nao sensivel para observabilidade', () => {
+    expect(sanitizeRequestPath('/arena/challenges?page=2')).toBe('/arena/challenges?page=2');
   });
 });

@@ -36,7 +36,27 @@ test('identifica apenas padroes bloqueantes reais e ignora texto seguro', () => 
     ].join('\n'),
   );
 
-  assert.equal(findings.length, 2);
-  assert.equal(findings[0].ruleId, 'bearer_token');
-  assert.equal(findings[1].ruleId, 'postgres_url');
+  assert.equal(findings.length, 3);
+  assert.deepEqual(
+    findings.map((finding) => finding.ruleId),
+    ['bearer_token', 'postgres_url', 'url_with_credentials'],
+  );
+});
+
+test('bloqueia query string sensivel de callbacks OAuth e OpenID', () => {
+  const findings = scanLogContent(
+    [
+      'GET /api/auth/social/google/callback?code=oauth-code&state=oauth-state 307',
+      'GET /api/auth/accounts/steam/link/callback?openid.sig=signature&openid.return_to=http%3A%2F%2Flocalhost%2Fcallback 400',
+      'GET /ws/presence?token=presence-token-value 101',
+    ].join('\n'),
+  );
+
+  assert.deepEqual(
+    findings.map((finding) => finding.ruleId),
+    ['oauth_code_query', 'oauth_state_query', 'openid_signature_query', 'openid_return_to_query', 'token_query'],
+  );
+  assert.doesNotMatch(findings[0].line, /oauth-code/u);
+  assert.doesNotMatch(findings[1].line, /oauth-state/u);
+  assert.doesNotMatch(findings[4].line, /presence-token-value/u);
 });

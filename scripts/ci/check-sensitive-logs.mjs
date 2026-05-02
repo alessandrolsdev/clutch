@@ -9,6 +9,8 @@ const AUTHORIZATION_VALUE_PATTERN =
 const BEARER_TOKEN_PATTERN = /\bBearer\s+(?<token>[A-Za-z0-9._~+/=-]{8,})/gu;
 const SENSITIVE_ASSIGNMENT_PATTERN =
   /(?<key>"?(?:password|secret)"?\s*[:=]\s*)(?<quote>"?)(?<value>[^"\s,}]+)(?<suffix>"?)/giu;
+const SENSITIVE_QUERY_VALUE_PATTERN =
+  /(?<prefix>[?&](?:code|state|access_token|refresh_token|id_token|token|authorization|client_secret|secret|openid\.sig|openid\.return_to)=)(?!\*\*\*|\[REDACTED\])(?<value>[^\s"'&,}]+)/giu;
 
 const BLOCKING_PATTERNS = [
   {
@@ -34,6 +36,50 @@ const BLOCKING_PATTERNS = [
   {
     id: 'password_assignment',
     pattern: /"?(?:password|secret)"?\s*[:=]\s*"?(?!\*\*\*|redacted|null|undefined|false|true)[^"\s,}]+/iu,
+  },
+  {
+    id: 'oauth_code_query',
+    pattern: /[?&]code=(?!\[REDACTED\])[^&\s"']+/iu,
+  },
+  {
+    id: 'oauth_state_query',
+    pattern: /[?&]state=(?!\[REDACTED\])[^&\s"']+/iu,
+  },
+  {
+    id: 'access_token_query',
+    pattern: /[?&]access_token=(?!\[REDACTED\])[^&\s"']+/iu,
+  },
+  {
+    id: 'refresh_token_query',
+    pattern: /[?&]refresh_token=(?!\[REDACTED\])[^&\s"']+/iu,
+  },
+  {
+    id: 'id_token_query',
+    pattern: /[?&]id_token=(?!\[REDACTED\])[^&\s"']+/iu,
+  },
+  {
+    id: 'token_query',
+    pattern: /[?&]token=(?!\[REDACTED\])[^&\s"']+/iu,
+  },
+  {
+    id: 'openid_signature_query',
+    pattern: /[?&]openid\.sig=(?!\[REDACTED\])[^&\s"']+/iu,
+  },
+  {
+    id: 'openid_return_to_query',
+    pattern: /[?&]openid\.return_to=(?!\[REDACTED\])[^&\s"']+/iu,
+  },
+  {
+    id: 'authorization_query',
+    pattern: /[?&]authorization=(?!\[REDACTED\])[^&\s"']+/iu,
+  },
+  {
+    id: 'client_secret_query',
+    pattern: /[?&]client_secret=(?!\[REDACTED\])[^&\s"']+/iu,
+  },
+  {
+    id: 'secret_query',
+    pattern: /[?&]secret=(?!\[REDACTED\])[^&\s"']+/iu,
   },
 ];
 
@@ -61,6 +107,10 @@ export function sanitizeLogLine(line) {
     .replace(
       SENSITIVE_ASSIGNMENT_PATTERN,
       (_match, key, quote, _value, suffix) => `${key}${quote}***${suffix}`,
+    )
+    .replace(
+      SENSITIVE_QUERY_VALUE_PATTERN,
+      (_match, prefix) => `${prefix}[REDACTED]`,
     );
 }
 
@@ -72,19 +122,17 @@ export function scanLogContent(content) {
       return [];
     }
 
-    const matchedRule = BLOCKING_PATTERNS.find(({ pattern }) => pattern.test(line));
+    const matchedRules = BLOCKING_PATTERNS.filter(({ pattern }) => pattern.test(line));
 
-    if (!matchedRule) {
+    if (matchedRules.length === 0) {
       return [];
     }
 
-    return [
-      {
-        ruleId: matchedRule.id,
-        lineNumber: index + 1,
-        line: sanitizeLogLine(line),
-      },
-    ];
+    return matchedRules.map((matchedRule) => ({
+      ruleId: matchedRule.id,
+      lineNumber: index + 1,
+      line: sanitizeLogLine(line),
+    }));
   });
 }
 
