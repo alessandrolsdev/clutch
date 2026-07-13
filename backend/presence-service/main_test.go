@@ -36,6 +36,35 @@ func TestAuthenticateRequestRejectsInvalidCredential(t *testing.T) {
 	}
 }
 
+func TestAuthenticateRequestRejectsRefreshToken(t *testing.T) {
+	t.Parallel()
+
+	refreshToken := signTestTokenWithType(t, "user-123", "refresh")
+	request := httptest.NewRequest(http.MethodGet, "/ws/presence?"+tokenQuery(refreshToken), nil)
+	request.Header.Set("Origin", "http://localhost:3000")
+
+	_, err := authenticateRequest(request, testPresenceConfig())
+	if err != errInvalidCredential {
+		t.Fatalf("expected invalid credential error for refresh token, got %v", err)
+	}
+}
+
+func TestAuthenticateRequestAcceptsAccessToken(t *testing.T) {
+	t.Parallel()
+
+	accessToken := signTestTokenWithType(t, "user-123", "access")
+	request := httptest.NewRequest(http.MethodGet, "/ws/presence?"+tokenQuery(accessToken), nil)
+	request.Header.Set("Origin", "http://localhost:3000")
+
+	userID, err := authenticateRequest(request, testPresenceConfig())
+	if err != nil {
+		t.Fatalf("expected access token to authenticate, got %v", err)
+	}
+	if userID != "user-123" {
+		t.Fatalf("expected user-123, got %q", userID)
+	}
+}
+
 func TestPresenceHandlerRejectsDisallowedOrigin(t *testing.T) {
 	t.Parallel()
 
@@ -170,9 +199,16 @@ func newTestHub() *Hub {
 func signTestToken(t *testing.T, userID string) string {
 	t.Helper()
 
+	return signTestTokenWithType(t, userID, "")
+}
+
+func signTestTokenWithType(t *testing.T, userID string, tokenType string) string {
+	t.Helper()
+
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, presenceClaims{
-		ID:       userID,
-		Username: "tester",
+		ID:        userID,
+		Username:  "tester",
+		TokenType: tokenType,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 		},

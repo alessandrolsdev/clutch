@@ -5,6 +5,7 @@ import {
   JwtAudienceRejectedError,
   JwtIssuerRejectedError,
   JwtKidRejectedError,
+  JwtTokenTypeRejectedError,
   type VerifiedJwtPayload,
 } from '../../config/jwt';
 import { sanitizeRequestPath } from '../../config/logging';
@@ -87,6 +88,18 @@ export async function authenticate(
         status: 401,
         reason: error.reason,
       }, 'JWT audience rejected');
+      return reply.status(401).send({ message: 'Token inválido ou expirado.' });
+    }
+
+    if (error instanceof JwtTokenTypeRejectedError) {
+      request.log.warn({
+        event: 'auth_jwt_token_type_rejected',
+        requestId: request.id,
+        method: request.method,
+        path: sanitizeRequestPath(request.url),
+        status: 401,
+        reason: error.reason,
+      }, 'JWT token type rejected');
       return reply.status(401).send({ message: 'Token inválido ou expirado.' });
     }
 

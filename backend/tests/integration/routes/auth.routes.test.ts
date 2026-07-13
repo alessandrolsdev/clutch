@@ -697,6 +697,33 @@ describe('Auth Routes', () => {
       await app.close();
     });
 
+    it('rejeita refresh token usado como access token no /auth/me', async () => {
+      vi.mocked(userRepository.findByEmail).mockResolvedValue(mockUser);
+      vi.mocked(userRepository.findById).mockResolvedValue(mockUser);
+      vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+
+      const app = await buildApp();
+      const loginResponse = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: { email: 'player@clutch.gg', password: 'password123' },
+      });
+
+      const refreshCookie = extractCookieHeader(loginResponse.headers['set-cookie']);
+      const refreshToken = decodeURIComponent(
+        refreshCookie.slice(`${REFRESH_TOKEN_COOKIE_NAME}=`.length),
+      );
+
+      const meResponse = await app.inject({
+        method: 'GET',
+        url: '/auth/me',
+        headers: { Authorization: `Bearer ${refreshToken}` },
+      });
+
+      expect(meResponse.statusCode).toBe(401);
+      await app.close();
+    });
+
     it('mantem logs estruturados para revogacao e rejeicao de refresh revogado', async () => {
       vi.mocked(userRepository.findByEmail).mockResolvedValue(mockUser);
       vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
