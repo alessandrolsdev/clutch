@@ -115,6 +115,16 @@ export class JwtAudienceRejectedError extends Error {
   }
 }
 
+export class JwtTokenTypeRejectedError extends Error {
+  readonly reason: 'invalid_token_type';
+
+  constructor() {
+    super('JWT com tipo de token invalido.');
+    this.name = 'JwtTokenTypeRejectedError';
+    this.reason = 'invalid_token_type';
+  }
+}
+
 function resolveJwtSecret(secret?: string): Secret {
   if (typeof secret === 'string' && secret.trim().length > 0) {
     return secret;
@@ -173,10 +183,16 @@ function assertJwtPayload(payload: string | JsonWebTokenPayload): JwtPayload {
     throw new Error('Token JWT invalido.');
   }
 
-  const { id, username } = payload;
+  const { id, username, tokenType } = payload;
 
   if (typeof id !== 'string' || typeof username !== 'string') {
     throw new Error('Payload JWT invalido.');
+  }
+
+  // Refresh tokens (7 dias) nao podem autenticar como access token (10 min),
+  // senao a revogacao de sessao deixa de bloquear o acesso a API.
+  if (tokenType !== undefined && tokenType !== 'access') {
+    throw new JwtTokenTypeRejectedError();
   }
 
   return { id, username };

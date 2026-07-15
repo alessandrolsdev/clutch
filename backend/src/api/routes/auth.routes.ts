@@ -17,6 +17,7 @@ import {
 import { AccountConnectionError } from '../../core/services/account-connection.service';
 import { SocialAuthError } from '../../core/services/social-auth.service';
 import { AUTH_RATE_LIMIT_POLICIES } from '../../config/rate-limit';
+import { sanitizeRequestPath } from '../../config/logging';
 
 // ─────────────────────────────────────────────────────────────
 // Auth Routes
@@ -198,7 +199,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       event: 'auth_register_succeeded',
       requestId: request.id,
       method: request.method,
-      path: request.url,
+      path: sanitizeRequestPath(request.url),
       status: 201,
       userId: user.id,
       username: user.username,
@@ -228,7 +229,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         event: 'auth_login_failed',
         requestId: request.id,
         method: request.method,
-        path: request.url,
+        path: sanitizeRequestPath(request.url),
         status: 401,
         reason: 'invalid_credentials',
       }, 'Auth login failed');
@@ -241,7 +242,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         event: 'auth_login_failed',
         requestId: request.id,
         method: request.method,
-        path: request.url,
+        path: sanitizeRequestPath(request.url),
         status: 401,
         reason: 'invalid_credentials',
         userId: user.id,
@@ -255,7 +256,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       event: 'auth_login_succeeded',
       requestId: request.id,
       method: request.method,
-      path: request.url,
+      path: sanitizeRequestPath(request.url),
       status: 200,
       userId: user.id,
       username: user.username,
@@ -291,7 +292,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           event: 'auth_social_login_started',
           requestId: request.id,
           method: request.method,
-          path: request.url,
+          path: sanitizeRequestPath(request.url),
           provider: resultPayload.provider,
           status: 200,
         }, 'Social auth login started');
@@ -342,7 +343,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           event: 'auth_social_login_succeeded',
           requestId: request.id,
           method: request.method,
-          path: request.url,
+          path: sanitizeRequestPath(request.url),
           provider: socialResult.provider,
           status: 200,
           userId: socialResult.user.id,
@@ -400,7 +401,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           event: 'auth_account_link_started',
           requestId: request.id,
           method: request.method,
-          path: request.url,
+          path: sanitizeRequestPath(request.url),
           provider: resultPayload.provider,
           status: 200,
           userId: request.userId,
@@ -487,7 +488,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           event: 'auth_account_unlinked',
           requestId: request.id,
           method: request.method,
-          path: request.url,
+          path: sanitizeRequestPath(request.url),
           provider: resultPayload.provider,
           status: 200,
           userId: request.userId,
@@ -573,7 +574,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           event: 'auth_account_reauth_started',
           requestId: request.id,
           method: request.method,
-          path: request.url,
+          path: sanitizeRequestPath(request.url),
           provider: resultPayload.provider,
           status: 200,
           userId: request.userId,
@@ -650,7 +651,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         event: 'auth_refresh_failed',
         requestId: request.id,
         method: request.method,
-        path: request.url,
+        path: sanitizeRequestPath(request.url),
         status: 401,
         reason: 'missing_refresh_token',
       }, 'Refresh token is missing');
@@ -665,7 +666,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         event: 'auth_access_token_refreshed',
         requestId: request.id,
         method: request.method,
-        path: request.url,
+        path: sanitizeRequestPath(request.url),
         status: 200,
       }, 'Access token refreshed');
 
@@ -683,7 +684,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           event: 'auth_refresh_failed',
           requestId: request.id,
           method: request.method,
-          path: request.url,
+          path: sanitizeRequestPath(request.url),
           status: 401,
           reason: 'refresh_token_reuse',
           sessionId: error.sessionId,
@@ -696,7 +697,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           event: 'auth_refresh_rejected_revoked_session',
           requestId: request.id,
           method: request.method,
-          path: request.url,
+          path: sanitizeRequestPath(request.url),
           status: 401,
           sessionId: error.sessionId,
           reason: error.reason ?? 'revoked_session',
@@ -709,7 +710,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           event: 'auth_refresh_failed',
           requestId: request.id,
           method: request.method,
-          path: request.url,
+          path: sanitizeRequestPath(request.url),
           status: 401,
           reason: 'invalid_refresh_token',
         }, 'Refresh token rejected');
@@ -737,7 +738,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           event: 'auth_session_revoked',
           requestId: request.id,
           method: request.method,
-          path: request.url,
+          path: sanitizeRequestPath(request.url),
           status: 200,
           sessionId: revocationResult.sessionId,
           reason: revocationResult.reason,
@@ -751,7 +752,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       event: 'auth_logout_completed',
       requestId: request.id,
       method: request.method,
-      path: request.url,
+      path: sanitizeRequestPath(request.url),
       status: 200,
       sessionId: revocationResult.sessionId,
       reason: revocationResult.reason ?? (refreshToken ? 'logout_noop' : 'missing_refresh_token'),

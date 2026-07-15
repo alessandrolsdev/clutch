@@ -9,6 +9,7 @@ import {
   extractBearerToken,
   JwtKidRejectedError,
   JwtRotationConfigError,
+  JwtTokenTypeRejectedError,
   type JwtKeyRotationConfig,
 } from '@/config/jwt';
 
@@ -128,6 +129,41 @@ describe('JWT config', () => {
       issuerPresent: true,
       audiencePresent: true,
       notBeforePresent: true,
+    });
+  });
+
+  it('rejeita refresh token usado como access token', () => {
+    const signRefreshToken = createRefreshTokenSigner(keyRotationConfig);
+    const verifyAccessToken = createJwtVerifier(keyRotationConfig);
+
+    const refreshToken = signRefreshToken({
+      id: 'user-id-1',
+      username: 'clutchplayer',
+      tokenType: 'refresh',
+      sessionId: 'session-1',
+      jti: 'refresh-1',
+    });
+
+    expect(() => verifyAccessToken(refreshToken)).toThrow(JwtTokenTypeRejectedError);
+  });
+
+  it('aceita access token legado sem claim tokenType', () => {
+    const verifyAccessToken = createJwtVerifier(secret);
+    const legacyToken = jwt.sign(
+      {
+        id: 'user-id-1',
+        username: 'clutchplayer',
+      },
+      secret,
+      {
+        algorithm: 'HS256',
+        expiresIn: '10m',
+      },
+    );
+
+    expect(verifyAccessToken(legacyToken)).toMatchObject({
+      id: 'user-id-1',
+      username: 'clutchplayer',
     });
   });
 

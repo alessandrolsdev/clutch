@@ -5,6 +5,14 @@ import type { FastifyBaseLogger, FastifyServerOptions } from 'fastify';
 export const BACKEND_SERVICE_NAME = 'backend';
 export const REQUEST_ID_HEADER = 'x-request-id';
 const SENSITIVE_URL_PATTERN = /[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s"'<>]+/g;
+const LOG_URL_BASE = 'http://clutch.local';
+const SENSITIVE_QUERY_PARAM_PATTERN =
+  /^(?:code|state|token|access_token|refresh_token|id_token|authorization|client_secret|secret|openid\..*)$/iu;
+const SENSITIVE_QUERY_VALUE_PATTERN =
+  /(?<prefix>[?&](?:code|state|access_token|refresh_token|id_token|token|authorization|client_secret|secret|openid\.sig|openid\.return_to)=)(?!\*\*\*|\[REDACTED\])(?<value>[^\s"'&,}]+)/giu;
+const AUTHORIZATION_VALUE_PATTERN =
+  /(?<prefix>\bauthorization\b\s*[:=]\s*)(?<quote>"?)(?<value>[^",}]+)(?<suffix>"?)/giu;
+const BEARER_TOKEN_PATTERN = /\bBearer\s+(?<token>[A-Za-z0-9._~+/=-]{8,})/gu;
 
 type RuntimeLogLevel = 'info' | 'warn' | 'error';
 
@@ -52,7 +60,7 @@ export function createBackendRuntimeLogEntry(
     timestamp: new Date().toISOString(),
     event,
     message,
-    ...context,
+    ...sanitizeRuntimeLogContext(context),
   };
 }
 
@@ -155,7 +163,74 @@ export function sanitizeSensitiveText(value: string): string {
     return value;
   }
 
-  return value.replace(SENSITIVE_URL_PATTERN, (match) => formatSanitizedConnectionTarget(sanitizeConnectionUrl(match)));
+  return value
+    .replace(SENSITIVE_URL_PATTERN, (match) => formatSanitizedConnectionTarget(sanitizeConnectionUrl(match)))
+    .replace(
+      AUTHORIZATION_VALUE_PATTERN,
+      (_match, prefix, quote, _value, suffix) => `${prefix}${quote}***${suffix}`,
+    )
+    .replace(BEARER_TOKEN_PATTERN, 'Bearer ***')
+    .replace(
+      SENSITIVE_QUERY_VALUE_PATTERN,
+      (_match, prefix) => `${prefix}[REDACTED]`,
+    );
+}
+
+export function sanitizeRequestPath(rawPath: string): string {
+  const trimmedPath = rawPath.trim();
+
+  if (!trimmedPath) {
+    return rawPath;
+  }
+
+  try {
+    const parsedUrl = new URL(trimmedPath, LOG_URL_BASE);
+    const hasSensitiveQuery = Array.from(parsedUrl.searchParams.keys()).some((key) =>
+      SENSITIVE_QUERY_PARAM_PATTERN.test(key),
+    );
+    const safePath = `${parsedUrl.pathname}${hasSensitiveQuery ? '' : parsedUrl.search}`;
+
+    return safePath || '/';
+  } catch {
+    const queryIndex = trimmedPath.indexOf('?');
+    if (queryIndex < 0) {
+      return trimmedPath;
+    }
+
+    const queryString = trimmedPath.slice(queryIndex + 1);
+    const hasSensitiveQuery = queryString
+      .split('&')
+      .map((segment) => segment.split('=')[0] ?? '')
+      .some((key) => SENSITIVE_QUERY_PARAM_PATTERN.test(decodeURIComponent(key.replace(/\+/gu, ' '))));
+
+    return hasSensitiveQuery ? trimmedPath.slice(0, queryIndex) : trimmedPath;
+  }
+}
+
+function shouldSanitizeAsPath(key: string): boolean {
+  const normalizedKey = key.toLowerCase();
+
+  return (
+    normalizedKey === 'path' ||
+    normalizedKey === 'target' ||
+    normalizedKey.endsWith('url') ||
+    normalizedKey.endsWith('path')
+  );
+}
+
+function sanitizeRuntimeLogContext(context: RuntimeLogContext): RuntimeLogContext {
+  return Object.fromEntries(
+    Object.entries(context).map(([key, value]) => {
+      if (typeof value !== 'string') {
+        return [key, value];
+      }
+
+      return [
+        key,
+        shouldSanitizeAsPath(key) ? sanitizeRequestPath(value) : sanitizeSensitiveText(value),
+      ];
+    }),
+  );
 }
 
 export function serializeErrorDetails(error: unknown): RuntimeLogContext {
@@ -183,7 +258,7 @@ export function logBackendError(
     {
       event,
       ...serializeErrorDetails(error),
-      ...context,
+      ...sanitizeRuntimeLogContext(context),
     },
     message,
   );

@@ -66,6 +66,7 @@ describe('Sidebar', () => {
       'href',
       '/notifications',
     );
+    expect(screen.getByText('Arena').closest('a')).toHaveAttribute('href', '/arena');
     expect(screen.getByText('Settings').closest('a')).toHaveAttribute('href', '/settings');
 
     expect(screen.queryByRole('link', { name: /friends/i })).not.toBeInTheDocument();

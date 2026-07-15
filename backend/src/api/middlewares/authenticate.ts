@@ -5,8 +5,10 @@ import {
   JwtAudienceRejectedError,
   JwtIssuerRejectedError,
   JwtKidRejectedError,
+  JwtTokenTypeRejectedError,
   type VerifiedJwtPayload,
 } from '../../config/jwt';
+import { sanitizeRequestPath } from '../../config/logging';
 
 // ─────────────────────────────────────────────────────────────
 // Authenticate Middleware
@@ -32,7 +34,7 @@ export async function authenticate(
         event: 'auth_access_token_rejected',
         requestId: request.id,
         method: request.method,
-        path: request.url,
+        path: sanitizeRequestPath(request.url),
         status: 401,
         reason: 'missing_access_token',
       }, 'Access token is missing or malformed');
@@ -44,7 +46,7 @@ export async function authenticate(
       event: 'auth_jwt_key_selected',
       requestId: request.id,
       method: request.method,
-      path: request.url,
+      path: sanitizeRequestPath(request.url),
       kid: payload.keyId,
       tokenKid: payload.tokenKeyId,
       legacyToken: payload.legacyToken,
@@ -57,7 +59,7 @@ export async function authenticate(
         event: 'auth_jwt_kid_rejected',
         requestId: request.id,
         method: request.method,
-        path: request.url,
+        path: sanitizeRequestPath(request.url),
         status: 401,
         kid: error.kid,
         reason: error.reason,
@@ -70,7 +72,7 @@ export async function authenticate(
         event: 'auth_jwt_issuer_rejected',
         requestId: request.id,
         method: request.method,
-        path: request.url,
+        path: sanitizeRequestPath(request.url),
         status: 401,
         reason: error.reason,
       }, 'JWT issuer rejected');
@@ -82,10 +84,22 @@ export async function authenticate(
         event: 'auth_jwt_audience_rejected',
         requestId: request.id,
         method: request.method,
-        path: request.url,
+        path: sanitizeRequestPath(request.url),
         status: 401,
         reason: error.reason,
       }, 'JWT audience rejected');
+      return reply.status(401).send({ message: 'Token inválido ou expirado.' });
+    }
+
+    if (error instanceof JwtTokenTypeRejectedError) {
+      request.log.warn({
+        event: 'auth_jwt_token_type_rejected',
+        requestId: request.id,
+        method: request.method,
+        path: sanitizeRequestPath(request.url),
+        status: 401,
+        reason: error.reason,
+      }, 'JWT token type rejected');
       return reply.status(401).send({ message: 'Token inválido ou expirado.' });
     }
 
@@ -94,7 +108,7 @@ export async function authenticate(
         event: 'auth_access_token_expired',
         requestId: request.id,
         method: request.method,
-        path: request.url,
+        path: sanitizeRequestPath(request.url),
         status: 401,
       }, 'Access token expired');
     } else if (error instanceof jwt.NotBeforeError) {
@@ -102,7 +116,7 @@ export async function authenticate(
         event: 'auth_jwt_not_before_rejected',
         requestId: request.id,
         method: request.method,
-        path: request.url,
+        path: sanitizeRequestPath(request.url),
         status: 401,
         reason: 'not_before',
       }, 'JWT rejected before not-before claim');
@@ -111,7 +125,7 @@ export async function authenticate(
         event: 'auth_access_token_rejected',
         requestId: request.id,
         method: request.method,
-        path: request.url,
+        path: sanitizeRequestPath(request.url),
         status: 401,
         reason: 'invalid_access_token',
       }, 'Access token rejected');

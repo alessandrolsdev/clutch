@@ -8,11 +8,13 @@ import { Card } from '@/components/ui/card';
 import { SectionHeading } from '@/components/ui/section-heading';
 import { useAuth } from '@/hooks/use-auth';
 import {
+  archiveCommunity,
   CommunitiesRequestError,
   fetchCommunityBySlug,
   joinCommunity,
   leaveCommunity,
 } from '@/services/communities';
+import { CommunityEventsPanel } from './community-events-panel';
 
 type CommunityPageContentProps = {
   slug: string;
@@ -54,6 +56,16 @@ export function CommunityPageContent({ slug }: CommunityPageContentProps) {
     },
   });
 
+  const archiveMutation = useMutation({
+    mutationFn: () => archiveCommunity(slug),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['communities'] }),
+        queryClient.invalidateQueries({ queryKey: ['communities', slug] }),
+      ]);
+    },
+  });
+
   if (communityQuery.isLoading) {
     return (
       <Card>
@@ -83,14 +95,16 @@ export function CommunityPageContent({ slug }: CommunityPageContentProps) {
   const ownerLabel = community.owner.displayName ?? community.owner.username;
   const isOwner = community.viewerMembershipRole === 'OWNER';
   const isMember = community.viewerMembershipRole === 'MEMBER';
-  const actionIsPending = joinMutation.isPending || leaveMutation.isPending;
-  const mutationError = joinMutation.error ?? leaveMutation.error;
+  const isArchived = community.status === 'ARCHIVED';
+  const actionIsPending = joinMutation.isPending || leaveMutation.isPending || archiveMutation.isPending;
+  const mutationError = joinMutation.error ?? leaveMutation.error ?? archiveMutation.error;
 
   return (
     <div className="flex flex-col gap-section">
       <SectionHeading
         eyebrow="Comunidade pública"
         title={community.name}
+        level="h1"
         description={
           community.description ??
           'Espaço público para reunir jogadores em torno de um interesse compartilhado.'
@@ -111,6 +125,7 @@ export function CommunityPageContent({ slug }: CommunityPageContentProps) {
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="success">{community.memberCount} membros</Badge>
               <Badge tone="neutral">Pública</Badge>
+              {isArchived ? <Badge tone="warning">Arquivada</Badge> : null}
               {community.viewerMembershipRole ? (
                 <Badge tone="accent">{community.viewerMembershipRole}</Badge>
               ) : null}
@@ -119,13 +134,32 @@ export function CommunityPageContent({ slug }: CommunityPageContentProps) {
               Owner: <span className="text-primary">{ownerLabel}</span>
             </p>
             <p className="mt-2 text-sm leading-6 text-secondary">
-              Este slice valida leitura pública e membership simples. Eventos, chat e
-              governança avançada ainda não fazem parte desta comunidade.
+              {isArchived
+                ? 'Esta comunidade foi arquivada. O histórico segue acessível por URL direta, mas novas participações e ações de eventos ficam bloqueadas.'
+                : 'Este slice valida leitura pública e membership simples. Eventos, chat e governança avançada ainda não fazem parte desta comunidade.'}
             </p>
           </div>
 
           <div className="flex min-w-48 flex-col gap-2">
-            {!isAuthenticated ? (
+            {isArchived && isMember ? (
+              <>
+                <p className="text-sm leading-6 text-secondary">
+                  Comunidade arquivada. Você ainda pode sair sem reativar a comunidade.
+                </p>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={actionIsPending}
+                  onClick={() => leaveMutation.mutate()}
+                >
+                  Sair da comunidade arquivada
+                </Button>
+              </>
+            ) : isArchived ? (
+              <p className="text-sm leading-6 text-secondary">
+                Comunidade arquivada. Ações de participação estão indisponíveis.
+              </p>
+            ) : !isAuthenticated ? (
               <p className="text-sm leading-6 text-secondary">
                 Entre na sessão para participar desta comunidade.
               </p>
@@ -151,6 +185,16 @@ export function CommunityPageContent({ slug }: CommunityPageContentProps) {
                 Participar
               </Button>
             )}
+            {isOwner && !isArchived ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={actionIsPending}
+                onClick={() => archiveMutation.mutate()}
+              >
+                Arquivar comunidade
+              </Button>
+            ) : null}
           </div>
         </div>
 
@@ -160,6 +204,13 @@ export function CommunityPageContent({ slug }: CommunityPageContentProps) {
           </p>
         ) : null}
       </Card>
+
+      <CommunityEventsPanel
+        slug={slug}
+        isArchived={isArchived}
+        isAuthenticated={isAuthenticated}
+        viewerMembershipRole={community.viewerMembershipRole ?? null}
+      />
     </div>
   );
 }

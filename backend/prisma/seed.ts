@@ -7,6 +7,8 @@ import type {
 import { fileURLToPath } from 'node:url';
 
 const {
+  ArenaChallengeStatus,
+  ArenaProofType,
   InteractionType,
   MediaConsumptionStatus,
   MediaKind,
@@ -19,6 +21,8 @@ const {
 } = prismaClientPackage;
 
 type InteractionType = (typeof InteractionType)[keyof typeof InteractionType];
+type ArenaChallengeStatus = (typeof ArenaChallengeStatus)[keyof typeof ArenaChallengeStatus];
+type ArenaProofType = (typeof ArenaProofType)[keyof typeof ArenaProofType];
 type MediaConsumptionStatus = (typeof MediaConsumptionStatus)[keyof typeof MediaConsumptionStatus];
 type MediaKind = (typeof MediaKind)[keyof typeof MediaKind];
 type NotificationType = (typeof NotificationType)[keyof typeof NotificationType];
@@ -81,6 +85,10 @@ export const SEEDED_ENTITY_IDS = {
     'h2222222-2222-4222-8222-222222222222',
     'h3333333-3333-4333-8333-333333333333',
     'h4444444-4444-4444-8444-444444444444',
+  ],
+  arenaChallenges: [
+    'i1111111-1111-4111-8111-111111111111',
+    'i2222222-2222-4222-8222-222222222222',
   ],
 } as const;
 
@@ -196,6 +204,17 @@ type SeedUserMediaEntryConfig = {
   mediaTitleId: string;
   status: MediaConsumptionStatus;
   showcaseRank: number | null;
+};
+
+type SeedArenaChallengeConfig = {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  status: ArenaChallengeStatus;
+  ruleType: ArenaProofType;
+  scoreValue: number;
+  maxSubmissionsPerUser: number;
 };
 
 function toNullableJsonInput(value: Prisma.JsonObject | null): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput {
@@ -625,6 +644,40 @@ const seedUserMediaEntries: SeedUserMediaEntryConfig[] = [
   },
 ];
 
+const seedArenaChallenges: SeedArenaChallengeConfig[] = [
+  {
+    id: 'i1111111-1111-4111-8111-111111111111',
+    slug: 'semana-da-game-session',
+    title: 'Semana da Game Session',
+    description: 'Entre no desafio e envie posts GAME_SESSION da semana para pontuar no ranking local.',
+    status: ArenaChallengeStatus.ACTIVE,
+    ruleType: ArenaProofType.GAME_SESSION,
+    scoreValue: 10,
+    maxSubmissionsPerUser: 3,
+  },
+  {
+    id: 'i2222222-2222-4222-8222-222222222222',
+    slug: 'conquistas-da-semana',
+    title: 'Conquistas da Semana',
+    description: 'Submeta posts ACHIEVEMENT da semana para validar o primeiro loop competitivo assíncrono.',
+    status: ArenaChallengeStatus.ACTIVE,
+    ruleType: ArenaProofType.ACHIEVEMENT,
+    scoreValue: 15,
+    maxSubmissionsPerUser: 3,
+  },
+];
+
+function resolveSeedArenaWindow(referenceDate = new Date()): { startsAt: Date; endsAt: Date } {
+  const startsAt = new Date(referenceDate);
+  startsAt.setUTCHours(0, 0, 0, 0);
+  startsAt.setUTCDate(startsAt.getUTCDate() - 1);
+
+  const endsAt = new Date(startsAt);
+  endsAt.setUTCDate(startsAt.getUTCDate() + 7);
+
+  return { startsAt, endsAt };
+}
+
 function seedUsersPlaceholder(): readonly string[] {
   return [
     DEMO_ACCOUNT.email,
@@ -727,6 +780,37 @@ function getUserId(userIdsByEmail: Map<string, string>, email: string): string {
 }
 
 async function upsertSeedRelations(client: PrismaClient, userIdsByEmail: Map<string, string>): Promise<void> {
+  const arenaWindow = resolveSeedArenaWindow();
+
+  for (const challenge of seedArenaChallenges) {
+    await client.arenaChallenge.upsert({
+      where: { id: challenge.id },
+      update: {
+        slug: challenge.slug,
+        title: challenge.title,
+        description: challenge.description,
+        startsAt: arenaWindow.startsAt,
+        endsAt: arenaWindow.endsAt,
+        status: challenge.status,
+        ruleType: challenge.ruleType,
+        scoreValue: challenge.scoreValue,
+        maxSubmissionsPerUser: challenge.maxSubmissionsPerUser,
+      },
+      create: {
+        id: challenge.id,
+        slug: challenge.slug,
+        title: challenge.title,
+        description: challenge.description,
+        startsAt: arenaWindow.startsAt,
+        endsAt: arenaWindow.endsAt,
+        status: challenge.status,
+        ruleType: challenge.ruleType,
+        scoreValue: challenge.scoreValue,
+        maxSubmissionsPerUser: challenge.maxSubmissionsPerUser,
+      },
+    });
+  }
+
   for (const mediaTitle of seedMediaTitles) {
     await client.mediaTitle.upsert({
       where: { id: mediaTitle.id },

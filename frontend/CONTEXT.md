@@ -28,6 +28,7 @@ Este arquivo descreve o estado real atual do frontend do CLUTCH, os contratos qu
 - `/settings`
 - `/settings/integrations`
 - `/settings/integrations/discord/callback`
+- `/arena`
 - `/:username`
 - `/:username/library`
 
@@ -111,6 +112,11 @@ Esse catch-all encaminha chamadas para o backend real e, quando existe `clutch_s
 - `DELETE /auth/accounts/:provider`
 - `GET /auth/accounts/:provider/reauth/start`
 - `GET /auth/accounts/:provider/reauth/callback`
+- `GET /arena/challenges`
+- `GET /arena/challenges/:slug`
+- `POST /arena/challenges/:challengeId/join`
+- `POST /arena/challenges/:challengeId/submissions`
+- `GET /arena/challenges/:challengeId/leaderboard`
 
 ### Observacao importante
 - o frontend usa Discord OAuth real via backend, mas nao consome diretamente a rota interna de ingestao de presence Discord

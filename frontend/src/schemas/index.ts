@@ -1,5 +1,17 @@
 export {};
 export {
+  arenaChallengeResponseSchema,
+  arenaChallengeSchema,
+  arenaChallengeStatusSchema,
+  arenaChallengesResponseSchema,
+  arenaLeaderboardEntrySchema,
+  arenaLeaderboardResponseSchema,
+  arenaProofTypeSchema,
+  arenaSubmissionResponseSchema,
+  arenaSubmissionSchema,
+  submitArenaProofRequestSchema,
+} from './arena';
+export {
   authSessionSchema,
   loginBackendResponseSchema,
   loginRequestSchema,
@@ -10,11 +22,17 @@ export {
 } from './auth';
 export {
   communitiesResponseSchema,
+  communityEventResponseSchema,
+  communityEventRsvpStatusSchema,
+  communityEventsResponseSchema,
+  communityEventSchema,
+  communityEventStatusSchema,
   communityResponseSchema,
   communityRoleSchema,
   communitySchema,
   communityStatusSchema,
   communityVisibilitySchema,
+  createCommunityEventRequestSchema,
   createCommunityRequestSchema,
 } from './communities';
 export {

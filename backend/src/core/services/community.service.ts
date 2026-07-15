@@ -1,4 +1,4 @@
-import { CommunityMemberRole } from '@prisma/client';
+import { CommunityMemberRole, CommunityStatus } from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import {
   communityRepository,
@@ -9,8 +9,10 @@ import {
 export type CommunityServiceErrorCode =
   | 'COMMUNITY_NOT_FOUND'
   | 'COMMUNITY_SLUG_CONFLICT'
+  | 'COMMUNITY_ARCHIVED'
   | 'COMMUNITY_ALREADY_JOINED'
   | 'COMMUNITY_OWNER_CANNOT_LEAVE'
+  | 'COMMUNITY_FORBIDDEN'
   | 'COMMUNITY_MEMBERSHIP_NOT_FOUND';
 
 export class CommunityServiceError extends Error {
@@ -36,13 +38,39 @@ function normalizeSlug(input: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, 64);
+    .slice(0, 64)
+    .replace(/-+$/g, '');
 
   return normalized.length > 0 ? normalized : 'community';
 }
 
 function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof PrismaClientKnownRequestError && error.code === 'P2002';
+}
+
+function buildSlugCandidate(baseSlug: string, offset: number): string {
+  if (offset === 0) {
+    return baseSlug;
+  }
+
+  const suffix = `-${offset + 1}`;
+  return `${baseSlug.slice(0, 64 - suffix.length).replace(/-+$/g, '')}${suffix}`;
+}
+
+async function resolveAvailableSlug(baseSlug: string): Promise<string> {
+  for (let offset = 0; offset < 20; offset += 1) {
+    const candidate = buildSlugCandidate(baseSlug, offset);
+    const exists = await communityRepository.slugExists(candidate);
+
+    if (!exists) {
+      return candidate;
+    }
+  }
+
+  throw new CommunityServiceError(
+    'COMMUNITY_SLUG_CONFLICT',
+    'Não foi possível gerar um slug único para esta comunidade.',
+  );
 }
 
 async function withViewerRole(
@@ -78,7 +106,7 @@ export const communityService = {
     slug: string,
     viewerUserId?: string | null,
   ): Promise<CommunityDetail> {
-    const community = await communityRepository.findPublicActiveBySlug(slug);
+    const community = await communityRepository.findBySlug(slug);
 
     if (!community) {
       throw new CommunityServiceError(
@@ -91,50 +119,51 @@ export const communityService = {
   },
 
   async createPublicCommunity(input: CreateCommunityServiceInput): Promise<CommunityDetail> {
-    const slug = normalizeSlug(input.name);
+    const baseSlug = normalizeSlug(input.name);
     const description = input.description?.trim();
-    const existingCommunity = await communityRepository.findBySlug(slug);
 
-    if (existingCommunity) {
-      throw new CommunityServiceError(
-        'COMMUNITY_SLUG_CONFLICT',
-        'Já existe uma comunidade com esse nome.',
-      );
-    }
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const slug = await resolveAvailableSlug(baseSlug);
 
-    let community: CommunitySummary;
+      try {
+        const community = await communityRepository.create({
+          ownerUserId: input.ownerUserId,
+          slug,
+          name: input.name,
+          description: description && description.length > 0 ? description : null,
+        });
 
-    try {
-      community = await communityRepository.create({
-        ownerUserId: input.ownerUserId,
-        slug,
-        name: input.name,
-        description: description && description.length > 0 ? description : null,
-      });
-    } catch (error) {
-      if (isUniqueConstraintError(error)) {
-        throw new CommunityServiceError(
-          'COMMUNITY_SLUG_CONFLICT',
-          'Já existe uma comunidade com esse nome.',
-        );
+        return {
+          ...community,
+          viewerMembershipRole: CommunityMemberRole.OWNER,
+        };
+      } catch (error) {
+        if (!isUniqueConstraintError(error)) {
+          throw error;
+        }
       }
-
-      throw error;
     }
 
-    return {
-      ...community,
-      viewerMembershipRole: CommunityMemberRole.OWNER,
-    };
+    throw new CommunityServiceError(
+      'COMMUNITY_SLUG_CONFLICT',
+      'Não foi possível gerar um slug único para esta comunidade.',
+    );
   },
 
   async joinCommunity(slug: string, userId: string): Promise<CommunityDetail> {
-    const community = await communityRepository.findPublicActiveBySlug(slug);
+    const community = await communityRepository.findBySlug(slug);
 
     if (!community) {
       throw new CommunityServiceError(
         'COMMUNITY_NOT_FOUND',
         'Comunidade pública não encontrada.',
+      );
+    }
+
+    if (community.status === CommunityStatus.ARCHIVED) {
+      throw new CommunityServiceError(
+        'COMMUNITY_ARCHIVED',
+        'Comunidade arquivada não aceita novos membros.',
       );
     }
 
@@ -159,7 +188,7 @@ export const communityService = {
 
       throw error;
     }
-    const updatedCommunity = await communityRepository.findPublicActiveBySlug(slug);
+    const updatedCommunity = await communityRepository.findBySlug(slug);
 
     if (!updatedCommunity) {
       throw new CommunityServiceError(
@@ -175,7 +204,7 @@ export const communityService = {
   },
 
   async leaveCommunity(slug: string, userId: string): Promise<CommunityDetail> {
-    const community = await communityRepository.findPublicActiveBySlug(slug);
+    const community = await communityRepository.findBySlug(slug);
 
     if (!community) {
       throw new CommunityServiceError(
@@ -209,7 +238,7 @@ export const communityService = {
       );
     }
 
-    const updatedCommunity = await communityRepository.findPublicActiveBySlug(slug);
+    const updatedCommunity = await communityRepository.findBySlug(slug);
 
     if (!updatedCommunity) {
       throw new CommunityServiceError(
@@ -221,6 +250,40 @@ export const communityService = {
     return {
       ...updatedCommunity,
       viewerMembershipRole: null,
+    };
+  },
+
+  async archiveCommunity(slug: string, userId: string): Promise<CommunityDetail> {
+    const community = await communityRepository.findBySlug(slug);
+
+    if (!community) {
+      throw new CommunityServiceError(
+        'COMMUNITY_NOT_FOUND',
+        'Comunidade pública não encontrada.',
+      );
+    }
+
+    const existingRole = await communityRepository.findMembershipRole(community.id, userId);
+
+    if (existingRole !== CommunityMemberRole.OWNER) {
+      throw new CommunityServiceError(
+        'COMMUNITY_FORBIDDEN',
+        'Apenas o owner pode arquivar esta comunidade.',
+      );
+    }
+
+    if (community.status === CommunityStatus.ARCHIVED) {
+      return {
+        ...community,
+        viewerMembershipRole: CommunityMemberRole.OWNER,
+      };
+    }
+
+    const archivedCommunity = await communityRepository.archive(community.id);
+
+    return {
+      ...archivedCommunity,
+      viewerMembershipRole: CommunityMemberRole.OWNER,
     };
   },
 };

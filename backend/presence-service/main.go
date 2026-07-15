@@ -45,8 +45,9 @@ type presenceConfig struct {
 }
 
 type presenceClaims struct {
-	ID       string `json:"id"`
-	Username string `json:"username"`
+	ID        string `json:"id"`
+	Username  string `json:"username"`
+	TokenType string `json:"tokenType"`
 	jwt.RegisteredClaims
 }
 
@@ -80,6 +81,9 @@ func loadPresenceConfig() presenceConfig {
 	secret := strings.TrimSpace(os.Getenv("JWT_SECRET"))
 	if secret == "" {
 		secret = defaultJWTSecret
+		writePresenceLog("warn", "presence_jwt_secret_fallback", "JWT_SECRET is empty; falling back to the default development secret. Never run production like this.", map[string]interface{}{
+			"reason": "missing_jwt_secret",
+		})
 	}
 
 	return presenceConfig{
@@ -161,6 +165,12 @@ func authenticateRequest(r *http.Request, cfg presenceConfig) (string, error) {
 
 	claims, ok := token.Claims.(*presenceClaims)
 	if !ok || !token.Valid || strings.TrimSpace(claims.ID) == "" {
+		return "", errInvalidCredential
+	}
+
+	// Apenas access tokens autenticam o websocket; refresh tokens de longa
+	// duracao nao podem ser reaproveitados como credencial de presence.
+	if claims.TokenType != "" && claims.TokenType != "access" {
 		return "", errInvalidCredential
 	}
 

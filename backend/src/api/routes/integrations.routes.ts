@@ -5,6 +5,7 @@ import {
   hasValidDiscordPresenceIngestToken,
   isDiscordPresenceIngestConfigured,
 } from '../../config/discord-presence';
+import { sanitizeRequestPath } from '../../config/logging';
 import { createIntegrationError } from '../../infra/integrations/integration.errors';
 import { isIntegrationError } from '../../core/services/integrations.service';
 
@@ -46,7 +47,7 @@ function replyWithIntegrationError(
         event: 'integration_request_failed',
         requestId: request.id,
         method: request.method,
-        path: request.url,
+        path: sanitizeRequestPath(request.url),
         provider: error.integration,
         reason: error.reason,
         status: error.statusCode,

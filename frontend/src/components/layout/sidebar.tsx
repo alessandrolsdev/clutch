@@ -101,6 +101,12 @@ export function Sidebar({ isOpen, onClose, className }: SidebarProps) {
       description: 'Public guilds and basic membership',
     },
     {
+      label: 'Arena',
+      href: '/arena',
+      tone: pathname.startsWith('/arena') ? 'accent' : 'neutral',
+      description: 'Weekly asynchronous challenges',
+    },
+    {
       label: 'Notifications',
       href: '/notifications',
       tone: pathname === '/notifications' ? 'accent' : 'neutral',
