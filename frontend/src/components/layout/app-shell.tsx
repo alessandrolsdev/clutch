@@ -44,7 +44,7 @@ export function AppShell({ children }: AppShellProps) {
   }, [isSidebarOpen]);
 
   return (
-    <div className="min-h-screen bg-background-primary text-primary">
+    <div className="gamer-app-shell min-h-screen bg-background-primary text-primary">
       <AppShellRouteWarmup />
 
       <Navbar

@@ -1,145 +1,181 @@
 import Link from 'next/link';
+import { EnergyScene } from '@/components/landing/energy-scene';
 import { LandingPreview } from '@/components/landing/landing-preview';
-import { Badge } from '@/components/ui/badge';
-import { Card } from '@/components/ui/card';
-import { SectionHeading } from '@/components/ui/section-heading';
 
-const featureHighlights = [
+const experiences = [
   {
-    eyebrow: 'Presenca',
-    title: 'Rich Presence em tempo real',
-    description:
-      'Sua sessao conecta feed, amizades e status em uma unica superficie do produto.',
+    number: '01',
+    name: 'Seu squad.\nSua frequência.',
+    tag: 'SOCIAL / CONEXÃO',
+    text: 'Compartilhe aquela jogada, encontre seus amigos online e mantenha a conversa viva entre uma partida e outra.',
+    shape: 'squad',
   },
   {
-    eyebrow: 'Biblioteca',
-    title: 'Jogos em um perfil unificado',
-    description:
-      'Steam, Epic e enrichment atual do backend aparecem no mesmo perfil e na mesma library.',
+    number: '02',
+    name: 'Uma biblioteca.\nTodos os seus mundos.',
+    tag: 'BIBLIOTECA / IDENTIDADE',
+    text: 'Reúna seus jogos, mostre suas horas de dedicação e transforme seu perfil em uma história que só você pode contar.',
+    shape: 'worlds',
   },
   {
-    eyebrow: 'Social',
-    title: 'Feed, amizades e notificacoes',
-    description:
-      'As interacoes sociais reais do MVP ja vivem no mesmo shell autenticado do frontend.',
+    number: '03',
+    name: 'Aceite o desafio.\nDeixe sua marca.',
+    tag: 'ARENA / COMUNIDADE',
+    text: 'Entre em desafios semanais e encontre comunidades que compartilham a sua vontade de jogar.',
+    shape: 'arena',
   },
 ];
 
 export function LandingPageContent() {
   return (
-    <section className="w-full space-y-8 md:space-y-10" data-testid="landing-page">
-      <Card
-        tone="accent"
-        className="overflow-hidden border-[rgba(124,58,237,0.22)] bg-[rgba(10,10,15,0.82)] shadow-glow"
+    <div className="landing-experience" data-testid="landing-page">
+      <section className="landing-hero" aria-labelledby="landing-title">
+        <div className="hero-grid" aria-hidden="true" />
+        <div className="hero-copy">
+          <p className="eyebrow">
+            <span className="live-dot" /> SUA PRÓXIMA FASE COMEÇA AQUI
+          </p>
+          <h1 id="landing-title">
+            NÃO É SÓ
+            <br />
+            UM JOGO.
+            <br />
+            <span>
+              É QUEM
+              <br className="mobile-break" /> VOCÊ É.
+            </span>
+          </h1>
+          <p className="hero-description">
+            Sua biblioteca. Seu squad. Sua história.
+            <br />
+            Todo o seu universo gamer, conectado no CLUTCH.
+          </p>
+          <div className="hero-actions">
+            <Link href="/register" className="gamer-cta">
+              CRIAR CONTA GRÁTIS <span aria-hidden="true">↗</span>
+            </Link>
+            <Link href="#universo" className="gamer-link">
+              EXPLORAR O CLUTCH <span aria-hidden="true">↓</span>
+            </Link>
+          </div>
+          <div className="hero-footnote">
+            <span>FEITO PARA QUEM JOGA.</span>
+            <span>CLUTCH / BETA</span>
+          </div>
+        </div>
+        <EnergyScene />
+      </section>
+      <div
+        className="signal-strip"
+        aria-label="Conecte. Jogue. Compartilhe. Repita."
       >
-        <div className="grid gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
-          <div className="space-y-6">
-            <Badge tone="accent">CLUTCH beta</Badge>
-
-            <SectionHeading
-              level="h1"
-              eyebrow="Identidade gamer"
-              title="Revele sua verdadeira identidade"
-              description="Conecte suas plataformas, centralize sua biblioteca e entre em um produto social feito para perfil, feed, amizades e presenca em tempo real."
-            />
-
-            <div className="flex flex-wrap gap-3">
-              <Link
-                href="/register"
-                className="inline-flex h-11 items-center justify-center rounded-control border border-transparent bg-accent-purple px-control-x text-sm font-medium text-white transition hover:brightness-110"
-              >
-                Criar conta gratis
-              </Link>
-              <Link
-                href="/login"
-                className="inline-flex h-11 items-center justify-center rounded-control border border-border bg-[rgba(19,19,26,0.88)] px-control-x text-sm font-medium text-primary transition hover:border-accent-cyan hover:text-accent-cyan"
-              >
-                Ver demo
-              </Link>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-control border border-border bg-background-primary/70 px-4 py-4">
-                <p className="text-xs uppercase tracking-[0.28em] text-secondary">
-                  Stack
-                </p>
-                <p className="mt-2 text-sm font-medium text-primary">
-                  Frontend, backend e realtime sob o mesmo proxy
-                </p>
-              </div>
-              <div className="rounded-control border border-border bg-background-primary/70 px-4 py-4">
-                <p className="text-xs uppercase tracking-[0.28em] text-secondary">
-                  Sessao
-                </p>
-                <p className="mt-2 text-sm font-medium text-primary">
-                  Auth endurecido com refresh, revogacao e hardening recente
-                </p>
-              </div>
-              <div className="rounded-control border border-border bg-background-primary/70 px-4 py-4">
-                <p className="text-xs uppercase tracking-[0.28em] text-secondary">
-                  Produto
-                </p>
-                <p className="mt-2 text-sm font-medium text-primary">
-                  Perfil, feed, library e integracoes em evolucao real
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <LandingPreview />
+        <div className="signal-track" aria-hidden="true">
+          {[0, 1, 2, 3].map((item) => (
+            <span key={item}>
+              CONECTE <b>✳</b> JOGUE <b>✳</b> COMPARTILHE <b>✳</b> REPITA{' '}
+              <b>✳</b>{' '}
+            </span>
+          ))}
         </div>
-      </Card>
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        {featureHighlights.map((feature) => (
-          <Card key={feature.title} className="h-full">
-            <div className="space-y-3">
-              <p className="text-xs uppercase tracking-[0.35em] text-secondary">
-                {feature.eyebrow}
-              </p>
-              <h2 className="font-display text-2xl font-semibold text-primary">
-                {feature.title}
-              </h2>
-              <p className="text-sm leading-6 text-secondary">
-                {feature.description}
-              </p>
-            </div>
-          </Card>
-        ))}
       </div>
-
-      <Card className="border-[rgba(6,182,212,0.18)] bg-[rgba(19,19,26,0.82)]">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-3">
-            <p className="text-xs uppercase tracking-[0.35em] text-secondary">
-              Proximo passo
-            </p>
-            <h2 className="font-display text-3xl font-semibold text-primary">
-              Entre agora e conecte seu perfil ao CLUTCH
-            </h2>
-            <p className="max-w-2xl text-sm leading-6 text-secondary">
-              A entrada publica continua simples, mas o shell autenticado ja
-              sustenta os fluxos centrais do MVP. O melhor caminho para ver o
-              produto e abrir a sessao real do ambiente atual.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <Link
-              href="/register"
-              className="inline-flex h-11 items-center justify-center rounded-control border border-transparent bg-accent-cyan px-control-x text-sm font-medium text-background-primary transition hover:brightness-110"
+      <section
+        id="universo"
+        className="universe-section"
+        aria-labelledby="universe-title"
+      >
+        <div className="editorial-heading">
+          <p className="eyebrow">01 / SEU UNIVERSO, SEM FRONTEIRAS</p>
+          <h2 id="universe-title">
+            MUITO ALÉM
+            <br />
+            DO <span>GG.</span>
+          </h2>
+          <p>
+            O jogo acaba.
+            <br />A sua história continua.
+          </p>
+        </div>
+        <div className="experience-grid">
+          {experiences.map((item) => (
+            <article
+              className={`experience-panel experience-${item.shape}`}
+              key={item.number}
             >
-              Comecar agora
-            </Link>
-            <Link
-              href="/login"
-              className="inline-flex h-11 items-center justify-center rounded-control border border-border bg-transparent px-control-x text-sm font-medium text-primary transition hover:border-accent-cyan hover:text-accent-cyan"
-            >
-              Entrar com conta existente
-            </Link>
+              <div className="experience-top">
+                <span>{item.tag}</span>
+                <span>↗</span>
+              </div>
+              <div
+                className={`feature-art feature-${item.shape}`}
+                aria-hidden="true"
+              >
+                <i />
+                <i />
+                <i />
+                <b>
+                  {item.shape === 'squad'
+                    ? '✳'
+                    : item.shape === 'worlds'
+                      ? '∞'
+                      : '↗'}
+                </b>
+              </div>
+              <div className="experience-copy">
+                <span className="experience-number">/{item.number}</span>
+                <h3>{item.name}</h3>
+                <p>{item.text}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+      <section className="identity-section" aria-labelledby="identity-title">
+        <div className="identity-copy">
+          <p className="eyebrow">02 / SEU PERFIL. SUAS REGRAS.</p>
+          <h2 id="identity-title">
+            SEU DNA
+            <br />
+            <span>É GAMER.</span>
+          </h2>
+          <p>
+            Não deixe suas conquistas espalhadas. Conecte suas plataformas e
+            mostre o que faz de você um jogador único.
+          </p>
+          <Link href="/register" className="gamer-link">
+            CONSTRUIR MEU PERFIL <span aria-hidden="true">↗</span>
+          </Link>
+          <div className="platform-list">
+            <span>STEAM</span>
+            <span>EPIC GAMES</span>
+            <span>DISCORD</span>
           </div>
         </div>
-      </Card>
-    </section>
+        <LandingPreview />
+      </section>
+      <section className="final-call" aria-labelledby="join-title">
+        <span className="final-watermark" aria-hidden="true">
+          CLUTCH
+        </span>
+        <p className="eyebrow">O PRÓXIMO CAPÍTULO É SEU.</p>
+        <h2 id="join-title">
+          ENTRE NO
+          <br />
+          <span>JOGO.</span>
+        </h2>
+        <Link href="/register" className="gamer-cta">
+          COMEÇAR AGORA <span aria-hidden="true">↗</span>
+        </Link>
+        <Link href="/login" className="gamer-link">
+          Já tem conta? Entrar
+        </Link>
+      </section>
+      <footer className="landing-footer">
+        <Link href="/" className="brand-word">
+          CLUTCH<span>®</span>
+        </Link>
+        <p>SEU JOGO. SUA IDENTIDADE.</p>
+        <span>FEITO PARA CONECTAR JOGADORES.</span>
+      </footer>
+    </div>
   );
 }

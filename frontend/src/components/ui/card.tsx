@@ -19,7 +19,7 @@ export function Card({ children, className, tone = 'default', ...props }: CardPr
   return (
     <div
       className={cn(
-        'rounded-surface border border-border p-card backdrop-blur',
+        'gamer-panel rounded-surface border border-border p-card backdrop-blur',
         className,
       )}
       style={toneStyle[tone]}

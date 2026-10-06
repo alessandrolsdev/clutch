@@ -1,6 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import { useMotionPaused } from '@/components/ui/motion-environment';
 import { Badge } from '@/components/ui/badge';
 import { getPresenceConnectionView } from '@/lib/presence/connection-state';
 import { type ProfilePresenceStatus } from '@/schemas/profile';
@@ -74,6 +75,7 @@ export function PresenceBadge({
   platform,
   connectionStatus = 'connected',
 }: PresenceBadgeProps) {
+  const motionPaused = useMotionPaused();
   const primaryDetail = resolvePrimaryDetail(status, currentGame);
   const secondaryDetail = resolveSecondaryDetail(status, platform);
   const connectionView = getPresenceConnectionView(connectionStatus);
@@ -86,9 +88,12 @@ export function PresenceBadge({
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone={toneByStatus[status]}>
           <motion.span
-            initial={{ opacity: 0.55 }}
-            animate={{ opacity: [0.55, 1, 0.55] }}
-            transition={{ duration: 1.4, repeat: Number.POSITIVE_INFINITY }}
+            initial={false}
+            animate={{ opacity: motionPaused ? 1 : [0.55, 1, 0.55] }}
+            transition={{
+              duration: motionPaused ? 0 : 1.4,
+              repeat: motionPaused ? 0 : Number.POSITIVE_INFINITY,
+            }}
             className="mr-1 inline-block h-2 w-2 rounded-full bg-current"
             aria-hidden="true"
           />

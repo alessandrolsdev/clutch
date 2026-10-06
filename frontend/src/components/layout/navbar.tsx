@@ -57,8 +57,12 @@ export function Navbar({
 }: NavbarProps) {
   const { user, status, logout } = useAuth();
   const [isRequestsOpen, setIsRequestsOpen] = useState(false);
-  const presenceConnectionStatus = usePresenceStore((state) => state.connectionStatus);
-  const presenceConnectionError = usePresenceStore((state) => state.errorMessage);
+  const presenceConnectionStatus = usePresenceStore(
+    (state) => state.connectionStatus,
+  );
+  const presenceConnectionError = usePresenceStore(
+    (state) => state.errorMessage,
+  );
   const presenceConnectionView = getPresenceConnectionView(
     presenceConnectionStatus,
     presenceConnectionError,
@@ -66,12 +70,15 @@ export function Navbar({
   const pendingRequestsQuery = useQuery({
     queryKey: ['friend-requests', user?.id],
     queryFn: () => fetchPendingFriendRequests(user?.id as string),
-    enabled: variant === 'app' && status === 'authenticated' && typeof user?.id === 'string',
+    enabled:
+      variant === 'app' &&
+      status === 'authenticated' &&
+      typeof user?.id === 'string',
   });
   const pendingRequests = pendingRequestsQuery.data ?? [];
 
   return (
-    <header className="sticky top-0 z-30 border-b border-border bg-[rgba(10,10,15,0.88)] backdrop-blur">
+    <header className="gamer-navbar sticky top-0 z-30 border-b border-border bg-[rgba(10,10,15,0.88)] backdrop-blur">
       <div className="mx-auto flex w-full max-w-7xl items-center gap-3 px-page-x py-4">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           {variant === 'app' ? (
@@ -87,7 +94,7 @@ export function Navbar({
             </Button>
           ) : null}
 
-          <Link href="/" className="flex items-center gap-3">
+          <Link href="/" className="brand-link flex items-center gap-3">
             <span className="inline-flex h-10 w-10 items-center justify-center rounded-control border border-border bg-background-tertiary font-display text-sm font-semibold tracking-[0.24em] text-primary">
               C
             </span>
@@ -96,7 +103,9 @@ export function Navbar({
                 CLUTCH
               </span>
               <span className="text-xs uppercase tracking-[0.3em] text-secondary">
-                {variant === 'app' ? 'Authenticated shell' : 'Public entry'}
+                {variant === 'app'
+                  ? 'Seu universo gamer'
+                  : 'Seu jogo. Sua identidade.'}
               </span>
             </span>
           </Link>
@@ -108,7 +117,9 @@ export function Navbar({
               aria-label="Busca global ainda nao disponivel"
               className="flex w-full max-w-xl items-center justify-between rounded-control border border-border bg-background-secondary px-control-x py-control-y text-sm"
             >
-              <span className="text-secondary">Busca global ainda nao disponivel</span>
+              <span className="text-secondary">
+                Busca global ainda nao disponivel
+              </span>
               <Badge tone="neutral">Em breve</Badge>
             </div>
           </div>
@@ -207,7 +218,15 @@ export function Navbar({
               </div>
             </>
           ) : (
-            <Badge tone="accent">No sidebar</Badge>
+            <nav aria-label="Navegação pública" className="public-navigation">
+              <Link href="/#universo" className="public-explore">
+                O universo
+              </Link>
+              <Link href="/login">Entrar</Link>
+              <Link href="/register" className="nav-join">
+                Junte-se ao CLUTCH <span aria-hidden="true">↗</span>
+              </Link>
+            </nav>
           )}
         </div>
       </div>
