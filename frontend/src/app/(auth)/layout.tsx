@@ -7,7 +7,7 @@ type AuthLayoutProps = Readonly<{
 
 export default function AuthLayout({ children }: AuthLayoutProps) {
   return (
-    <div className="min-h-screen bg-background-primary text-primary">
+    <div className="gamer-auth-shell min-h-screen bg-background-primary text-primary">
       <Navbar variant="auth" />
       <main className="mx-auto flex w-full max-w-7xl flex-1 px-page-x py-page-y">
         <div className="flex w-full items-center justify-center">{children}</div>

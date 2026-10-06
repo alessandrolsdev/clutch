@@ -1,35 +1,28 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import AuthLandingPage from '@/app/(auth)/page';
 
-vi.mock('framer-motion', () => ({
-  motion: {
-    div: ({
-      children,
-      ...props
-    }: React.HTMLAttributes<HTMLDivElement> & { children: React.ReactNode }) => (
-      <div {...props}>{children}</div>
-    ),
-  },
-}));
-
 describe('AuthLandingPage', () => {
-  it('renders the public landing with real CTAs', () => {
+  it('presents the gamer identity with working registration and exploration links', () => {
     render(<AuthLandingPage />);
-
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+      'NÃO É SÓ',
+    );
     expect(
-      screen.getByRole('heading', { name: /revele sua verdadeira identidade/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('link', { name: /criar conta gratis/i }),
+      screen.getByRole('link', { name: /criar conta grátis/i }),
     ).toHaveAttribute('href', '/register');
     expect(
-      screen.getByRole('link', { name: /ver demo/i }),
-    ).toHaveAttribute('href', '/login');
-    expect(screen.getByTestId('landing-preview')).toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', { name: /entre agora e conecte seu perfil ao clutch/i }),
-    ).toBeInTheDocument();
+      screen.getByRole('link', { name: /explorar o clutch/i }),
+    ).toHaveAttribute('href', '#universo');
+    expect(document.getElementById('universo')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /já tem conta/i })).toHaveAttribute(
+      'href',
+      '/login',
+    );
+    expect(screen.getByTestId('landing-preview')).toHaveTextContent(
+      'PRÉVIA ILUSTRATIVA',
+    );
+    expect(screen.getAllByRole('article')).toHaveLength(3);
   });
 });

@@ -1,19 +1,20 @@
 :root {
   /* Primitive colors */
-  --clutch-neutral-950: #0a0a0f;
+  --clutch-neutral-950: #0c0c10;
   --clutch-neutral-900: #13131a;
   --clutch-neutral-800: #1a1a27;
   --clutch-border-700: #1e1e2e;
   --clutch-border-600: #2a2a3e;
-  --clutch-accent-purple-500: #7c3aed;
-  --clutch-accent-cyan-500: #06b6d4;
+  --clutch-accent-purple-500: #7938db;
+  --clutch-accent-cyan-500: #78ecd2;
+  --color-acid: #c4ff51;
   --clutch-status-online-500: #10b981;
   --clutch-status-ingame-500: #8b5cf6;
   --clutch-status-afk-500: #f59e0b;
   --clutch-status-offline-500: #6b7280;
   --clutch-text-50: #f8fafc;
-  --clutch-text-400: #94a3b8;
-  --clutch-text-500: #475569;
+  --clutch-text-400: #b3afbf;
+  --clutch-text-500: #92909f;
 
   /* Semantic colors */
   --color-background-primary: var(--clutch-neutral-950);
@@ -35,8 +36,8 @@
   --color-text-muted: var(--clutch-text-500);
 
   /* Layout scales */
-  --radius-surface: 1.5rem;
-  --radius-control: 0.875rem;
+  --radius-surface: 0.5rem;
+  --radius-control: 0.25rem;
   --radius-pill: 9999px;
   --space-page-x: 1.5rem;
   --space-page-y: 2.5rem;
@@ -57,6 +58,14 @@
   --badge-background-success: rgba(16, 185, 129, 0.14);
   --badge-background-warning: rgba(245, 158, 11, 0.14);
   --card-background: var(--color-surface-primary);
-  --card-background-accent: linear-gradient(160deg, rgba(124, 58, 237, 0.18), rgba(10, 10, 15, 0.92));
-  --card-background-success: linear-gradient(160deg, rgba(16, 185, 129, 0.16), rgba(19, 19, 26, 0.92));
+  --card-background-accent: linear-gradient(
+    160deg,
+    rgba(124, 58, 237, 0.18),
+    rgba(10, 10, 15, 0.92)
+  );
+  --card-background-success: linear-gradient(
+    160deg,
+    rgba(16, 185, 129, 0.16),
+    rgba(19, 19, 26, 0.92)
+  );
 }
